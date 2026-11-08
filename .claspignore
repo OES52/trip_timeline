@@ -1,6 +1,7 @@
 # clasp push에서 뺄 것 (Apps Script에는 루트의 .js/.html/appsscript.json만 올라감)
 web/**
 k8s/**
+api/**
 .github/**
 node_modules/**
 **/*.md

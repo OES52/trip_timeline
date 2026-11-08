@@ -1,9 +1,12 @@
 # Fleet이 이 폴더를 kustomize로 렌더링해서 배포
-# newTag는 GitHub Actions(web image)가 이미지 빌드 후 커밋 sha로 자동 갱신함. 손으로 바꾸면 그 이미지로 롤백
+# newTag는 GitHub Actions가 이미지 빌드 후 커밋 sha로 자동 갱신함 (.github/scripts/bump-tag.sh). 손으로 바꾸면 그 이미지로 롤백
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - trip-web.yaml
+  - trip-api.yaml
 images:
   - name: ghcr.io/oes52/trip-web
     newTag: c4615a96602e15899b75b1c8dfb1e3343d7bc185
+  - name: ghcr.io/oes52/trip-api
+    newTag: latest

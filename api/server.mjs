@@ -1,0 +1,470 @@
+// trip-api: 여행 타임라인 정적 페이지 ↔ Apps Script 사이 프록시 (홈랩 k3s, trip 네임스페이스)
+//  GET  /api/data                 일정 데이터. 캐시 먼저 주고 오래됐으면 뒤에서 갱신 (Apps Script 콜드스타트 숨김), gzip·brotli, ETag
+//  POST /api/call   {fn, args}    쓰기·PIN 확인. PIN은 여기서 먼저 확인 (틀리면 Apps Script까지 안 감), 레이트 리밋
+//  POST /api/hook/invalidate      Apps Script가 시트 바뀌면 부름 (X-Trip-Key)
+//  GET  /api/photo?u=URL          장소 사진을 받아 디스크에 캐시 (사설 IP 차단)
+//  GET  /api/push/key             VAPID 공개키
+//  POST /api/push/subscribe|unsubscribe|test   출발 알림 구독
+//  GET  /healthz
+//  환경변수: APPS_SCRIPT_URL, PROXY_KEY (필수) / VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT (알림)
+//           DATA_DIR(/data), PORT(8080), PHOTO_CACHE_MB(500), XFF_HOPS(2), FRESH_SEC(30)
+import http from 'node:http';
+import https from 'node:https';
+import dns from 'node:dns';
+import net from 'node:net';
+import zlib from 'node:zlib';
+import crypto from 'node:crypto';
+import fs from 'node:fs';
+import fsp from 'node:fs/promises';
+import path from 'node:path';
+import webpush from 'web-push';
+
+const ENV = process.env;
+const APPS_SCRIPT_URL = ENV.APPS_SCRIPT_URL || '';
+const PROXY_KEY = ENV.PROXY_KEY || '';
+const PORT = Number(ENV.PORT || 8080);
+const DATA_DIR = ENV.DATA_DIR || '/data';
+const PHOTO_DIR = path.join(DATA_DIR, 'photos');
+const PUSH_FILE = path.join(DATA_DIR, 'push.json');
+const PHOTO_MAX = Number(ENV.PHOTO_CACHE_MB || 500) * 1048576;
+const FRESH_MS = Number(ENV.FRESH_SEC || 30) * 1000;          // 이 안이면 그냥 캐시
+const XFF_HOPS = Number(ENV.XFF_HOPS || 2);                   // X-Forwarded-For 뒤에서 몇 번째가 실제 클라이언트인지
+const PUSH_ON = !!(ENV.VAPID_PUBLIC_KEY && ENV.VAPID_PRIVATE_KEY);
+
+if (!/^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec$/.test(APPS_SCRIPT_URL)) { console.error('APPS_SCRIPT_URL 없음/형식 다름'); process.exit(1); }
+if (!PROXY_KEY) { console.error('PROXY_KEY 없음'); process.exit(1); }
+if (PUSH_ON) webpush.setVapidDetails(ENV.VAPID_SUBJECT || 'mailto:admin@example.com', ENV.VAPID_PUBLIC_KEY, ENV.VAPID_PRIVATE_KEY);
+fs.mkdirSync(PHOTO_DIR, { recursive: true });
+
+const log = (...a) => console.log(new Date().toISOString(), ...a);
+const sha256 = s => crypto.createHash('sha256').update(String(s)).digest('hex');
+
+/* ── Apps Script 호출 ── */
+// GET: 302로 googleusercontent에 넘어가서 결과. POST: 302 따라가면 GET으로 바뀌는 게 Apps Script 방식
+async function gas(method, params, body) {
+  const url = new URL(APPS_SCRIPT_URL);
+  if (params) Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
+  const ctl = AbortSignal.timeout(method === 'POST' ? 90000 : 45000);
+  const res = await fetch(url, method === 'POST'
+    ? { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body), redirect: 'follow', signal: ctl }
+    : { redirect: 'follow', signal: ctl });
+  const text = await res.text();
+  let j;
+  try { j = JSON.parse(text); } catch (e) { throw new Error('Apps Script 응답이 JSON 아님 (' + res.status + ')'); }
+  if (!j.ok) throw new Error(j.error || 'Apps Script 오류');
+  return j.result;
+}
+
+/* ── 일정 데이터 캐시 ── */
+const cache = { data: null, body: null, gz: null, br: null, etag: '', at: 0, inflight: null, auth: null };
+function setData(data) {
+  const body = Buffer.from(JSON.stringify({ ok: true, result: data }));
+  cache.data = data;
+  cache.body = body;
+  cache.gz = zlib.gzipSync(body, { level: 9 });
+  cache.br = zlib.brotliCompressSync(body, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 9 } });
+  cache.etag = '"' + sha256(body).slice(0, 20) + '"';
+  cache.at = Date.now();
+}
+function refresh(reason) {
+  if (cache.inflight) return cache.inflight;
+  const t0 = Date.now();
+  cache.inflight = (async () => {
+    try {
+      const [data, auth] = await Promise.all([
+        gas('GET', { api: 'data', key: PROXY_KEY }),
+        gas('GET', { api: 'auth', key: PROXY_KEY }).catch(e => { log('auth 실패', e.message); return cache.auth; }),
+      ]);
+      setData(data);
+      if (auth) cache.auth = auth;
+      log('데이터 갱신', reason || '', (Date.now() - t0) + 'ms', Math.round(cache.body.length / 1024) + 'KB → br ' + Math.round(cache.br.length / 1024) + 'KB');
+      return data;
+    } finally {
+      cache.inflight = null;
+    }
+  })();
+  return cache.inflight;
+}
+// 쓰기 직후·시트 수정 알림: 여러 번 와도 1.5초 모아서 한 번
+let refreshTimer = null;
+function refreshSoon(reason) {
+  clearTimeout(refreshTimer);
+  refreshTimer = setTimeout(() => refresh(reason).catch(e => log('갱신 실패', e.message)), 1500);
+}
+
+/* ── HTTP 도우미 ── */
+function clientIp(req) {
+  const xff = String(req.headers['x-forwarded-for'] || '').split(',').map(s => s.trim()).filter(Boolean);
+  return xff.length >= XFF_HOPS ? xff[xff.length - XFF_HOPS] : (xff[0] || req.socket.remoteAddress || '?');
+}
+function pickEncoding(req) {
+  const ae = String(req.headers['accept-encoding'] || '');
+  return /\bbr\b/.test(ae) ? 'br' : /\bgzip\b/.test(ae) ? 'gzip' : '';
+}
+function send(res, status, headers, body) {
+  res.writeHead(status, Object.assign({ 'X-Content-Type-Options': 'nosniff' }, headers));
+  res.end(body);
+}
+function sendJSON(req, res, status, obj, extra) {
+  let body = Buffer.from(JSON.stringify(obj));
+  const h = Object.assign({ 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', Vary: 'Accept-Encoding' }, extra);
+  const enc = body.length > 1024 ? pickEncoding(req) : '';
+  if (enc === 'br') body = zlib.brotliCompressSync(body, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 5 } });
+  else if (enc === 'gzip') body = zlib.gzipSync(body);
+  if (enc) h['Content-Encoding'] = enc;
+  send(res, status, h, body);
+}
+const ok = (req, res, result) => sendJSON(req, res, 200, { ok: true, result });
+const fail = (req, res, status, error, extra) => sendJSON(req, res, status, { ok: false, error }, extra);
+async function readBody(req, limit) {
+  const chunks = [];
+  let n = 0;
+  for await (const c of req) { n += c.length; if (n > limit) throw Object.assign(new Error('본문이 너무 큼'), { status: 413 }); chunks.push(c); }
+  const s = Buffer.concat(chunks).toString('utf8');
+  try { return JSON.parse(s || '{}'); } catch (e) { throw Object.assign(new Error('JSON 형식이 아님'), { status: 400 }); }
+}
+
+/* ── 레이트 리밋 (고정 창) ── */
+const buckets = new Map();
+function limited(key, max, windowMs) {
+  const now = Date.now();
+  let b = buckets.get(key);
+  if (!b || now - b.start > windowMs) { b = { start: now, n: 0 }; buckets.set(key, b); }
+  b.n++;
+  return b.n > max ? Math.ceil((b.start + windowMs - now) / 1000) : 0;
+}
+setInterval(() => { const now = Date.now(); for (const [k, b] of buckets) if (now - b.start > 3600000) buckets.delete(k); }, 600000).unref();
+
+/* ── PIN 확인 (Apps Script ?api=auth 의 해시와 비교) ── */
+const pinFails = new Map();   // ip|user → { n, until }
+function pinLocked(ip, user) {
+  const f = pinFails.get(ip + '|' + user);
+  return f && f.until > Date.now() ? Math.ceil((f.until - Date.now()) / 60000) : 0;
+}
+function pinFailed(ip, user) {
+  const k = ip + '|' + user, now = Date.now();
+  const f = pinFails.get(k) && pinFails.get(k).first > now - 600000 ? pinFails.get(k) : { n: 0, first: now, until: 0 };
+  f.n++;
+  if (f.n >= 5) f.until = now + 600000;   // 10분 안에 5번 틀리면 10분 잠금
+  pinFails.set(k, f);
+}
+async function checkUserPin(user, pin) {
+  if (!cache.auth) await refresh('auth 없음').catch(() => null);
+  if (!cache.auth) return null;   // 모르면 Apps Script에 맡김
+  const u = cache.auth.find(x => x.id === user);
+  if (!u) return '없는 사용자: ' + user;
+  if (u.pin && sha256(String(pin || '')) !== u.pin) return 'PIN이 틀림';
+  return '';
+}
+
+// 정적 페이지가 부를 수 있는 함수: [사용자 인자 위치, PIN 인자 위치, 쓰기인지]
+const FNS = {
+  checkPin: [0, 1, false],
+  setSpend: [4, 5, true],
+  setVisited: [2, 3, true],
+  setVisitedMany: [1, 2, true],
+  setArrived: [2, 3, true],
+  editPlan: [3, 4, true],
+};
+
+async function apiCall(req, res) {
+  const ip = clientIp(req);
+  const wait = limited('call|' + ip, 60, 60000);
+  if (wait) return fail(req, res, 429, '요청이 너무 많음. ' + wait + '초 뒤 다시', { 'Retry-After': String(wait) });
+  const body = await readBody(req, 64 * 1024);
+  const spec = FNS[body.fn];
+  if (!spec) return fail(req, res, 400, '호출할 수 없는 함수: ' + body.fn);
+  const args = Array.isArray(body.args) ? body.args : [];
+  const user = String(args[spec[0]] || ''), pin = args[spec[1]];
+  const lock = pinLocked(ip, user);
+  if (lock) return fail(req, res, 429, 'PIN 시도가 너무 많음. ' + lock + '분 뒤 다시');
+  const bad = await checkUserPin(user, pin);
+  if (bad) {
+    if (/PIN/.test(bad)) pinFailed(ip, user);
+    return fail(req, res, 403, bad);
+  }
+  try {
+    const result = await gas('POST', null, { fn: body.fn, args: args, key: PROXY_KEY });
+    if (spec[2]) {
+      // 일정 수정은 결과가 전체 데이터 → 바로 캐시 교체, 나머지는 곧 다시 받음
+      if (body.fn === 'editPlan' && result && result.points) setData(result);
+      else refreshSoon(body.fn);
+    }
+    ok(req, res, result);
+  } catch (e) {
+    if (/PIN/.test(e.message)) { pinFailed(ip, user); refreshSoon('PIN 불일치'); }   // 설정 시트에서 PIN 바뀐 경우
+    fail(req, res, /PIN|권한|보기 전용|수정할 수 없음|없는 사용자/.test(e.message) ? 403 : 502, e.message);
+  }
+}
+
+async function apiData(req, res) {
+  const ip = clientIp(req);
+  if (limited('data|' + ip, 120, 60000)) return fail(req, res, 429, '요청이 너무 많음');
+  if (!cache.data) {
+    try { await refresh('첫 요청'); } catch (e) { return fail(req, res, 502, 'Apps Script 연결 실패: ' + e.message); }
+  } else if (Date.now() - cache.at > FRESH_MS) {
+    refresh('오래됨').catch(e => log('뒤에서 갱신 실패', e.message));   // 지금은 있는 것 주고 뒤에서
+  }
+  const h = { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-cache', ETag: cache.etag, Vary: 'Accept-Encoding',
+    'X-Data-Age': String(Math.round((Date.now() - cache.at) / 1000)) };
+  if (req.headers['if-none-match'] === cache.etag) return send(res, 304, h);
+  const enc = pickEncoding(req);
+  if (enc) h['Content-Encoding'] = enc;
+  send(res, 200, h, enc === 'br' ? cache.br : enc === 'gzip' ? cache.gz : cache.body);
+}
+
+/* ── 사진 프록시 ── */
+//  사설·예약 주소로 가는 요청 차단 (리다이렉트 매 단계, 실제 연결할 IP 기준)
+const BLOCK = new net.BlockList();
+[['0.0.0.0', 8], ['10.0.0.0', 8], ['100.64.0.0', 10], ['127.0.0.0', 8], ['169.254.0.0', 16], ['172.16.0.0', 12], ['192.0.0.0', 24],
+  ['192.168.0.0', 16], ['198.18.0.0', 15], ['224.0.0.0', 3]].forEach(([a, p]) => BLOCK.addSubnet(a, p, 'ipv4'));
+[['::', 128], ['::1', 128], ['fc00::', 7], ['fe80::', 10], ['ff00::', 8], ['::ffff:0:0', 96], ['64:ff9b::', 96]].forEach(([a, p]) => BLOCK.addSubnet(a, p, 'ipv6'));
+function safeLookup(host, opts, cb) {
+  dns.lookup(host, { all: true }, (err, addrs) => {
+    if (err) return cb(err);
+    const good = addrs.filter(a => !BLOCK.check(a.address, a.family === 6 ? 'ipv6' : 'ipv4'));
+    if (!good.length) return cb(new Error('차단된 주소: ' + host));
+    if (opts && opts.all) return cb(null, good);
+    cb(null, good[0].address, good[0].family);
+  });
+}
+function getOnce(u) {
+  return new Promise((resolve, reject) => {
+    const url = new URL(u);
+    if (url.protocol !== 'https:' || (url.port && url.port !== '443')) return reject(new Error('https 443만 허용'));
+    // IP를 직접 쓴 주소는 lookup을 안 거치므로 여기서 확인
+    const host = url.hostname.replace(/^\[|\]$/g, '');
+    const fam = net.isIP(host);
+    if (fam && BLOCK.check(host, fam === 6 ? 'ipv6' : 'ipv4')) return reject(new Error('차단된 주소: ' + host));
+    const req = https.get(url, { lookup: safeLookup, timeout: 15000, headers: { 'User-Agent': 'trip-api/1 (photo cache)', Accept: 'image/*' } }, resolve);
+    req.on('timeout', () => req.destroy(new Error('시간 초과')));
+    req.on('error', reject);
+  });
+}
+async function fetchImage(u) {
+  for (let hop = 0; hop < 5; hop++) {
+    const r = await getOnce(u);
+    if ([301, 302, 303, 307, 308].includes(r.statusCode) && r.headers.location) { r.resume(); u = new URL(r.headers.location, u).toString(); continue; }
+    if (r.statusCode !== 200) { r.resume(); throw new Error('원본 ' + r.statusCode); }
+    const type = String(r.headers['content-type'] || '').split(';')[0].trim();
+    if (!/^image\//.test(type) || /svg/.test(type)) { r.resume(); throw new Error('이미지가 아님: ' + type); }
+    const chunks = [];
+    let n = 0;
+    for await (const c of r) { n += c.length; if (n > 15 * 1048576) { r.destroy(); throw new Error('15MB 넘음'); } chunks.push(c); }
+    return { type, buf: Buffer.concat(chunks) };
+  }
+  throw new Error('리다이렉트가 너무 많음');
+}
+const photoIndex = new Map();   // hash → { size, at }
+let photoTotal = 0;
+const photoInflight = new Map();
+async function scanPhotos() {
+  for (const f of await fsp.readdir(PHOTO_DIR)) {
+    if (!f.endsWith('.bin')) continue;
+    const st = await fsp.stat(path.join(PHOTO_DIR, f)).catch(() => null);
+    if (st) { photoIndex.set(f.slice(0, -4), { size: st.size, at: st.mtimeMs }); photoTotal += st.size; }
+  }
+  log('사진 캐시', photoIndex.size + '장', Math.round(photoTotal / 1048576) + 'MB');
+}
+async function prunePhotos() {
+  if (photoTotal <= PHOTO_MAX) return;
+  const list = Array.from(photoIndex.entries()).sort((a, b) => a[1].at - b[1].at);
+  for (const [h, v] of list) {
+    if (photoTotal <= PHOTO_MAX * 0.9) break;
+    await fsp.rm(path.join(PHOTO_DIR, h + '.bin'), { force: true });
+    await fsp.rm(path.join(PHOTO_DIR, h + '.type'), { force: true });
+    photoIndex.delete(h); photoTotal -= v.size;
+  }
+}
+async function apiPhoto(req, res, q) {
+  const u = q.get('u') || '';
+  if (!/^https:\/\//i.test(u) || u.length > 2000) return fail(req, res, 400, 'https 주소만');
+  const h = sha256(u);
+  const file = path.join(PHOTO_DIR, h + '.bin'), tfile = path.join(PHOTO_DIR, h + '.type');
+  const hdr = type => ({ 'Content-Type': type, 'Cache-Control': 'public, max-age=31536000, immutable', ETag: '"' + h.slice(0, 20) + '"' });
+  if (photoIndex.has(h)) {
+    if (req.headers['if-none-match'] === '"' + h.slice(0, 20) + '"') return send(res, 304, hdr('image/jpeg'));
+    try {
+      const [buf, type] = await Promise.all([fsp.readFile(file), fsp.readFile(tfile, 'utf8')]);
+      photoIndex.get(h).at = Date.now();
+      return send(res, 200, hdr(type), buf);
+    } catch (e) { photoIndex.delete(h); }
+  }
+  if (limited('photo|' + clientIp(req), 120, 60000)) return fail(req, res, 429, '요청이 너무 많음');
+  try {
+    if (!photoInflight.has(h)) photoInflight.set(h, fetchImage(u).finally(() => photoInflight.delete(h)));
+    const img = await photoInflight.get(h);
+    if (!photoIndex.has(h)) {
+      await fsp.writeFile(file, img.buf);
+      await fsp.writeFile(tfile, img.type);
+      photoIndex.set(h, { size: img.buf.length, at: Date.now() });
+      photoTotal += img.buf.length;
+      prunePhotos().catch(() => null);
+    }
+    send(res, 200, hdr(img.type), img.buf);
+  } catch (e) {
+    fail(req, res, 502, '사진 못 받음: ' + e.message, { 'Cache-Control': 'no-store' });
+  }
+}
+
+/* ── 출발 알림 ── */
+let push = { subs: {}, sent: {} };   // subs: 엔드포인트 해시 → { sub, user, lead, at } / sent: 보낸 알림 키 → 시각
+try { push = Object.assign(push, JSON.parse(fs.readFileSync(PUSH_FILE, 'utf8'))); } catch (e) { /* 처음 */ }
+let pushSaveTimer = null;
+function savePush() {
+  clearTimeout(pushSaveTimer);
+  pushSaveTimer = setTimeout(() => {
+    const tmp = PUSH_FILE + '.tmp';
+    fsp.writeFile(tmp, JSON.stringify(push)).then(() => fsp.rename(tmp, PUSH_FILE)).catch(e => log('push 저장 실패', e.message));
+  }, 300);
+}
+async function sendPush(id, payload) {
+  const s = push.subs[id];
+  if (!s) return;
+  try {
+    await webpush.sendNotification(s.sub, JSON.stringify(payload), { TTL: 600, urgency: 'high' });
+  } catch (e) {
+    if (e.statusCode === 404 || e.statusCode === 410) { delete push.subs[id]; savePush(); log('만료된 구독 삭제', s.user); }
+    else throw e;
+  }
+}
+async function apiPush(req, res, action) {
+  if (!PUSH_ON) return fail(req, res, 503, '서버에 알림 키(VAPID)가 설정 안 됨');
+  if (action === 'key') return ok(req, res, { key: ENV.VAPID_PUBLIC_KEY });
+  const ip = clientIp(req);
+  if (limited('push|' + ip, 20, 60000)) return fail(req, res, 429, '요청이 너무 많음');
+  const b = await readBody(req, 16 * 1024);
+  if (action === 'subscribe') {
+    const sub = b.sub;
+    if (!sub || !/^https:\/\//.test(sub.endpoint || '') || !sub.keys || !sub.keys.p256dh || !sub.keys.auth) return fail(req, res, 400, '구독 정보가 이상함');
+    const user = String(b.user || '');
+    const lock = pinLocked(ip, user);
+    if (lock) return fail(req, res, 429, 'PIN 시도가 너무 많음. ' + lock + '분 뒤 다시');
+    const bad = await checkUserPin(user, b.pin);
+    if (bad == null) return fail(req, res, 503, '사용자 정보를 아직 못 받음. 잠시 뒤 다시');
+    if (bad) { if (/PIN/.test(bad)) pinFailed(ip, user); return fail(req, res, 403, bad); }
+    const lead = Math.min(60, Math.max(1, Number(b.lead) || 15));
+    push.subs[sha256(sub.endpoint)] = { sub: { endpoint: sub.endpoint, keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth } }, user, lead, at: Date.now() };
+    savePush();
+    log('알림 구독', user, lead + '분 전');
+    return ok(req, res, true);
+  }
+  const id = sha256(String(b.endpoint || ''));
+  if (action === 'unsubscribe') { delete push.subs[id]; savePush(); return ok(req, res, true); }
+  if (action === 'test') {
+    if (!push.subs[id]) return fail(req, res, 404, '구독 없음');
+    await sendPush(id, { title: '여행 타임라인', body: '알림 잘 옴. 출발 ' + push.subs[id].lead + '분 전에 알려줌', tag: 'test' });
+    return ok(req, res, true);
+  }
+  fail(req, res, 404, '없는 기능');
+}
+
+// 일정 시각(HH:MM, 25:10 같은 자정 넘김 포함) → 분
+const toMin = s => { const m = String(s || '').match(/^(\d+):(\d{2})/); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
+// 그 날짜 0시(여행 시간대)의 실제 시각(ms)
+const dayStart = (date, tzMin) => Date.parse(date + 'T00:00:00Z') - tzMin * 60000;
+// 화면 dayDelay와 같은 규칙: 그날 마지막 도착 기록 기준 지연(분)
+function dayDelay(points, arrived, date) {
+  let ref = null;
+  points.filter(p => p.date === date).sort((a, b) => a.order - b.order).forEach(p => {
+    const a = arrived[p.date + '#' + p.order], pm = toMin(p.arrive);
+    if (!a || pm == null) return;
+    let d = toMin(a) - pm;
+    if (d < -720) d += 1440;
+    if (d > 720) d -= 1440;
+    ref = { order: p.order, delay: d };
+  });
+  return ref;
+}
+function placeName(data, p) {
+  const pl = p.placeKey ? (data.places || []).find(x => x.key === p.placeKey) : null;
+  return pl && pl.alias ? pl.alias : p.place;
+}
+async function pushTick() {
+  const data = cache.data;
+  if (!PUSH_ON || !data || !Object.keys(push.subs).length) return;
+  const now = Date.now(), tz = data.tzOffsetMin != null ? data.tzOffsetMin : 540;
+  for (const [id, s] of Object.entries(push.subs)) {
+    const u = (data.users || []).find(x => x.id === s.user);
+    if (!u) continue;
+    const arrived = (data.arrivedBy && data.arrivedBy[s.user]) || {};
+    const dates = (data.dates || []).filter(d => d >= u.from && d <= u.to);
+    for (const date of dates) {
+      const base = dayStart(date, tz);
+      if (now < base - 86400000 || now > base + 2 * 86400000) continue;   // 오늘·내일 근처만
+      const ref = dayDelay(data.points, arrived, date);
+      for (const seg of (data.segments || []).filter(x => x.date === date)) {
+        const from = data.points.find(p => p.date === date && p.order === seg.fromOrder);
+        const to = data.points.find(p => p.date === date && p.order === seg.toOrder);
+        if (!from || !to) continue;
+        if (arrived[date + '#' + to.order]) continue;   // 이미 다음 장소 도착
+        const dep = toMin(from.depart) != null ? toMin(from.depart) : toMin(seg.dep);
+        if (dep == null) continue;
+        const delay = ref && from.order >= ref.order ? ref.delay : 0;
+        const at = base + (dep + delay) * 60000;
+        const fireAt = at - s.lead * 60000;
+        const key = id + '|' + date + '#' + from.order;
+        if (now < fireAt || now > fireAt + 10 * 60000 || push.sent[key]) continue;
+        push.sent[key] = now;
+        savePush();
+        const mode = seg.taxi && seg.taxi.on ? '택시' : seg.mode;
+        const hm = m => Math.floor(m / 60) % 24 + ':' + String(m % 60).padStart(2, '0');
+        const mins = Math.max(0, Math.round((at - now) / 60000));
+        sendPush(id, {
+          title: mins + '분 뒤 출발 · ' + placeName(data, to),
+          body: placeName(data, from) + ' → ' + placeName(data, to) + ' · ' + (mode || '') + (seg.summary ? ' ' + seg.summary : '') +
+            ' · ' + hm(dep + delay) + ' 출발' + (delay ? ' (지연 ' + (delay > 0 ? '+' : '') + delay + '분 반영)' : ''),
+          tag: 'dep-' + date + '-' + from.order,
+        }).then(() => log('출발 알림', s.user, date, from.order), e => log('알림 실패', s.user, e.statusCode || e.message));
+      }
+    }
+  }
+  // 3일 지난 기록 정리
+  let pruned = false;
+  for (const [k, t] of Object.entries(push.sent)) if (now - t > 3 * 86400000) { delete push.sent[k]; pruned = true; }
+  if (pruned) savePush();
+}
+
+/* ── 주기 작업 ── */
+// 구독이 있으면 2분마다(도착 기록 반영), 없으면 15분마다 데이터 갱신
+let lastBg = 0;
+setInterval(() => {
+  const every = PUSH_ON && Object.keys(push.subs).length ? 120000 : 900000;
+  if (Date.now() - Math.max(cache.at, lastBg) < every) return;
+  lastBg = Date.now();
+  refresh('주기').catch(e => log('주기 갱신 실패', e.message));
+}, 30000).unref();
+setInterval(() => pushTick().catch(e => log('알림 처리 오류', e.message)), 30000).unref();
+
+/* ── 서버 ── */
+const server = http.createServer(async (req, res) => {
+  const url = new URL(req.url, 'http://x');
+  const p = url.pathname;
+  try {
+    if (p === '/healthz') return send(res, 200, { 'Content-Type': 'text/plain' }, 'ok\n');
+    if (p === '/api/data' && req.method === 'GET') return await apiData(req, res);
+    if (p === '/api/call' && req.method === 'POST') return await apiCall(req, res);
+    if (p === '/api/photo' && req.method === 'GET') return await apiPhoto(req, res, url.searchParams);
+    if (p === '/api/hook/invalidate' && req.method === 'POST') {
+      const k = String(req.headers['x-trip-key'] || '');
+      if (k.length !== PROXY_KEY.length || !crypto.timingSafeEqual(Buffer.from(k), Buffer.from(PROXY_KEY))) return fail(req, res, 403, '키가 틀림');
+      refreshSoon('시트 수정');
+      return ok(req, res, true);
+    }
+    const m = p.match(/^\/api\/push\/(key|subscribe|unsubscribe|test)$/);
+    if (m && (req.method === (m[1] === 'key' ? 'GET' : 'POST'))) return await apiPush(req, res, m[1]);
+    fail(req, res, 404, '없는 주소');
+  } catch (e) {
+    log('오류', req.method, p, e.message);
+    if (!res.headersSent) fail(req, res, e.status || 500, e.message);
+  }
+});
+server.requestTimeout = 120000;
+server.headersTimeout = 20000;
+
+await scanPhotos().catch(e => log('사진 캐시 확인 실패', e.message));
+server.listen(PORT, () => log('trip-api 시작', PORT, PUSH_ON ? '알림 켜짐' : '알림 꺼짐 (VAPID 없음)'));
+refresh('시작').catch(e => log('시작 갱신 실패 (첫 요청 때 다시)', e.message));
+const stop = () => { log('종료'); server.close(); clearTimeout(pushSaveTimer); try { fs.writeFileSync(PUSH_FILE, JSON.stringify(push)); } catch (e) { /* 무시 */ } process.exit(0); };
+process.on('SIGTERM', stop);
+process.on('SIGINT', stop);

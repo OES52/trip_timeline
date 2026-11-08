@@ -1,0 +1,16 @@
+{
+  "name": "trip-api",
+  "version": "1.0.0",
+  "private": true,
+  "description": "여행 타임라인 정적 페이지 ↔ Apps Script 프록시 (캐시·PIN·사진·출발 알림)",
+  "type": "module",
+  "main": "server.mjs",
+  "scripts": {
+    "start": "node server.mjs",
+    "vapid": "web-push generate-vapid-keys --json"
+  },
+  "engines": { "node": ">=22" },
+  "dependencies": {
+    "web-push": "3.6.7"
+  }
+}

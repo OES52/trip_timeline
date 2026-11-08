@@ -448,23 +448,29 @@
     return runner;
   }
   // POST {fn, args} → {ok, result} / {ok:false, error}
+  //  API_URL이 /api 처럼 상대 경로면 홈랩 프록시: 데이터는 GET /api/data (프록시 캐시), 나머지는 POST /api/call
   async function apiCall(fn, args) {
     if (!API_URL) throw new Error('API 주소가 없음 (TRIP_API_URL)');
+    const proxy = API_URL.charAt(0) === '/';
     let res;
     try {
-      res = await fetch(API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ fn: fn, args: args }),
-        redirect: 'follow',
-      });
+      if (proxy && fn === 'getMapData') {
+        res = await fetch(API_URL + '/data', { cache: 'no-cache' });
+      } else {
+        res = await fetch(proxy ? API_URL + '/call' : API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': proxy ? 'application/json' : 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ fn: fn, args: args }),
+          redirect: 'follow',
+        });
+      }
     } catch (e) {
       throw new Error('연결 안 됨');
     }
-    if (!res.ok) throw new Error('서버 오류 ' + res.status);
-    let j;
-    try { j = await res.json(); } catch (e) { throw new Error('서버 응답을 못 읽음'); }
-    if (!j.ok) throw new Error(j.error || '서버 오류');
+    let j = null;
+    try { j = await res.json(); } catch (e) { j = null; }
+    if (!j) throw new Error(res.ok ? '서버 응답을 못 읽음' : '서버 오류 ' + res.status);
+    if (!j.ok) throw new Error(j.error || '서버 오류 ' + res.status);
     return j.result;
   }
 
@@ -624,14 +630,31 @@
       const json = JSON.stringify({ savedAt: savedAt, data: data }, function (k, v) {
         return k === 'polyline' && this && this._rebuilt ? '' : v;
       });
+      cacheSavedAt = savedAt;
+      // 홈랩 정적 페이지는 IndexedDB(TRIP_STORE, 용량 넉넉), Apps Script 웹앱은 localStorage
+      if (window.TRIP_STORE) { window.TRIP_STORE.set(CACHE_KEY, json); return; }
       localStorage.setItem(CACHE_KEY, json);
     } catch (e) { /* 저장 공간 없으면 무시 */ }
   }
 
+  let cacheSavedAt = null;
   function load() {
+    // 처음 열 때 IndexedDB에서 꺼내는 건 비동기라 꺼낸 뒤 이어서
+    if (window.TRIP_STORE && !DATA && !load.fromStore) {
+      load.fromStore = true;
+      window.TRIP_STORE.get(CACHE_KEY).then(raw => load_(raw), () => load_(null));
+      return;
+    }
+    let raw = null;
+    if (!window.TRIP_STORE) { try { raw = localStorage.getItem(CACHE_KEY); } catch (e) { raw = null; } }
+    load_(raw);
+  }
+
+  function load_(raw) {
     // 1. 폰에 저장된 마지막 데이터부터 바로 표시
     let cached = null;
-    try { cached = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null'); } catch (e) { cached = null; }
+    try { cached = JSON.parse(raw || 'null'); } catch (e) { cached = null; }
+    if (cached && cached.savedAt) cacheSavedAt = cached.savedAt;
     if (cached && cached.data && !DATA) {
       applyData(cached.data);
       setStatus('저장된 데이터 표시 중 (' + cached.savedAt + '). 최신 데이터 받는 중…');
@@ -652,7 +675,7 @@
       .withFailureHandler(err => {
         document.getElementById('reload').classList.remove('spin');
         if (DATA) {
-          setStatus('연결 안 됨. 저장된 데이터로 보는 중' + (cached ? ' (' + cached.savedAt + ')' : ''), true);
+          setStatus('연결 안 됨. 저장된 데이터로 보는 중' + (cacheSavedAt ? ' (' + cacheSavedAt + ')' : ''), true);
         } else {
           document.getElementById('list').innerHTML =
             '<p class="empty"><strong>데이터를 못 불러옴.</strong><br>' + esc(err.message || String(err)) + '</p>';

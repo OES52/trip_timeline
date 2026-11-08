@@ -1,0 +1,50 @@
+# trip-api(프록시) 이미지를 arm64로 빌드해서 GHCR에 올리고 배포 태그 갱신
+name: api image
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'api/**'
+      - '.github/workflows/api.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  group: api-image
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: api
+          file: api/Dockerfile
+          platforms: linux/arm64
+          push: true
+          tags: |
+            ghcr.io/oes52/trip-api:latest
+            ghcr.io/oes52/trip-api:${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.title=trip-api
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
+      - name: 배포 태그 갱신
+        run: .github/scripts/bump-tag.sh ghcr.io/oes52/trip-api "$GITHUB_SHA"

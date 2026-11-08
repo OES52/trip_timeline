@@ -1,3 +1,4 @@
 {
-  "apiUrl": "https://script.google.com/macros/s/AKfycbzmL_k74yob5ZdtEaEeAL3vY0LlWHoHAaqSUYYmcMU114SPnEYkEuS7RMTmqTZKKA5Q/exec"
+  "apiUrl": "/api",
+  "photoProxy": true
 }

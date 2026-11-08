@@ -167,6 +167,37 @@ function cachePut_(obj) {
 }
 function invalidateCache_() {
   try { CacheService.getScriptCache().remove(MAP_CACHE_ + ':n'); } catch (e) { /* 무시 */ }
+  notifyProxy_();
+}
+
+/* ── 홈랩 프록시에 "시트 바뀜" 알림 ── */
+//  스크립트 속성 PROXY_HOOK_URL(예: https://japan2026.oesgame.xyz/api/hook/invalidate) + PROXY_KEY 둘 다 있을 때만
+//  단순 트리거 onEdit에서는 UrlFetchApp 권한이 없어 조용히 실패 → 설치형 트리거 onEditProxy 가 대신 보냄
+//  프록시가 부른 쓰기(doPost)는 프록시가 이미 알고 있어서 안 보냄
+let API_CALL_ = false;
+function notifyProxy_() {
+  if (API_CALL_) return;
+  try {
+    const props = PropertiesService.getScriptProperties();
+    const url = props.getProperty('PROXY_HOOK_URL'), key = props.getProperty('PROXY_KEY');
+    if (!url || !key) return;
+    UrlFetchApp.fetch(url, { method: 'post', headers: { 'X-Trip-Key': key }, muteHttpExceptions: true, followRedirects: false });
+  } catch (e) {
+    // 권한 없음(단순 트리거)·프록시 꺼짐 → 무시. 프록시는 몇 분마다 알아서 다시 받음
+  }
+}
+
+// 설치형 편집 트리거: 시트를 손으로 고치면 프록시 캐시 갱신
+function onEditProxy(e) { notifyProxy_(); }
+
+// 메뉴: 설치형 트리거 만들기 (한 번만)
+function installProxyTrigger() {
+  requireSheetUi_();
+  const has = ScriptApp.getProjectTriggers().some(t => t.getHandlerFunction() === 'onEditProxy');
+  if (!has) ScriptApp.newTrigger('onEditProxy').forSpreadsheet(SpreadsheetApp.getActive()).onEdit().create();
+  API_CALL_ = false;
+  notifyProxy_();
+  alert_(has ? '이미 설치돼 있음. 프록시에 갱신 알림 한 번 보냄' : '설치 완료. 시트 고치면 홈랩 페이지에 바로 반영됨');
 }
 // 메뉴: 웹앱이 시트 변경을 못 따라올 때
 function clearWebCache() { requireSheetUi_(); invalidateCache_(); alert_('웹앱 캐시 비움. 웹앱 새로고침하면 최신 시트 내용으로 보임'); }

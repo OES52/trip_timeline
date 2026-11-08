@@ -16,7 +16,8 @@ metadata:
   labels:
     app: trip-web
 spec:
-  replicas: 1
+  # 2개: 롤링 배포·파드 재시작 중에도 끊김 없게 (노드가 여러 대면 서로 다른 노드로)
+  replicas: 2
   revisionHistoryLimit: 3
   selector:
     matchLabels:
@@ -35,6 +36,13 @@ spec:
       # imagePullSecrets:
       #   - name: ghcr-pull
       automountServiceAccountToken: false
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway   # 노드 1대면 그냥 같은 노드에
+          labelSelector:
+            matchLabels:
+              app: trip-web
       securityContext:
         runAsNonRoot: true
         runAsUser: 101
@@ -59,6 +67,7 @@ spec:
               path: /healthz
               port: http
             periodSeconds: 10
+            failureThreshold: 2
           livenessProbe:
             httpGet:
               path: /healthz
@@ -93,3 +102,15 @@ spec:
     - name: http
       port: 80
       targetPort: http
+---
+# 노드 드레인·업그레이드 때 최소 1개는 남김
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: trip-web
+  namespace: trip
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: trip-web

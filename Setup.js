@@ -22,6 +22,7 @@ function onOpen() {
     .addSeparator()
     .addItem('지도 열기', 'showMapLink')
     .addItem('웹앱 캐시 비우기', 'clearWebCache')
+    .addItem('홈랩 프록시 알림 트리거 설치', 'installProxyTrigger')
     .addToUi();
 }
 

@@ -3,14 +3,18 @@
 // 그냥 열면 웹앱 화면, ?api=... 이면 JSON (외부 정적 페이지용)
 //  GET ?api=data  → getMapData() 결과
 //  GET ?api=users → 사용자 목록 (PIN 값은 빼고 있는지만)
-//  GET ?api=ping  → 살아 있는지
+//  GET ?api=ping  → 살아 있는지 (키 없이도 됨)
+//  GET ?api=auth  → 사용자별 PIN 해시 (홈랩 프록시가 PIN을 먼저 확인하는 용도, 키 필수)
+//  스크립트 속성 PROXY_KEY 가 있으면 ping 말고는 &key=PROXY_KEY 가 맞아야 응답 (POST는 본문 key)
 function doGet(e) {
   const p = (e && e.parameter) || {};
   if (p.api) {
     return apiRespond_(() => {
-      if (p.api === 'data') return getMapData();
-      if (p.api === 'users') return JSON.parse(bootUsersJson_());   // \u003c 이스케이프는 JSON.parse가 그대로 풀어줌
       if (p.api === 'ping') return { ok: true, at: new Date().toISOString() };
+      requireProxyKey_(p.key);   // 스크립트 속성 PROXY_KEY 있으면 홈랩 프록시만 통과
+      if (p.api === 'data') return getMapData();
+      if (p.api === 'auth') return authList_();
+      if (p.api === 'users') return JSON.parse(bootUsersJson_());   // \u003c 이스케이프는 JSON.parse가 그대로 풀어줌
       throw new Error('알 수 없는 api: ' + p.api);
     });
   }
@@ -51,10 +55,27 @@ function doPost(e) {
   return apiRespond_(() => {
     let body;
     try { body = JSON.parse((e && e.postData && e.postData.contents) || '{}'); } catch (err) { throw new Error('JSON 형식이 아님'); }
+    requireProxyKey_(body.key);
+    API_CALL_ = true;   // 프록시가 직접 부른 쓰기라 프록시에 다시 알릴 필요 없음
     const fn = API_FNS_[body.fn];
     if (!fn) throw new Error('호출할 수 없는 함수: ' + body.fn);
     return fn.apply(null, Array.isArray(body.args) ? body.args : []);
   });
+}
+
+// 홈랩 프록시 전용 키. 속성이 없으면 확인 안 함 (예전처럼 누구나)
+function requireProxyKey_(given) {
+  const want = PropertiesService.getScriptProperties().getProperty('PROXY_KEY');
+  if (want && String(given || '') !== want) throw new Error('키가 틀림');
+}
+
+// 사용자별 PIN 해시 (SHA-256 hex, PIN 없으면 빈 값). 프록시가 PIN 틀린 요청을 여기까지 안 보내게
+function authList_() {
+  return readSettings_().users.map(u => ({ id: u.id, pin: u.pin ? sha256Hex_(u.pin) : '' }));
+}
+function sha256Hex_(s) {
+  return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, String(s), Utilities.Charset.UTF_8)
+    .map(b => ('0' + (b & 0xff).toString(16)).slice(-2)).join('');
 }
 
 // 결과를 {ok, result} / {ok:false, error} JSON으로

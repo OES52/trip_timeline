@@ -52,22 +52,9 @@ jobs:
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.title=trip-web
             org.opencontainers.image.revision=${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
 
-      # CD: k8s/kustomization.yaml 이미지 태그를 이번 커밋 sha로 바꿔서 커밋 → Fleet이 1분 안에 감지해서 배포
-      #  GITHUB_TOKEN으로 한 push는 워크플로를 다시 실행하지 않아서 무한 반복 없음 (k8s/는 paths에도 없음)
+      # CD: k8s/kustomization.yaml 의 trip-web 태그만 이번 커밋 sha로 → Fleet이 1분 안에 배포
       - name: 배포 태그 갱신
-        run: |
-          sed -i -E "s|^(\s*newTag:\s*).*$|\1${GITHUB_SHA}|" k8s/kustomization.yaml
-          grep -n "newTag" k8s/kustomization.yaml
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add k8s/kustomization.yaml
-          if git diff --cached --quiet; then echo "태그 변경 없음"; exit 0; fi
-          git commit -m "deploy: trip-web ${GITHUB_SHA::7} [skip ci]"
-          for i in 1 2 3; do
-            git pull --rebase origin main && git push origin HEAD:main && exit 0
-            sleep 5
-          done
-          echo "push 실패"; exit 1
+        run: .github/scripts/bump-tag.sh ghcr.io/oes52/trip-web "$GITHUB_SHA"

@@ -1,0 +1,115 @@
+# trip-api: 정적 페이지 ↔ Apps Script 프록시 (api/server.mjs)
+#  - 일정 데이터 캐시(콜드스타트 숨김)·PIN 먼저 확인·레이트 리밋·사진 캐시·출발 알림
+#  - 1개만: 출발 알림 스케줄러가 둘이면 알림이 두 번 감 + 디스크(RWO) 하나라서. 대신 화면은 IndexedDB 저장본으로 버팀
+#  - 시크릿 trip-api 는 저장소에 없음 (공개 저장소). 만드는 법은 k8s/README.md
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: trip-api-data
+  namespace: trip
+spec:
+  accessModes: ["ReadWriteOnce"]
+  # storageClassName: longhorn   # 기본 스토리지클래스가 아니면 지정
+  resources:
+    requests:
+      storage: 2Gi   # 사진 캐시 상한 PHOTO_CACHE_MB(500MB) + 알림 구독
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: trip-api
+  namespace: trip
+  labels:
+    app: trip-api
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  strategy:
+    type: Recreate   # RWO 볼륨을 두 파드가 동시에 못 붙임
+  selector:
+    matchLabels:
+      app: trip-api
+  template:
+    metadata:
+      labels:
+        app: trip-api
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 15
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000          # PVC에 쓸 수 있게
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: api
+          image: ghcr.io/oes52/trip-api   # 태그는 kustomization.yaml
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - secretRef:
+                name: trip-api   # APPS_SCRIPT_URL, PROXY_KEY, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT
+          env:
+            - name: DATA_DIR
+              value: /data
+            - name: PHOTO_CACHE_MB
+              value: "500"
+            # X-Forwarded-For 끝에서 몇 번째가 실제 폰 IP인지 (게이트웨이 → nginx → 여기: 2)
+            - name: XFF_HOPS
+              value: "2"
+            - name: FRESH_SEC
+              value: "30"
+          resources:
+            requests:
+              cpu: 20m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: trip-api-data
+        - name: tmp
+          emptyDir:
+            sizeLimit: 16Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: trip-api
+  namespace: trip
+  labels:
+    app: trip-api
+spec:
+  selector:
+    app: trip-api
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
