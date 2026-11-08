@@ -236,7 +236,7 @@ function applyPlanFormat_(sh, fresh) {
   sh.getRange(1, P.AMOUNT).setNote('엔화 총액. 예산 시트에는 설정 시트 환율로 바꾼 원화로 들어감\n번호가 연결돼 있으면 여기서 고친 금액이 예산 시트에도 반영됨\n번호 없이 입력하면 예산 시트에 새 항목이 생기고 예산 번호가 채워짐');
   sh.getRange(1, P.ARRIVE).setNote('함수로 자동 계산. 직접 입력하지 말 것\n자정 넘으면 25:10처럼 표시');
   sh.getRange(1, P.SLACK).setNote('고정 시각 - 도착 시각. 마이너스면 늦음');
-  sh.getRange(1, P.MOVE).setNote('다음 장소까지 이동 시간 (구글 경로 원래 값). "경로 계산" 실행 때 채워짐\n수동 구간은 비어 있고 수동 소요(분)가 대신 쓰임\n도착 시각 계산에는 ' + CONFIG.ROUND_MIN + '분 단위로 올린 값이 쓰임 (13 → 15)');
+  sh.getRange(1, P.MOVE).setNote('다음 장소까지 이동 시간 (구글 경로 원래 값). "경로 계산" 실행 때 채워짐\n수동 구간은 비어 있고 수동 소요(분)가 대신 쓰임\n도착 시각 계산에는 수단별 단위로 올린 값이 쓰임 (Config.gs ROUND_MOVE)\n' + Object.keys(CONFIG.ROUND_MOVE).map(k => k + ' ' + CONFIG.ROUND_MOVE[k] + '분').join(', '));
   sh.getRange(1, P.BUFFER).setNote('올림으로 생긴 여유 (분)\n= 이 장소로 오는 이동 올림분 + 이 장소 출발 시각 올림분\n예) 이동 13→15분(+2), 출발 14:36→14:40(+4) → +6\n올림 단위는 Config.gs ROUND_MIN');
   sh.getRange(1, P.FARE).setNote('최종 1인 교통비 = 수동 교통비 있으면 그 값, 없으면 API 요금\n예산 시트 "교통비 MM/DD" 행이 이 열을 일자별로 합산');
   sh.getRange(1, P.PER).setNote('예산 시트 1인당 비용(₩)을 환율로 나눈 엔화');
@@ -266,7 +266,7 @@ function writePlanFormulas_(sh) {
       '=IF(' + c('BUDGET_ID') + r + '="","",IFERROR(IF(INDEX(' + bPaid + ',' + match + ')=TRUE,"결제","미결제"),"없는 번호"))';
     // 윗행에서 이 행까지 이동(분) 원래 값 / 올린 값
     const moveQ = 'IF(' + c('MODE') + q + '="수동",N(' + c('MANUAL') + q + '),N(' + c('MOVE') + q + '))';
-    const moveUp = 'CEILING(' + moveQ + ',' + step + ')';
+    const moveUp = 'CEILING(' + moveQ + ',' + moveStepFormula_(c('MODE') + q) + ')';
     // 체류 끝나는 시각 (올리기 전)
     const rawDepart = 'MAX(' + c('ARRIVE') + r + ',IF(' + c('FIXED') + r + '="",' +
       c('ARRIVE') + r + ',' + c('FIXED') + r + '))+N(' + c('STAY') + r + ')/1440';
