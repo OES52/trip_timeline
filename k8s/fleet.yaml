@@ -1,0 +1,6 @@
+# Fleet 번들 설정 (k8s/ 폴더)
+defaultNamespace: trip
+helm:
+  # 이미 kubectl apply로 만들어둔 리소스(네임스페이스·디플로이먼트·서비스)를 Fleet이 넘겨받게
+  takeOwnership: true
+  releaseName: trip-web

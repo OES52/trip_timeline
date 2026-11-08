@@ -1,0 +1,15 @@
+# Fleet GitRepo: 이 저장소의 k8s/ 폴더를 로컬 클러스터에 자동 배포
+# 이 파일은 Fleet 대상이 아님 (최초 1회 직접 적용): kubectl apply -f k8s/gitrepo.yaml
+#  → paths가 k8s 폴더라서 같은 폴더에 있어도 fleet.yaml 기준 번들에서 제외되게 아래 .fleetignore로 뺌
+apiVersion: fleet.cattle.io/v1alpha1
+kind: GitRepo
+metadata:
+  name: trip-timeline
+  namespace: fleet-local
+spec:
+  repo: https://github.com/OES52/trip_timeline
+  branch: main
+  paths:
+    - k8s
+  # 새 커밋 확인 주기 (기본 15초. 노드 부담 줄이려고 1분)
+  pollingInterval: 1m
