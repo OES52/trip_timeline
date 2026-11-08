@@ -88,7 +88,7 @@ function runCalc_(force, opts) {
     const date = group.date;
     const list = group.rows;
     let arrive = null;
-    const step = roundStep_();   // 시트 함수와 같은 방식으로 출발 시각·이동 시간 올림
+    const step = roundStep_();   // 시트 함수와 같은 방식으로 출발 시각 올림 (이동은 수단별 moveStep_)
 
     list.forEach((r, idx) => {
       if (idx === 0) {
@@ -137,7 +137,7 @@ function runCalc_(force, opts) {
       if (wh) walkHints.push(date.slice(5).replace('-', '/') + ' ' + r.place + ' → ' + next.place + ': ' + wh);
       const th = taxiHint_(r.mode, seg.minutes, seg.taxi, st.travelers, depart, fromPt.lat, fromPt.lng);
       if (th) taxiHints.push(date.slice(5).replace('-', '/') + ' ' + r.place + ' → ' + next.place + ': ' + th);
-      arrive = depart + ceilTo_(seg.minutes, step);
+      arrive = depart + ceilTo_(seg.minutes, moveStep_(r.mode));
     });
   });
 
@@ -336,6 +336,24 @@ function passCoverage_(stepsJson, re) {
   const ok = rides.filter(s => re.test([s.line, s.full, s.ag].filter(Boolean).join(' ')));
   if (ok.length === rides.length) return 'all';
   return ok.length ? 'some' : '';
+}
+
+/* ── 이동 시간 올림 단위 (수단별) ── */
+
+// 수단별 이동 올림 단위 (분). CONFIG.ROUND_MOVE에 없으면 ROUND_MIN
+function moveStep_(mode) {
+  const t = CONFIG.ROUND_MOVE || {};
+  const v = Object.prototype.hasOwnProperty.call(t, mode) ? t[mode] : CONFIG.ROUND_MIN;
+  return Math.max(1, Math.round(Number(v) || 1));
+}
+
+// 시트 함수용: 윗행 이동수단 칸(modeRef)에 따라 올림 단위를 고르는 식
+//  예) SWITCH($G5,"대중교통",10,"차",10,"도보",5,"수동",5,5)
+function moveStepFormula_(modeRef) {
+  const t = CONFIG.ROUND_MOVE || {};
+  const parts = Object.keys(t).map(k => '"' + k + '",' + moveStep_(k));
+  if (!parts.length) return String(roundStep_());
+  return 'SWITCH(' + modeRef + ',' + parts.join(',') + ',' + roundStep_() + ')';
 }
 
 /* ── 장소 안 시작점→종착점 도보 (시장·상점가 관통 등) ── */
