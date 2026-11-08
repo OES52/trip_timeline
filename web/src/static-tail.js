@@ -365,7 +365,7 @@
   }
   let animNext = false;
   document.addEventListener('click', e => {
-    if (e.target.closest && e.target.closest('.seg .view, .tabbar button, .navgrid [data-go]')) { animNext = true; setTimeout(() => { animNext = false; }, 0); }
+    if (e.target.closest && e.target.closest('.seg .view, .tabbar button, .navgrid [data-go], .subnav button')) { animNext = true; setTimeout(() => { animNext = false; }, 0); }
   }, true);
   const setView0 = setView;
   setView = function (v) {
@@ -374,7 +374,7 @@
     const anim = animNext; animNext = false;
     if (!anim || v === currentView || !document.startViewTransition || matchMedia('(prefers-reduced-motion: reduce)').matches || !DATA) return go();
     // 탭 순서 기준으로 왼쪽/오른쪽으로 밀리는 방향
-    const a = TAB_ORDER.indexOf(currentView), b = TAB_ORDER.indexOf(v);
+    const a = TAB_ORDER.indexOf(currentView), b = TAB_ORDER.indexOf(v);   // 같은 묶음 안(타임라인↔지도)도 순서대로
     document.documentElement.style.setProperty('--vt-dir', a >= 0 && b >= 0 && b < a ? '-1' : '1');
     document.startViewTransition(go);
   };
@@ -603,7 +603,9 @@
     renderTimeline0();
     const box = document.getElementById('tlInner');
     if (!box) return;
-    box.querySelectorAll('.titem[data-key] .tcard .actions').forEach(act => {
+    // 공유 버튼은 ⋯ 시트에 들어가게 숨은 버튼 모음(.act-more)에 넣음
+    box.querySelectorAll('.titem[data-key] .tcard .actions').forEach(act0 => {
+      const act = act0.querySelector('.act-more') || act0;
       if (act.querySelector('.share-btn')) return;
       const vk = act.closest('.titem').dataset.key;
       const b = document.createElement('button');
@@ -622,28 +624,28 @@
   };
 
   /* ── 11·12. 하단 탭바 · 헤더 접기 · 화면 전환 ── */
-  const TAB_ORDER = ['home', 'plan', 'tl', 'area', 'guide', 'pass'];
+  // 탭 4개 (묶음은 App_Theme의 VIEW_GROUP·goGroup): 홈 / 일정(타임라인·지도) / 장소(가이드·도감) / 여권
+  const TAB_ORDER = ['home', 'tl', 'plan', 'area', 'guide', 'pass'];
   const TABS = [
     ['home', '홈', '<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20h14V9.5"/>'],
-    ['plan', '지도', '<path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/>'],
-    ['tl', '타임라인', '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>'],
-    ['area', '가이드', '<circle cx="12" cy="12" r="8.5"/><path d="m15.5 8.5-2 5-5 2 2-5z"/>'],
-    ['guide', '도감', '<path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5z"/><path d="M4 20.5A2.5 2.5 0 0 0 6.5 23H20v-5"/>'],
+    ['sched', '일정', '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>'],
+    ['place', '장소', '<path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/>'],
     ['pass', '여권', '<rect x="5" y="3" width="14" height="18" rx="2"/><circle cx="12" cy="11" r="3"/><path d="M9 17h6"/>'],
   ];
+  const groupOf = v => (window.VIEW_GROUP && window.VIEW_GROUP[v]) || v;
   const tabbar = document.createElement('nav');
   tabbar.className = 'tabbar';
   tabbar.setAttribute('aria-label', '보기');
   tabbar.innerHTML = TABS.map(t => '<button type="button" data-v="' + t[0] + '"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
     t[2] + '</svg><span>' + t[1] + '</span></button>').join('');
   tabbar.querySelectorAll('[data-v]').forEach(b => b.addEventListener('click', () => {
-    if (b.dataset.v === currentView) { scrollTopCurrent(); return; }   // 같은 탭 한 번 더 → 맨 위로
-    setView(b.dataset.v);
+    if (b.dataset.v === groupOf(currentView)) { scrollTopCurrent(); return; }   // 같은 탭 한 번 더 → 맨 위로
+    if (window.goGroup) window.goGroup(b.dataset.v); else setView(b.dataset.v);
   }));
   document.body.appendChild(tabbar);
   document.body.classList.add('has-tabbar');
   function syncTabs() {
-    tabbar.querySelectorAll('[data-v]').forEach(b => { if (b.dataset.v === currentView) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
+    tabbar.querySelectorAll('[data-v]').forEach(b => { if (b.dataset.v === groupOf(currentView)) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
   }
   function scrollTopCurrent() {
     const sel = { home: '#home', pass: '#pass', wrap: '#wrap', who: '#who', area: '#area', guide: '#dexList', plan: '#list', tl: '.swiper-slide-active, .tl-scroll' }[currentView];
@@ -703,10 +705,10 @@
     body.has-tabbar .views .seg { display: none; }
     body.has-tabbar .views { width: auto; }
     body.has-tabbar .title-row { flex-wrap: nowrap; align-items: center; }
-    .tabbar { display: grid; grid-template-columns: repeat(6, 1fr); order: 99; flex: none; position: relative; z-index: 600;
+    .tabbar { display: grid; grid-template-columns: repeat(4, 1fr); order: 99; flex: none; position: relative; z-index: 600;
       background: color-mix(in srgb, var(--panel) 94%, transparent); border-top: 1px solid var(--rule);
       padding: 4px 6px calc(4px + env(safe-area-inset-bottom, 0px)); }
-    .tabbar button { display: flex; flex-direction: column; align-items: center; gap: 2px; font: inherit; font-size: 10.5px; font-weight: 500;
+    .tabbar button { display: flex; flex-direction: column; align-items: center; gap: 2px; font: inherit; font-size: 11px; font-weight: 500; min-height: 48px; justify-content: center;
       color: var(--muted); background: none; border: 0; padding: 6px 0 4px; border-radius: 10px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
     .tabbar button svg { transition: transform .18s var(--ease); }
     .tabbar button[aria-current="page"] { color: var(--ink); font-weight: 700; }

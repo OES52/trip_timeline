@@ -183,4 +183,169 @@
     if (!document.querySelector('#tlInner .tnow')) return;
     renderTimeline();
   }, 120000);
+
+  /* ───────── 개조 2차: 탭 4개 · 카드 버튼·접기 · 지도 아래 시트 · 야외 모드 ───────── */
+
+  /* ── 탭 묶음: 홈 / 일정(타임라인·지도) / 장소(추천 가이드·도감) / 여권 ── */
+  const VIEW_GROUP = { home: 'home', wrap: 'home', plan: 'sched', tl: 'sched', area: 'place', guide: 'place', pass: 'pass' };
+  const GROUP_LS = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+  let lastSched = GROUP_LS('trip-last-sched') || 'tl', lastPlace = GROUP_LS('trip-last-place') || 'area';
+  function goGroup(g) {
+    setView(g === 'sched' ? lastSched : g === 'place' ? lastPlace : g);
+  }
+  window.goGroup = goGroup;
+  window.VIEW_GROUP = VIEW_GROUP;
+  // 헤더: 지도 → "일정", 가이드 → "장소" (타임라인·도감 버튼은 숨기고 아래 줄 전환으로)
+  document.getElementById('viewPlan').textContent = '일정';
+  document.getElementById('viewArea').textContent = '장소';
+  document.addEventListener('click', e => {
+    const b = e.target.closest && e.target.closest('#viewPlan, #viewArea');
+    if (!b) return;
+    e.stopPropagation();
+    goGroup(b.id === 'viewPlan' ? 'sched' : 'place');
+  }, true);
+  // 일정·장소 안에서 바꾸는 작은 전환줄 (헤더 아래)
+  const subnav = document.createElement('div');
+  subnav.className = 'subnav';
+  subnav.innerHTML =
+    '<div class="sn-group" data-g="sched" role="group" aria-label="일정 보기"><button type="button" data-v="tl">타임라인</button><button type="button" data-v="plan">지도</button></div>' +
+    '<div class="sn-group" data-g="place" role="group" aria-label="장소 보기"><button type="button" data-v="area">추천 가이드</button><button type="button" data-v="guide">도감</button></div>';
+  subnav.querySelectorAll('[data-v]').forEach(b => b.addEventListener('click', () => setView(b.dataset.v)));
+  document.querySelector('header').appendChild(subnav);
+  const setView_theme = setView;
+  setView = function (v) {
+    setView_theme(v);
+    if (v === 'plan' || v === 'tl') { lastSched = v; try { localStorage.setItem('trip-last-sched', v); } catch (e) { /* 무시 */ } }
+    if (v === 'area' || v === 'guide') { lastPlace = v; try { localStorage.setItem('trip-last-place', v); } catch (e) { /* 무시 */ } }
+    paintGroups();
+  };
+  function paintGroups() {
+    const g = VIEW_GROUP[currentView] || '';
+    document.getElementById('viewPlan').setAttribute('aria-pressed', String(g === 'sched'));
+    document.getElementById('viewArea').setAttribute('aria-pressed', String(g === 'place'));
+    subnav.querySelectorAll('[data-v]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === currentView)));
+    if (currentView === 'plan') setTimeout(sheetSnap, 0);
+  }
+  paintGroups();
+
+  /* ── 카드: 한 줄 요약 · 큰 버튼 · 더보기 시트 · 접기/펼치기 ── */
+  function tsumHtml(p, hf) {
+    const bits = [];
+    if (p.stay) bits.push('체류 ' + p.stay + '분');
+    if (hf) bits.push(hf.closed ? '휴무' : '영업 ' + hf.text);
+    if (p.yen != null && !isNaN(p.yen)) bits.push('예산 ' + YEN(p.yen));
+    return '<div class="tsum">' + esc(bits.join(' · ')) + '<span class="tfold" aria-hidden="true"></span></div>';
+  }
+  function priBtn(p, vk) {
+    const a = arrivedAt(p);
+    if (a) return '<button class="pri has" type="button" data-vk="' + vk + '">✓ 도착 ' + esc(a) + '</button>';
+    if (isVisited(p)) return '<button class="pri has" type="button" data-vk="' + vk + '">✓ 방문함</button>';
+    return '<button class="pri" type="button" data-vk="' + vk + '">도착</button>';
+  }
+  const TL_OPEN = new Set();
+  document.addEventListener('click', e => {
+    const t = e.target;
+    if (!t.closest) return;
+    const pri = t.closest('.tcard .pri');
+    if (pri) {
+      if (!pri.classList.contains('has')) { recordArrivalNow(pri.dataset.vk); return; }
+      return moreSheet(pri.closest('.tcard'));
+    }
+    const more = t.closest('.tcard .more-btn');
+    if (more) return moreSheet(more.closest('.tcard'));
+    // 카드 빈 곳 누르면 접기/펼치기 (버튼·링크·입력칸은 제외)
+    const card = t.closest('#tlInner .tcard');
+    if (!card || t.closest('button, a, input, select, textarea, label, .spend-form, .arr-form, .edit-row, .taxi-box, img.photo')) return;
+    const key = card.closest('.titem') && card.closest('.titem').dataset.key;
+    card.classList.toggle('open');
+    if (key) { if (card.classList.contains('open')) TL_OPEN.add(key); else TL_OPEN.delete(key); }
+  });
+  function moreSheet(card) {
+    if (!card) return;
+    const box = card.querySelector('.act-more');
+    const guest = document.body.classList.contains('guest'), noedit = document.body.classList.contains('noedit');
+    const acts = [];
+    const add = (sel, label, skip) => { const b = box && box.querySelector(sel); if (b && !skip) acts.push({ label: label(b), fn: () => { card.classList.add('open'); b.click(); } }); };
+    add('.arr-btn', b => b.classList.contains('has') ? '도착 시각 고치기 (' + b.textContent.replace('도착 ', '') + ')' : '지금 도착으로 기록', guest);
+    add('.visit', b => b.getAttribute('aria-pressed') === 'true' ? '방문 체크 해제' : '방문 체크만 (도착 시각 없이)', guest);
+    add('.spend-btn', b => b.classList.contains('has') ? b.textContent + ' 고치기' : '지출 입력', guest);
+    add('.edit-btn', () => '일정 조정 (체류 ±15분·건너뛰기)', noedit);
+    add('.share-btn', () => '공유');
+    add('.linkbtn', () => '도감에서 보기');
+    const h3 = card.querySelector('h3');
+    if (acts.length) openSheet(h3 ? h3.textContent : '', acts);
+  }
+  const renderTimeline_theme = renderTimeline;
+  renderTimeline = function () {
+    renderTimeline_theme();
+    document.querySelectorAll('#tlInner .titem[data-key]').forEach(it => {
+      if (TL_OPEN.has(it.dataset.key)) { const c = it.querySelector('.tcard'); if (c) c.classList.add('open'); }
+    });
+  };
+
+  /* ── 지도 화면(폰): 목록을 아래에서 끌어올리는 시트로 ── */
+  const SHEET_SNAPS = [0.2, 0.5, 0.88];
+  let sheetIdx = Number(GROUP_LS('trip-sheet-snap') || 1);
+  const mainEl = document.querySelector('main');
+  const grip = document.createElement('div');
+  grip.className = 'list-grip';
+  grip.setAttribute('role', 'button');
+  grip.setAttribute('aria-label', '목록 높이 바꾸기');
+  grip.innerHTML = '<span></span>';
+  mainEl.appendChild(grip);
+  const sheetMode = () => matchMedia('(max-width: 800px)').matches;
+  function setSheetH(px, anim) {
+    mainEl.classList.toggle('sheet-drag', !anim);
+    mainEl.style.setProperty('--sheet-h', Math.round(px) + 'px');
+  }
+  function sheetSnap(i) {
+    if (!sheetMode()) return;
+    if (i != null) { sheetIdx = i; try { localStorage.setItem('trip-sheet-snap', String(i)); } catch (e) { /* 무시 */ } }
+    setSheetH(mainEl.clientHeight * SHEET_SNAPS[sheetIdx], true);
+  }
+  (() => {
+    let y0 = null, h0 = 0, moved = false;
+    grip.addEventListener('pointerdown', e => {
+      if (!sheetMode()) return;
+      y0 = e.clientY; h0 = document.getElementById('list').getBoundingClientRect().height; moved = false;
+      grip.setPointerCapture(e.pointerId);
+    });
+    grip.addEventListener('pointermove', e => {
+      if (y0 == null) return;
+      const dy = e.clientY - y0;
+      if (Math.abs(dy) > 4) moved = true;
+      if (moved) setSheetH(Math.min(mainEl.clientHeight * 0.92, Math.max(56, h0 - dy)), false);
+    });
+    const end = e => {
+      if (y0 == null) return;
+      y0 = null;
+      if (!moved) return sheetSnap((sheetIdx + 1) % SHEET_SNAPS.length);   // 그냥 누르면 다음 높이
+      const h = document.getElementById('list').getBoundingClientRect().height / mainEl.clientHeight;
+      let best = 0;
+      SHEET_SNAPS.forEach((v, i) => { if (Math.abs(v - h) < Math.abs(SHEET_SNAPS[best] - h)) best = i; });
+      sheetSnap(best);
+    };
+    grip.addEventListener('pointerup', end);
+    grip.addEventListener('pointercancel', end);
+  })();
+  addEventListener('resize', () => { if (currentView === 'plan') sheetSnap(); });
+
+  /* ── 야외 모드: 햇빛 아래에서 회색 글씨·선을 진하게 ── */
+  const OUT_KEY = 'trip-outdoor';
+  function setOutdoor(on) {
+    document.body.classList.toggle('outdoor', on);
+    try { localStorage.setItem(OUT_KEY, on ? '1' : '0'); } catch (e) { /* 무시 */ }
+  }
+  setOutdoor(GROUP_LS(OUT_KEY) === '1');
+  const renderWho_theme = renderWho;
+  renderWho = function () {
+    renderWho_theme();
+    const box = document.getElementById('whoInner');
+    if (!box) return;
+    const on = document.body.classList.contains('outdoor');
+    box.insertAdjacentHTML('beforeend', '<div class="hcard outdoor-card"><h3 style="font-size:15px;margin:0 0 2px">야외 모드</h3>' +
+      '<p style="margin:2px 0 8px;font-size:14px;color:var(--muted)">햇빛 아래에서 잘 보이게 흐린 글씨·선을 진하게</p>' +
+      '<label class="sw" style="display:inline-flex;align-items:center;gap:6px;font-size:14px;cursor:pointer"><input type="checkbox" id="outdoorOn"' + (on ? ' checked' : '') + ' style="width:18px;height:18px;accent-color:var(--ink)"> 켜기</label></div>');
+    document.getElementById('outdoorOn').onchange = e => setOutdoor(e.target.checked);
+  };
 </script>

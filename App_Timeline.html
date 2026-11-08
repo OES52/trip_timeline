@@ -181,19 +181,26 @@
               '<h3>' + esc(pname(p)) + '</h3>' +
               (pname(p) !== p.place ? '<div style="font-size:12px;color:var(--muted);margin-top:1px">' + esc(p.place) + '</div>' : '')) +
             (p.activity ? '<div class="act">' + esc(p.activity) + '</div>' : '') +
+            // 접힌 상태 한 줄 요약 (누르면 펼쳐서 전체 정보)
+            tsumHtml(p, hf) +
             (facts.length ? '<div class="facts">' + facts.join('') + '</div>' : '') +
             (pl && pl.menu.length ? '<div class="chips">' + pl.menu.slice(0, 4).map(m => '<span class="chip">' + esc(m) + '</span>').join('') + '</div>' : '') +
             (pl && pl.intro ? '<div class="note">' + esc(pl.intro) + '</div>' : '') +
             (p.memo ? '<div class="note memo">' + esc(p.memo) + '</div>' : '') +
             slackBadge(p.slack) +
             warnHtml(p) +
+            // 큰 버튼 하나(도착 → 기록되면 시각 표시) + 길찾기 + ⋯(나머지는 액션 시트, App_Theme)
             '<div class="actions">' +
-              '<button class="visit" type="button" data-vk="' + vk + '" aria-pressed="' + isVisited(p) + '">' + (isVisited(p) ? '✓ 방문함' : '방문 체크') + '</button>' +
-              '<button class="spend-btn' + (sp ? ' has' : '') + '" type="button" data-vk="' + vk + '">' + (sp ? '지출 ' + YEN(sp.amount) : '지출 입력') + '</button>' +
-              '<button class="arr-btn' + (arrivedAt(p) ? ' has' : '') + '" type="button" data-vk="' + vk + '">' + (arrivedAt(p) ? '도착 ' + esc(arrivedAt(p)) : '도착') + '</button>' +
-              '<button class="edit-btn" type="button" data-vk="' + vk + '">조정</button>' +
+              priBtn(p, vk) +
               navBtn(p.lat, p.lng, true) +
-              (pl ? '<button class="linkbtn" type="button" data-place="' + esc(pl.key) + '">도감</button>' : '') +
+              '<button class="more-btn" type="button" data-vk="' + vk + '" aria-label="더보기" title="더보기">⋯</button>' +
+              '<div class="act-more" hidden>' +
+                '<button class="visit" type="button" data-vk="' + vk + '" aria-pressed="' + isVisited(p) + '">' + (isVisited(p) ? '✓ 방문함' : '방문 체크') + '</button>' +
+                '<button class="spend-btn' + (sp ? ' has' : '') + '" type="button" data-vk="' + vk + '">' + (sp ? '지출 ' + YEN(sp.amount) : '지출 입력') + '</button>' +
+                '<button class="arr-btn' + (arrivedAt(p) ? ' has' : '') + '" type="button" data-vk="' + vk + '">' + (arrivedAt(p) ? '도착 ' + esc(arrivedAt(p)) : '도착') + '</button>' +
+                '<button class="edit-btn" type="button" data-vk="' + vk + '">조정</button>' +
+                (pl ? '<button class="linkbtn" type="button" data-place="' + esc(pl.key) + '">도감</button>' : '') +
+              '</div>' +
             '</div>' +
             '<div class="arr-form" data-vk="' + vk + '">' +
               '<input type="time" value="' + esc(arrivedAt(p) && toMin(arrivedAt(p)) < 1440 ? arrivedAt(p).padStart(5, '0') : '') + '" aria-label="실제 도착 시각">' +
@@ -239,7 +246,7 @@
             '<div class="mv-head">' + modeIcon(cls) + head.join(', ') + ' ' + passChip(s) + '</div>' +
             '<div class="mv-time">' + esc(s.dep) + ' 출발 → ' + esc(s.arr) + ' 도착</div>' +
             (s.warn ? '<div class="warn"><span>' + esc(s.warn) + '</span></div>' : '') +
-            (s.walkHint ? '<div class="approx" style="color:var(--walk);font-weight:700">🚶 도보 추천: ' + esc(s.walkHint) + '</div>' : '') +
+            (s.walkHint ? '<div class="callout good">🚶 도보 추천: ' + esc(s.walkHint) + '</div>' : '') +
             taxiBox(s) +
             (split
               ? (String(s.summary || '').indexOf('[같은 요일 시간표 기준]') === 0 ? '<div class="approx">시간표는 같은 요일 기준 근사값</div>' : '')
