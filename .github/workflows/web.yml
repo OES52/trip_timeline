@@ -40,5 +40,10 @@ jobs:
           tags: |
             ghcr.io/oes52/trip-web:latest
             ghcr.io/oes52/trip-web:${{ github.sha }}
+          # 이미지가 이 저장소 소속이라고 표시 → GHCR 패키지가 저장소에 자동 연결됨
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.title=trip-web
+            org.opencontainers.image.revision=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
