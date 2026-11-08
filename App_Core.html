@@ -1,0 +1,1153 @@
+<!--App_Core.html-->
+<style>
+  /* 택시 비교 상자 (지도 리스트·타임라인 이동 구간) */
+  .taxi-box { margin-top: 6px; padding: 6px 10px; border-radius: 8px; font-size: 12px; line-height: 1.55; color: var(--ink);
+    background: color-mix(in srgb, var(--car) 10%, var(--panel)); }
+  .taxi-box.on { box-shadow: inset 0 0 0 2px var(--car); }
+  .taxi-box b { color: var(--car); }
+  .taxi-box .muted { color: var(--muted); }
+  .taxi-pick { display: inline-flex; align-items: center; gap: 5px; margin-top: 4px; font-weight: 700; cursor: pointer; }
+  .taxi-pick input { width: 16px; height: 16px; accent-color: var(--car); }
+  /* 주유패스 표시 */
+  .pass-chip { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; font-weight: 700; line-height: 18px;
+    padding: 0 8px; border-radius: 9px; color: #fff; background: #13945f; white-space: nowrap; vertical-align: 1px; }
+  .pass-chip.some { color: #9a5b00; background: #fff1cc; }
+  .pass-chip s { opacity: .75; font-weight: 500; }
+  /* 단계별: 이 노선은 패스(QR)로 / IC카드로 */
+  .step-pass, .step-card { display: inline-block; font-size: 11px; font-weight: 700; line-height: 17px; padding: 0 7px;
+    border-radius: 9px; white-space: nowrap; vertical-align: 1px; }
+  .step-pass { color: #fff; background: #13945f; }
+  .step-card { color: #9a5b00; background: #fff1cc; }
+  /* 장소 사진 갤러리 (도감 페이지·상세 패널): 자르지 않고 원래 비율로.
+     높이를 맞추고 가로는 비율대로, 화면보다 넓은 사진은 여백(contain). 여러 장이면 옆으로 넘김 */
+  .gallery { align-items: center; }
+  .gallery img, .pp-media .gallery img, .detail .gallery img {
+    flex: 0 0 auto; width: auto; max-width: 100%; height: clamp(200px, 42vh, 400px); max-height: none;
+    object-fit: contain; background: var(--panel-2); border-radius: 10px; margin: 0; cursor: zoom-in;
+  }
+  .gallery img:only-child { margin: 0 auto; }
+  /* 사진 크게 보기 */
+  .photo-view { position: fixed; inset: 0; z-index: 3000; display: grid; place-items: center; cursor: zoom-out;
+    background: rgba(0, 0, 0, .88); animation: pvIn .15s ease; }
+  .photo-view img { max-width: 96vw; max-height: 88vh; object-fit: contain; border-radius: 8px; box-shadow: 0 8px 30px rgba(0,0,0,.5); }
+  .photo-view .pv-count { position: absolute; left: 50%; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
+    color: #fff; font-size: 13px; background: rgba(0, 0, 0, .55); border-radius: 10px; padding: 2px 10px; }
+  @keyframes pvIn { from { opacity: 0; } to { opacity: 1; } }
+  /* 일본어 병기 */
+  .ja { color: var(--muted); font-size: .92em; font-weight: 500; }
+</style>
+<script>
+  const MODE_CLASS = { '대중교통': 'transit', '도보': 'walk', '차': 'car', '수동': 'manual' };
+  const MODE_COLOR = { transit: '#2b62d9', walk: '#13945f', car: '#e2731b', manual: '#8b93a1' };
+  // 전체 탭에서 날짜마다 쓰는 색 (10일까지 안 겹치게)
+  const DAY_COLORS = ['#e5484d', '#f76b15', '#c99a06', '#30a46c', '#0d9488', '#0090ff', '#3e63dd', '#8e4ec6', '#d6409f', '#6b7280'];
+  const dayColor = date => DAY_COLORS[Math.max(0, DATA.dates.indexOf(date)) % DAY_COLORS.length];
+  const WEEK = ['일', '월', '화', '수', '목', '금', '토'];
+  const WON = new Intl.NumberFormat('ko-KR', { style: 'currency', currency: 'KRW', maximumFractionDigits: 0 });
+  const YEN = n => '¥' + Math.round(n).toLocaleString('en-US');
+
+  let DATA = null;
+  let selected = null;
+  let guideFilter = '전체';
+  let guideDay = '전체';
+  let guideArea = '전체';
+  let guideSel = null;
+  let guideQuery = '';
+  let spoiler = false;
+  let scrolledToNow = false;
+  let tlScrolled = false;
+  let tlSwiper = null, tlLastDate = null, passSwiper = null, passIdx = 0;
+  let tlScale = (() => { try { return localStorage.getItem('trip-tl-scale') !== '0'; } catch (e) { return true; } })();
+  const TL_PX_PER_MIN = 2;
+  // 시간 비례 높이: 60분까지는 분당 2px, 그 뒤로는 완만하게 (긴 체류·긴 이동이 화면을 다 먹지 않게) + 상한
+  function tlPx(min, cap) {
+    const m = Math.max(0, Number(min) || 0);
+    const px = m <= 60 ? m * TL_PX_PER_MIN : 60 * TL_PX_PER_MIN + (m - 60) * 0.6;
+    return Math.round(Math.min(cap, px));
+  }
+
+  // 주유패스 표시: 전부 패스 노선이면 초록 "주유패스 사용 · 원래 요금", 일부만이면 노랑
+  function passChip(s) {
+    if (!s || !s.pass) return '';
+    if (s.pass === '주유패스') {
+      return '<span class="pass-chip">🎫 주유패스 사용' + (s.passFare > 0 ? ' <s>¥' + Math.round(s.passFare).toLocaleString('en-US') + '</s>' : '') + '</span>';
+    }
+    return '<span class="pass-chip some">🎫 일부만 주유패스 · 요금 확인</span>';
+  }
+  // 오사카 메트로 등 노선 색
+  const LINE_COLORS = [
+    // 도쿄: JR
+    [/야마노테|山手|Yamanote/i, '#80c241'], [/게이힌.?도호쿠|京浜東北|Keihin/i, '#00b2e5'],
+    [/주오.?소부|中央・総武|中央総武|Chuo-Sobu/i, '#ffd400'], [/소부|総武|Sobu/i, '#ffd400'],
+    [/주오.*쾌속|中央線快速|中央本線|Chuo Rapid|JR.*주오|JR.*中央/i, '#f15a22'],
+    [/사이쿄|埼京|Saikyo/i, '#00ac9a'], [/쇼난.?신주쿠|湘南新宿|Shonan/i, '#e21f26'],
+    [/도카이도|東海道|Tokaido/i, '#f68b1e'], [/요코스카|横須賀|Yokosuka/i, '#1069b4'],
+    [/게이요|京葉|Keiyo/i, '#c9252f'], [/신칸센|新幹線|Shinkansen/i, '#1d6fb8'],
+    // 도쿄 메트로
+    [/긴자|銀座|Ginza/i, '#ff9500'], [/마루노우치|丸ノ内|Marunouchi/i, '#f62e36'], [/히비야|日比谷|Hibiya/i, '#a3a39c'],
+    [/도자이|東西|Tozai/i, '#009bbf'], [/지요다|치요다|千代田|Chiyoda/i, '#00bb85'], [/유라쿠초|有楽町|Yurakucho/i, '#c1a470'],
+    [/한조몬|半蔵門|Hanzomon/i, '#8f76d6'], [/난보쿠|南北|Namboku/i, '#00ac9b'], [/후쿠토신|副都心|Fukutoshin/i, '#9c5e31'],
+    // 도에이·사철·기타
+    [/아사쿠사|浅草|Asakusa/i, '#e85298'], [/미타|三田|Mita/i, '#0079c2'], [/오에도|大江戸|Oedo/i, '#b6007a'],
+    [/도에이.*신주쿠|都営新宿|Shinjuku Line/i, '#6cbb5a'], [/유리카모메|ゆりかもめ|Yurikamome/i, '#1eb5b0'],
+    [/린카이|りんかい|Rinkai/i, '#00418e'], [/미나토미라이|みなとみらい|Minatomirai/i, '#09357f'],
+    [/도큐|東急|Tokyu/i, '#da0442'], [/게이큐|京急|Keikyu/i, '#e5171f'], [/오다큐|小田急|Odakyu/i, '#2288cc'],
+    [/게이오|京王|Keio/i, '#dd0077'], [/세이부|西武|Seibu/i, '#0079c2'], [/도부|東武|Tobu/i, '#0f6cc3'], [/게이세이|京成|Keisei/i, '#0a2c7a'],
+    // 오사카·간사이
+    [/미도스지|御堂筋|Midosuji/i, '#e5171f'], [/다니마치|谷町|Tanimachi/i, '#522886'],
+    [/요쓰바시|요츠바시|四つ橋|Yotsubashi/i, '#0078ba'], [/주오선|中央線|Chuo/i, '#019a66'],
+    [/센니치마에|千日前|Sennichimae/i, '#e44d93'], [/사카이스지|堺筋|Sakaisuji/i, '#814721'],
+    [/나가호리|長堀|Nagahori/i, '#a9cc51'], [/이마자토스지|今里筋|Imazatosuji/i, '#ee7b1a'],
+    [/한큐|阪急|Hankyu/i, '#6b1b23'], [/게이한|京阪|Keihan/i, '#0d5b9a'],
+    [/긴테쓰|긴테츠|近鉄|Kintetsu/i, '#d7003a'], [/난카이|南海|Nankai/i, '#ff6a13'],
+    [/한신|阪神|Hanshin/i, '#00559f'], [/JR|사가노|나라선|순환선|교토선/i, '#1d2633'],
+  ];
+  const PLACE_TYPES = ['숙소', '식당', '카페', '관광지', '쇼핑', '교통', '기타'];
+  const markers = {};   // key: date#order
+  const lines = {};     // key: date#from#to
+  const casings = {};   // 같은 키, 흰 테두리 선
+  const groups = {};    // 흐리게 처리용: 'S:날짜#순서'(장소) / 'L:날짜#출발#도착'(구간) → 지도에 그린 것들
+  let hlKey = null;     // 지금 강조 중인 구간
+  let pickKey = null;   // 지금 강조 중인 장소 (날짜#순서)
+  const DIM_NOW = 0.1;  // 지금 모드에서 지금이 아닌 것 (투명도 90%)
+  const DIM_PICK = 0.15; // 장소·구간 눌렀을 때 나머지
+  let nowMode = (() => { try { return localStorage.getItem('trip-now-mode') === '1'; } catch (e) { return false; } })();
+  let nowTimer = null, lastNowSig = '';
+
+  // 택시로 가기 구간이면 "택시", 아니면 원래 수단 이름
+  function segModeName(s) { return s.taxi && s.taxi.on ? '택시' : s.mode; }
+
+  // 택시 비교 상자: 택시 시간·대중교통 대비·요금 범위·1인 요금 + "택시로 가기" 체크 (일정 수정 권한자만)
+  function taxiBox(s) {
+    const t = s.taxi;
+    if (!t) return '';
+    const yen = n => '¥' + Math.round(n).toLocaleString('en-US');
+    const range = (a, b) => a === b ? yen(a) : yen(a) + '~' + yen(b).slice(1);
+    // 비교 문구: "대중교통 37분보다 23분 빠름" (택시 시간과 단축 시간이 붙어 보이지 않게 따로)
+    let diff = '';
+    if (t.transitMin != null && t.saved != null) {
+      const base = (t.on ? '대중교통이었으면 ' : '대중교통 ') + t.transitMin + '분';
+      diff = t.saved > 0 ? ' · ' + base + (t.on ? ' → ' : '보다 ') + '<b>' + t.saved + '분 ' + (t.on ? '단축' : '빠름') + '</b>'
+        : t.saved < 0 ? ' · <span class="muted">' + base + '보다 ' + (-t.saved) + '분 느림</span>'
+        : ' · <span class="muted">' + base + '이랑 비슷</span>';
+    }
+    const vk = s.date + '#' + s.fromOrder;
+    const ctl = canEdit()
+      ? '<label class="taxi-pick"><input type="checkbox" data-taxi="' + vk + '"' + (t.on ? ' checked' : '') + '> 택시로 가기</label>'
+      : (t.on ? '<div><b>택시로 가기로 함</b></div>' : '');
+    return '<div class="taxi-box' + (t.on ? ' on' : '') + '">' +
+      '🚕 택시 <b>' + t.min + '분</b>' + diff +
+      '<br>' + range(t.low, t.high) + (t.people > 1 ? ' · 1인 <b>' + range(t.perLow, t.perHigh) + '</b>' : '') +
+      ' <span class="muted">[' + esc(t.area) + ' 요금' + (t.night ? '·심야' : '') + ', 어림]</span>' +
+      (ctl ? '<br>' + ctl : '') + '</div>';
+  }
+
+  // "택시로 가기" 체크 → 시트 일정 바꾸고 경로 다시 계산 (되돌리기 가능)
+  function bindTaxi(root) {
+    root.querySelectorAll('[data-taxi]').forEach(cb => {
+      cb.addEventListener('click', e => e.stopPropagation());   // 구간 강조 클릭과 안 겹치게
+      cb.addEventListener('change', () => {
+        const vk = cb.dataset.taxi, on = cb.checked;
+        editPlan(vk, 'taxi', on ? 1 : 0, on ? '택시로 바꿈' : '원래 이동수단으로 되돌림',
+          () => editPlan(vk, 'taxi', on ? 0 : 1, '되돌림'));
+      });
+    });
+  }
+
+  // 이날 도보 거리·시간 (서버가 경로 시트로 계산)
+  function walkLine(date) {
+    const w = DATA && DATA.walk && DATA.walk[date];
+    if (!w || !w.m) return '';
+    const km = w.m / 1000;
+    return '<p class="fare-sum">🚶 이날 도보 약 <b>' + km.toFixed(1) + 'km</b>' + (w.min ? ' · ' + w.min + '분' : '') +
+      (DATA.walkWarnKm && km >= DATA.walkWarnKm ? ' <span style="color:var(--late);font-weight:700">많음</span>' : '') + '</p>';
+  }
+
+  // 갤러리 사진 누르면 크게 보기. 여러 장이면 사진 누를 때마다 다음 장, 바깥·Esc로 닫기
+  function openPhoto(img) {
+    const imgs = Array.from(img.closest('.gallery').querySelectorAll('img')).map(x => x.getAttribute('src'));
+    let i = Math.max(0, imgs.indexOf(img.getAttribute('src')));
+    const ov = document.createElement('div');
+    ov.className = 'photo-view';
+    const show = () => {
+      ov.innerHTML = '<img src="' + esc(imgs[i]) + '" alt="">' +
+        (imgs.length > 1 ? '<span class="pv-count">' + (i + 1) + ' / ' + imgs.length + ' · 사진 누르면 다음</span>' : '');
+    };
+    const close = () => { ov.remove(); document.removeEventListener('keydown', onKey); };
+    const onKey = e => {
+      if (e.key === 'Escape') close();
+      if (imgs.length > 1 && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) { i = (i + (e.key === 'ArrowRight' ? 1 : imgs.length - 1)) % imgs.length; show(); }
+    };
+    ov.addEventListener('click', e => {
+      if (imgs.length > 1 && e.target.tagName === 'IMG') { i = (i + 1) % imgs.length; show(); }
+      else close();
+    });
+    document.addEventListener('keydown', onKey);
+    show();
+    document.body.appendChild(ov);
+  }
+  document.addEventListener('click', e => {
+    const img = e.target.closest && e.target.closest('.gallery img');
+    if (img) openPhoto(img);
+  });
+
+  // 시작점과 다른 종착점이 있는지
+  function hasEnd(p) {
+    return !!p && p.lat != null && p.endLat != null && p.endLng != null && (p.endLat !== p.lat || p.endLng !== p.lng);
+  }
+
+  // 구글 지도 길찾기: 출발지를 비우면 구글 지도가 "내 위치"에서 출발로 잡음
+  function navUrl(lat, lng, mode) {
+    return 'https://www.google.com/maps/dir/?api=1&destination=' + lat + ',' + lng + '&travelmode=' + (mode || 'transit');
+  }
+  function navBtn(lat, lng, small) {
+    if (lat == null || lng == null) return '';
+    return '<a class="nav-btn' + (small ? ' sm' : '') + '" href="' + navUrl(lat, lng) + '" target="_blank" rel="noopener">' +
+      '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l18-8-8 18-2-8-8-2z"/></svg>' +
+      '여기로 길찾기</a>';
+  }
+
+  const map = L.map('map', { zoomControl: true });
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; OpenStreetMap contributors'
+  }).addTo(map);
+  map.setView([34.69, 135.5], 11);
+  // 흰 테두리 전용 층: 색 선(overlayPane, z 400)보다 항상 아래라서 다른 구간 색을 덮지 않음
+  map.createPane('casing');
+  map.getPane('casing').style.zIndex = 395;
+  map.getPane('casing').style.pointerEvents = 'none';
+  const layer = L.layerGroup().addTo(map);
+  // 도보 거리 라벨: 확대했을 때만 (멀리서 보면 글자가 겹쳐서)
+  const walkLayer = L.layerGroup();
+  const WALK_LABEL_ZOOM = 14;
+  function updateWalkLabels() {
+    if (map.getZoom() >= WALK_LABEL_ZOOM) { if (!map.hasLayer(walkLayer)) map.addLayer(walkLayer); }
+    else if (map.hasLayer(walkLayer)) map.removeLayer(walkLayer);
+  }
+  map.on('zoomend', updateWalkLabels);
+
+  // 선 길이(m)와 길이 기준 가운데 지점
+  function lineInfo(latlngs) {
+    let total = 0;
+    const cum = [0];
+    for (let i = 1; i < latlngs.length; i++) { total += haversine(latlngs[i - 1], latlngs[i]); cum.push(total); }
+    const half = total / 2;
+    let k = 1;
+    while (k < cum.length - 1 && cum[k] < half) k++;
+    const seg = (cum[k] - cum[k - 1]) || 1, t = (half - cum[k - 1]) / seg;
+    const a = latlngs[k - 1], b = latlngs[k] || a;
+    return { total: total, mid: [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t] };
+  }
+
+  // 내 위치: 브라우저가 위치 권한을 막으면 안내만
+  let meMarker = null, meCircle = null, watchId = null;
+  const LocateControl = L.Control.extend({
+    options: { position: 'topleft' },
+    onAdd: function () {
+      const wrap = L.DomUtil.create('div', 'leaflet-bar');
+      const btn = L.DomUtil.create('button', 'locate-btn', wrap);
+      btn.type = 'button';
+      btn.title = '내 위치';
+      btn.setAttribute('aria-label', '내 위치');
+      btn.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>';
+      L.DomEvent.disableClickPropagation(wrap);
+      L.DomEvent.on(btn, 'click', () => locateMe());
+      return wrap;
+    }
+  });
+  map.addControl(new LocateControl());
+
+  // 지금 모드 버튼: 켜면 지금 시각의 장소·구간만 진하게, 나머지는 투명도 90%
+  let nowBtn = null;
+  const NowControl = L.Control.extend({
+    options: { position: 'topleft' },
+    onAdd: function () {
+      const wrap = L.DomUtil.create('div', 'leaflet-bar');
+      nowBtn = L.DomUtil.create('button', 'now-btn', wrap);
+      nowBtn.type = 'button';
+      nowBtn.title = '지금 모드';
+      nowBtn.setAttribute('aria-label', '지금 모드');
+      nowBtn.setAttribute('aria-pressed', String(nowMode));
+      nowBtn.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
+      L.DomEvent.disableClickPropagation(wrap);
+      L.DomEvent.on(nowBtn, 'click', () => setNowMode(!nowMode));
+      return wrap;
+    }
+  });
+  map.addControl(new NowControl());
+
+  function locateMe(opts) {
+    const noPan = !!(opts && opts.noPan);
+    if (!navigator.geolocation) { setStatus('이 브라우저는 위치 기능을 지원하지 않음', true); return; }
+    if (watchId != null) {  // 한 번 더 누르면 내 위치로 이동만
+      if (meMarker && !noPan) map.setView(meMarker.getLatLng(), Math.max(map.getZoom(), 16));
+      return;
+    }
+    setStatus('위치 확인 중…');
+    let first = !noPan, cleared = false;
+    watchId = navigator.geolocation.watchPosition(pos => {
+      const ll = [pos.coords.latitude, pos.coords.longitude];
+      if (!meMarker) {
+        meMarker = L.marker(ll, { icon: L.divIcon({ className: '', html: '<div class="me-dot"></div>', iconSize: [16, 16], iconAnchor: [8, 8] }), zIndexOffset: 1000 }).addTo(map);
+        meCircle = L.circle(ll, { radius: pos.coords.accuracy, color: '#2b7bff', weight: 1, fillOpacity: .08 }).addTo(map);
+      } else {
+        meMarker.setLatLng(ll);
+        meCircle.setLatLng(ll).setRadius(pos.coords.accuracy);
+      }
+      if (first) { map.setView(ll, Math.max(map.getZoom(), 16)); first = false; }
+      if (!cleared) { setStatus(''); cleared = true; }
+    }, err => {
+      watchId = null;
+      setStatus(err.code === 1
+        ? '위치 권한이 막혀 있음. 이 화면(구글 웹앱 안)에서는 권한이 차단될 수 있어서, 홈랩 등 별도 주소로 열면 동작함'
+        : '위치를 못 가져옴 (' + err.message + ')', true);
+    }, { enableHighAccuracy: true, maximumAge: 15000, timeout: 15000 });
+  }
+
+  document.getElementById('reload').addEventListener('click', load);
+  document.getElementById('viewPlan').addEventListener('click', () => setView('plan'));
+  document.getElementById('viewGuide').addEventListener('click', () => setView('guide'));
+  document.getElementById('viewTl').addEventListener('click', () => setView('tl'));
+  document.getElementById('viewHome').addEventListener('click', () => setView('home'));
+  document.getElementById('viewArea').addEventListener('click', () => setView('area'));
+  document.getElementById('whoBtn').addEventListener('click', () => setView('who'));
+  (() => {
+    const el = document.getElementById('list');
+    let x0 = null, y0 = null;
+    el.addEventListener('touchstart', e => { const t = e.touches[0]; x0 = t.clientX; y0 = t.clientY; }, { passive: true });
+    el.addEventListener('touchend', e => {
+      if (x0 == null) return;
+      const t = e.changedTouches[0];
+      const dx = t.clientX - x0, dy = t.clientY - y0;
+      x0 = null;
+      if (Math.abs(dx) > 70 && Math.abs(dy) < 45) shiftDay(dx < 0 ? 1 : -1);
+    }, { passive: true });
+  })();
+
+  function shiftDay(dir) {
+    if (!DATA || selected === 'all') return;
+    const j = DATA.dates.indexOf(selected) + dir;
+    if (j < 0 || j >= DATA.dates.length) return;
+    selected = DATA.dates[j];
+    stopReplay();
+    renderTabs();
+    refresh();
+    const el = document.getElementById('list');
+    el.classList.remove('slide-l', 'slide-r');
+    void el.offsetWidth;
+    el.classList.add(dir > 0 ? 'slide-l' : 'slide-r');
+  }
+  document.getElementById('dexSearch').addEventListener('input', e => { guideQuery = e.target.value; renderGuide(); });
+  document.getElementById('spoiler').addEventListener('change', e => { spoiler = e.target.checked; renderGuide(); });
+  document.addEventListener('keydown', e => {
+    if (currentView !== 'guide' || ['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    const btn = document.querySelector('#dexPage [data-go]:' + (e.key === 'ArrowDown' ? 'last-of-type' : 'first-of-type'));
+    if (btn && btn.dataset.go) { e.preventDefault(); openDetail(btn.dataset.go); }
+  });
+  document.getElementById('viewPass').addEventListener('click', () => setView('pass'));
+  document.getElementById('detailWrap').addEventListener('click', e => { if (e.target.id === 'detailWrap') closeDetail(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDetail(); });
+
+  let currentView = 'home';
+  const VIEW_BTNS = { home: 'viewHome', plan: 'viewPlan', tl: 'viewTl', area: 'viewArea', guide: 'viewGuide', pass: 'viewPass' };
+  function setView(v) {
+    if (v !== 'plan') stopReplay();
+    currentView = v;
+    document.body.dataset.view = v;
+    Object.keys(VIEW_BTNS).forEach(k => document.getElementById(VIEW_BTNS[k]).setAttribute('aria-pressed', String(k === v)));
+    if (v !== 'who' && !USER && RAW) { currentView = 'who'; document.body.dataset.view = 'who'; renderWho(); return; }
+    renderCurrent();
+    // 숨겨진 상태에서 그린 지도는 크기가 0이라, 보일 때 크기 다시 잡고 핀·경로 범위에 맞춤
+    if (v === 'plan') setTimeout(() => { map.invalidateSize(); render(); }, 0);
+  }
+
+  function renderCurrent() {
+    try {
+      renderCurrent_();
+    } catch (e) {
+      console.error(e);
+      setStatus('화면 오류 (' + currentView + '): ' + (e && e.message || e), true);
+    }
+  }
+
+  function renderCurrent_() {
+    if (!DATA) return;
+    if (currentView === 'home') renderHome();
+    if (currentView === 'tl') renderTimeline();
+    if (currentView === 'guide') renderGuide();
+    if (currentView === 'area') renderAreaGuide();
+    if (currentView === 'pass') renderPass();
+    if (currentView === 'wrap') renderWrap();
+    if (currentView === 'who') renderWho();
+    mountLotties(document);
+  }
+
+  // 지금 보고 있는 화면 다시 그리기
+  function refresh() {
+    if (currentView === 'plan') render();
+    renderCurrent();
+  }
+
+  const CACHE_KEY = 'trip-timeline-cache-v1';
+  const USER_KEY = 'trip-user-v1';
+  const USER_COLORS = { OES: '#2b62d9', KanoC: '#d9480f', Keiz: '#13945f', Rinne: '#8a3ffc', Guest: '#5d6b7d' };
+  // 설정 시트 사용자 (서버가 페이지 열 때 Index.html에 BOOT_USERS로 심어줌). 사용자 추가·수정은 설정 시트에서만
+  const DEFAULT_USERS = (typeof BOOT_USERS !== 'undefined' && Array.isArray(BOOT_USERS)) ? BOOT_USERS : [];
+  let RAW = null, USER = null;
+
+  function users() { return (RAW && RAW.users && RAW.users.length) ? RAW.users : DEFAULT_USERS; }
+  function userColor(id) { return USER_COLORS[id] || '#5d6b7d'; }
+  function canStamp() { return !!(USER && USER.canStamp); }
+  function canEdit() { return !!(USER && USER.canEdit); }
+
+  // 사용자 범위 날짜만 남긴 화면용 데이터
+  function viewFor(raw, u) {
+    const inR = d => !u || (d >= u.from && d <= u.to);
+    const points = raw.points.filter(p => inR(p.date));
+    const keys = new Set(points.map(p => p.placeKey).filter(Boolean));
+    return Object.assign({}, raw, {
+      dates: raw.dates.filter(inR),
+      points: points,
+      segments: raw.segments.filter(s => inR(s.date)),
+      places: (raw.places || []).filter(p => keys.has(p.key)),   // 도감·여권: 일정에 나오는 장소만
+      allPlaces: raw.places || [],                                // 가이드: 일정 밖 추천 장소까지
+      visited: u && raw.visitedBy ? (raw.visitedBy[u.id] || {}) : {},
+      arrived: u && raw.arrivedBy ? (raw.arrivedBy[u.id] || {}) : {},
+    });
+  }
+
+  function updateWhoChip() {
+    const b = document.getElementById('whoBtn');
+    if (!USER) { b.innerHTML = '<span class="avatar" style="--uc:#5d6b7d">?</span><span class="nm">선택</span>'; return; }
+    b.innerHTML = '<span class="avatar" style="--uc:' + userColor(USER.id) + '">' + esc(USER.id[0]) + '</span><span class="nm">' + esc(USER.id) + '</span>';
+  }
+
+  function renderWho() {
+    const md = d => Number(d.slice(5, 7)) + '/' + Number(d.slice(8, 10));
+    const box = document.getElementById('whoInner');
+    box.innerHTML = '<h2>누구로 볼까?</h2><p class="lead">고른 사람에 맞춰 일정이 보이고, 도장은 사람마다 따로 모임</p>' +
+      '<div class="who-grid">' + users().map(u => {
+        const cnt = RAW && RAW.visitedBy && RAW.visitedBy[u.id] ? Object.keys(RAW.visitedBy[u.id]).length : 0;
+        return '<button class="who-card" type="button" data-u="' + esc(u.id) + '" style="--uc:' + userColor(u.id) + '"' +
+          (USER && USER.id === u.id ? ' aria-current="true"' : '') + '>' +
+          (USER && USER.id === u.id ? '<span class="now">지금</span>' : '') +
+          '<span class="avatar">' + esc(u.id[0]) + '</span><b>' + esc(u.id) + '</b>' +
+          '<span class="rng">' + md(u.from) + ' – ' + md(u.to) + '</span>' +
+          '<span class="tag">' + (u.canStamp ? '도장 ' + cnt + '개' : '보기 전용') + '</span>' +
+          (u.hasPin ? '<span class="tag" style="margin-left:4px">🔒 PIN</span>' : '') + '</button>';
+      }).join('') + '</div>';
+    box.querySelectorAll('[data-u]').forEach(b => b.addEventListener('click', () => chooseUser(b.dataset.u)));
+  }
+
+  function getPin(id) { try { return localStorage.getItem('trip-pin-' + (id || (USER && USER.id))) || ''; } catch (e) { return ''; } }
+  function setPin(id, v) { try { if (v) localStorage.setItem('trip-pin-' + id, v); else localStorage.removeItem('trip-pin-' + id); } catch (e) { /* 무시 */ } }
+
+  // 서버가 PIN 틀렸다고 하면 저장된 PIN 지우고 다시 고르게
+  function handleWriteError(err, what) {
+    const msg = err && err.message ? err.message : String(err || '');
+    if (/PIN/.test(msg) && USER) {
+      setPin(USER.id, '');
+      showToast('PIN이 틀림. 사용자를 다시 골라 PIN 입력');
+      setView('who');
+      return;
+    }
+    setStatus(what + ' 저장 실패: ' + msg, true);
+  }
+
+  function chooseUser(id) {
+    const u = users().find(x => x.id === id);
+    if (!u) return;
+    if (u.hasPin && !getPin(id)) {
+      const v = prompt(id + ' PIN 입력');
+      if (v == null || v === '') return;
+      google.script.run
+        .withSuccessHandler(() => { setPin(id, v); finishChoose(id); })
+        .withFailureHandler(() => showToast('PIN이 틀림'))
+        .checkPin(id, v);
+      return;
+    }
+    finishChoose(id);
+  }
+
+  function finishChoose(id) {
+    USER = users().find(u => u.id === id) || null;
+    try { localStorage.setItem(USER_KEY, id); } catch (e) { /* 무시 */ }
+    selected = null; guideSel = null; guideDay = '전체'; wrapIdx = 0; scrolledToNow = false; tlScrolled = false;
+    if (RAW) applyData(RAW, true);
+    setView('home');
+  }
+
+  function setStatus(msg, err) {
+    const el = document.getElementById('status');
+    el.textContent = msg || '';
+    el.className = 'status' + (msg ? ' show' : '') + (err ? ' err' : '');
+  }
+
+  // 서버가 뺀 구간 전체 선을 단계 선 이어 붙여 복원 (지도·리플레이·결산이 그대로 s.polyline을 씀)
+  function restorePolylines(data) {
+    (data.segments || []).forEach(s => {
+      if (s.polyline || !s.fromSteps || !Array.isArray(s.steps)) return;
+      const pts = [];
+      s.steps.forEach(st => { if (st.poly) decodePolyline(st.poly).forEach(p => pts.push(p)); });
+      if (pts.length > 1) { s.polyline = encodePolyline(pts); s._rebuilt = true; }
+    });
+  }
+
+  // [[lat, lng], ...] → 구글 인코딩 polyline
+  function encodePolyline(pts) {
+    const enc = v => {
+      v = v < 0 ? ~(v << 1) : (v << 1);
+      let s = '';
+      while (v >= 0x20) { s += String.fromCharCode((0x20 | (v & 0x1f)) + 63); v >>= 5; }
+      return s + String.fromCharCode(v + 63);
+    };
+    let out = '', pLat = 0, pLng = 0;
+    pts.forEach(p => {
+      const a = Math.round(p[0] * 1e5), b = Math.round(p[1] * 1e5);
+      out += enc(a - pLat) + enc(b - pLng);
+      pLat = a; pLng = b;
+    });
+    return out;
+  }
+
+  function applyData(data, keepView) {
+    restorePolylines(data);
+    RAW = data;
+    const boot = document.getElementById('boot');
+    if (boot && !boot.classList.contains('hide')) { boot.classList.add('hide'); setTimeout(() => boot.remove(), 400); }
+    if (!USER) {
+      let id = null;
+      try { id = localStorage.getItem(USER_KEY); } catch (e) { id = null; }
+      USER = users().find(u => u.id === id) || null;
+    } else {
+      USER = users().find(u => u.id === USER.id) || null;   // 설정 바뀐 경우 반영
+    }
+    DATA = viewFor(data, USER);
+    // 아직 서버에 안 보낸 도장은 화면에 그대로 유지
+    if (USER && Object.keys(visitQueue).length) {
+      DATA.visited = Object.assign({}, DATA.visited);
+      Object.keys(visitQueue).forEach(k => { if (visitQueue[k]) DATA.visited[k] = 1; else delete DATA.visited[k]; });
+    }
+    document.body.classList.toggle('guest', !canStamp());
+    document.body.classList.toggle('noedit', !canEdit());
+    updateWhoChip();
+    if (!selected || (selected !== 'all' && !DATA.dates.includes(selected))) {
+      selected = DATA.dates.includes(data.today) ? data.today : (DATA.dates[0] || 'all');
+    }
+    renderTabs();
+    if (currentView === 'plan') render();
+    if (!USER && !keepView) { setView('who'); return; }
+    renderCurrent();
+  }
+
+  function saveCache(data) {
+    try {
+      const savedAt = new Intl.DateTimeFormat('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date());
+      // 단계 선으로 복원한 전체 선은 빼고 저장 (다시 열 때 또 복원). 폰 저장 공간 절약
+      const json = JSON.stringify({ savedAt: savedAt, data: data }, function (k, v) {
+        return k === 'polyline' && this && this._rebuilt ? '' : v;
+      });
+      localStorage.setItem(CACHE_KEY, json);
+    } catch (e) { /* 저장 공간 없으면 무시 */ }
+  }
+
+  function load() {
+    // 1. 폰에 저장된 마지막 데이터부터 바로 표시
+    let cached = null;
+    try { cached = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null'); } catch (e) { cached = null; }
+    if (cached && cached.data && !DATA) {
+      applyData(cached.data);
+      setStatus('저장된 데이터 표시 중 (' + cached.savedAt + '). 최신 데이터 받는 중…');
+    } else if (!DATA) {
+      document.getElementById('list').innerHTML = '<div class="skeleton"><div></div><div></div><div></div><div></div></div>';
+      mountLotties(document.getElementById('boot'));
+    }
+    document.getElementById('reload').classList.add('spin');
+
+    // 2. 서버에서 최신 데이터
+    google.script.run
+      .withSuccessHandler(data => {
+        document.getElementById('reload').classList.remove('spin');
+        applyData(data);
+        setStatus('');
+        saveCache(data);
+      })
+      .withFailureHandler(err => {
+        document.getElementById('reload').classList.remove('spin');
+        if (DATA) {
+          setStatus('연결 안 됨. 저장된 데이터로 보는 중' + (cached ? ' (' + cached.savedAt + ')' : ''), true);
+        } else {
+          document.getElementById('list').innerHTML =
+            '<p class="empty"><strong>데이터를 못 불러옴.</strong><br>' + esc(err.message || String(err)) + '</p>';
+        }
+      })
+      .getMapData();
+  }
+
+  function renderTabs() {
+    const nav = document.getElementById('days');
+    const sub = document.getElementById('subtitle');
+    if (DATA.dates.length) {
+      const a = DATA.dates[0], b = DATA.dates[DATA.dates.length - 1];
+      sub.textContent = dayLabel(a) + (a !== b ? ' – ' + dayLabel(b) : '') + ', ' + DATA.dates.length + '일';
+    }
+    const items = DATA.dates.map(d => ({ id: d, label: dayLabel(d) + wxShort(d) }));
+    if (items.length > 1) items.push({ id: 'all', label: '전체' });
+    nav.innerHTML = items.map(it =>
+      '<button class="day" role="tab" type="button" data-id="' + it.id + '" aria-selected="' + (it.id === selected) + '">' + it.label + '</button>'
+    ).join('');
+    nav.querySelectorAll('.day').forEach(btn => btn.addEventListener('click', () => {
+      selected = btn.dataset.id;
+      nav.querySelectorAll('.day').forEach(b => b.setAttribute('aria-selected', String(b === btn)));
+      tlScrolled = false;
+      stopReplay();
+      refresh();
+    }));
+  }
+
+  let lastFitKey = '';
+  // 지도·리스트 그리다 오류 나면 조용히 멈추지 않고 화면에 표시
+  function render() {
+    try {
+      renderMap_();
+    } catch (e) {
+      console.error(e);
+      document.getElementById('list').innerHTML = errorBox('지도 리스트를 그리다 오류', e);
+    }
+  }
+
+  function errorBox(title, e) {
+    const stack = String(e && e.stack || '').split('\n').slice(0, 3).join('\n');
+    return '<div class="empty"><strong>' + esc(title) + '</strong><br>' + esc(e && e.message || e) +
+      '<pre style="white-space:pre-wrap;font-size:11px;color:var(--muted);margin-top:8px">' + esc(stack) + '</pre>' +
+      '<span style="font-size:12px">이 화면 캡처해서 보내주면 바로 고칠 수 있음</span></div>';
+  }
+
+  // 어떤 화면이든 처리 안 된 오류는 위쪽 상태 줄에 표시
+  window.addEventListener('error', ev => {
+    setStatus('화면 오류: ' + (ev.message || '') + (ev.lineno ? ' (' + ev.lineno + '줄)' : ''), true);
+  });
+
+  function renderMap_() {
+    layer.clearLayers();
+    walkLayer.clearLayers();
+    Object.keys(markers).forEach(k => delete markers[k]);
+    Object.keys(lines).forEach(k => delete lines[k]);
+    Object.keys(casings).forEach(k => delete casings[k]);
+    Object.keys(groups).forEach(k => delete groups[k]);
+    hlKey = null;
+    pickKey = null;
+
+    const list = document.getElementById('list');
+    if (!DATA.points.length) {
+      list.innerHTML = '<p class="empty"><strong>표시할 일정이 없음.</strong><br>시트의 "일정"에 장소를 넣고 여행 도구 → 경로 계산을 실행한 뒤 새로고침.</p>';
+      return;
+    }
+
+    const dates = selected === 'all' ? DATA.dates : [selected];
+    const bounds = [];
+    let html = '';
+    if (selected === 'all') html += spendBlock(DATA.points, '여행 전체') + fareBlock(DATA.points, '여행 전체');
+
+    dates.forEach(date => {
+      const dayIdx = DATA.dates.indexOf(date);
+      const pinColor = selected === 'all' ? dayColor(date) : '#1d2633';
+      const pts = DATA.points.filter(p => p.date === date).sort((a, b) => a.order - b.order);
+      const segs = DATA.segments.filter(s => s.date === date);
+
+      // 지도: 구간 선
+      segs.forEach(s => {
+        const cls = MODE_CLASS[s.mode] || 'manual';
+        const from = pts.find(p => p.order === s.fromOrder);
+        const to = pts.find(p => p.order === s.toOrder);
+        let latlngs = s.polyline ? decodePolyline(s.polyline) : [];
+        let far = false;
+        if (!latlngs.length && from && to && from.lat != null && to.lat != null) {
+          // 경로 모양이 없으면 직선 대신 곡선 (비행기 구간은 크게 휘고 ✈ 표시)
+          latlngs = arcPoints([from.lat, from.lng], [to.lat, to.lng]);
+          far = haversine([from.lat, from.lng], [to.lat, to.lng]) > 300000;
+        }
+        if (!latlngs.length) return;
+        const lkey = date + '#' + s.fromOrder + '#' + s.toOrder;
+        const gk = 'L:' + lkey;
+        if (far) {
+          const mid = latlngs[Math.floor(latlngs.length / 2)];
+          reg(gk, L.marker(mid, { icon: L.divIcon({ className: '', html: '<div class="plane">✈</div>', iconSize: [24, 24], iconAnchor: [12, 12] }), interactive: false }).addTo(layer));
+        }
+        const w = cls === 'transit' ? 6 : 5;
+        // 흰 테두리: 같은 선을 조금 굵은 흰색으로 먼저 깔아서 지도 위에서 잘 보이게
+        casings[lkey] = reg(gk, L.polyline(latlngs, { pane: 'casing', color: '#ffffff', weight: w + 4, opacity: 0.95, lineCap: 'round', lineJoin: 'round', interactive: false }).addTo(layer));
+        // 도보 구간: 가운데에 거리·시간 라벨
+        if (cls === 'walk' && latlngs.length > 1) {
+          const info = lineInfo(latlngs);
+          reg(gk, L.marker(info.mid, {
+            icon: L.divIcon({ className: '', html: '<span class="walk-label">' + fmtDist(info.total) + ' · ' + s.minutes + '분</span>', iconSize: null }),
+            interactive: false, keyboard: false,
+          }).addTo(walkLayer));
+        }
+        const line = L.polyline(latlngs, {
+          color: selected === 'all' ? dayColor(date) : MODE_COLOR[cls],   // 전체 탭은 날짜 색, 하루 탭은 수단 색
+          weight: w,
+          lineJoin: 'round',
+          opacity: 0.9,
+          dashArray: (cls === 'walk' || cls === 'manual') ? '6 9' : null,
+          lineCap: 'round'
+        }).bindPopup(
+          '<b>' + esc(s.mode) + ' ' + s.minutes + '분</b><br>' + esc(s.dep) + ' → ' + esc(s.arr) +
+          (s.summary ? '<br>' + esc(s.summary) : '') +
+          (s.warn ? '<br><b style="color:var(--late)">⚠ ' + esc(s.warn) + '</b>' : '')
+        ).addTo(layer);
+        line._baseW = w;
+        lines[lkey] = reg(gk, line);
+        // 하루 탭 + 단계 정보 있으면: 도보는 초록 점선, 탑승은 노선 색으로 끊어서 그림. 아래 전체 선은 투명하게 (클릭만 받음)
+        if (selected !== 'all' && Array.isArray(s.steps) && s.steps.some(x => x.poly)) {
+          line._baseOp = 0.01;
+          line.setStyle({ opacity: line._baseOp });
+          drawSteps(s.steps, gk);
+        }
+        // 지도에서 선을 눌러도 그 구간만 강조 + 리스트에서 그 구간 표시
+        line.on('click', ev => {
+          L.DomEvent.stopPropagation(ev);
+          highlightLeg(lkey);
+          const el = document.querySelector('.leg[data-key="' + lkey + '"]');
+          if (el) { clearActive(); el.classList.add('active'); el.scrollIntoView({ block: 'nearest' }); }
+        });
+        latlngs.forEach(ll => bounds.push(ll));
+      });
+
+      // 지도: 핀
+      pts.forEach(p => {
+        if (p.lat == null) return;
+        const pl = placeOf(p);
+        const photo = pl && pl.photos && pl.photos.length ? pl.photos[0] : '';
+        // 도감에 사진 있는 장소는 동그란 사진 핀 + 순서 번호 뱃지
+        const icon = photo
+          ? L.divIcon({
+              className: '',
+              html: '<div class="pin-photo" style="--pin:' + pinColor + '"><img src="' + esc(photo) + '" alt="" loading="lazy"><span>' + p.order + '</span></div>',
+              iconSize: [40, 40], iconAnchor: [20, 20], popupAnchor: [0, -22]
+            })
+          : L.divIcon({
+              className: '',
+              html: '<div class="pin" style="--pin:' + pinColor + '">' + p.order + '</div>',
+              iconSize: [26, 26], iconAnchor: [13, 13], popupAnchor: [0, -14]
+            });
+        const m = L.marker([p.lat, p.lng], { icon: icon, title: pname(p), zIndexOffset: photo ? 100 : 0 }).bindPopup(
+          (photo ? '<img class="pop-photo" src="' + esc(photo) + '" alt="">' : '') +
+          (pl ? '<span class="badge t-' + esc(pl.type) + '">' + esc(pl.type) + '</span> ' : '') +
+          '<b>' + esc(pname(p)) + '</b><br>' + esc(timeRange(p)) + (p.activity ? '<br>' + esc(p.activity) : '') +
+          (pl && costText(pl) ? '<br>' + esc(costText(pl)) : '') +
+          '<br>' + navBtn(p.lat, p.lng, true)
+        ).addTo(layer);
+        const vk = date + '#' + p.order;
+        const sk = 'S:' + vk;
+        markers[vk] = reg(sk, m);
+        // 지도에서 핀을 눌러도 그 장소만 강조 + 리스트에서 그 장소 표시
+        m.on('click', () => {
+          highlightStop(vk);
+          const el = document.querySelector('.stop[data-key="' + vk + '"]');
+          if (el) { clearActive(); el.classList.add('active'); el.scrollIntoView({ block: 'nearest' }); }
+        });
+        bounds.push([p.lat, p.lng]);
+        // 종착점이 따로 있으면: 시작점→종착점 점선 + 작은 네모 핀 (여기서 다음 장소로 출발)
+        if (hasEnd(p)) {
+          reg(sk, L.polyline([[p.lat, p.lng], [p.endLat, p.endLng]], {
+            color: pinColor, weight: 3, opacity: 0.7, dashArray: '2 7', lineCap: 'round', interactive: false
+          }).addTo(layer));
+          reg(sk, L.marker([p.endLat, p.endLng], {
+            icon: L.divIcon({
+              className: '',
+              html: '<div style="width:14px;height:14px;border-radius:3px;background:#fff;border:3px solid ' + pinColor + ';box-shadow:0 1px 3px rgba(29,38,51,.4)"></div>',
+              iconSize: [14, 14], iconAnchor: [7, 7]
+            }),
+            title: pname(p) + ' 종착점', interactive: false, keyboard: false
+          }).addTo(layer));
+          bounds.push([p.endLat, p.endLng]);
+        }
+      });
+
+      // 타임라인
+      if (selected === 'all') html += '<div class="day-head"><i class="sw" style="background:' + dayColor(date) + '"></i>' + dayLabel(date) + wxShort(date) + '</div>';
+      else html += wxLine(date) + spendBlock(pts, '이날') + fareBlock(pts, '이날') + walkLine(date) + actualBlock(pts) +
+        '<button class="btn replay-btn" type="button" id="replayBtn" data-date="' + date + '">▶ 하루 리플레이</button>';
+      const doneCount = pts.filter(p => isVisited(p)).length;
+      if (doneCount) html += '<p class="progress">방문 <b>' + doneCount + '</b> / ' + pts.length + '</p>';
+      if (selected !== 'all') html += paceLine(date);
+      const nowInfo = nowStop(date, pts);
+      html += '<ol class="line">';
+      pts.forEach((p, i) => {
+        const pos = (i === 0 ? ' first' : '') + (i === pts.length - 1 ? ' last' : '');
+        const vk = date + '#' + p.order;
+        const isNow = nowInfo && nowInfo.order === p.order;
+        html += '<li class="stop' + pos + (isVisited(p) ? ' done' : '') + (isNow ? ' is-now' : '') +
+          '" tabindex="0" data-key="' + vk + '">' +
+          '<div class="time"><span class="arr">' + esc(p.arrive || '') + '</span>' +
+          (p.depart && p.depart !== p.arrive ? '<span class="dep">' + esc(p.depart) + ' 출발</span>' : '') + timeExtra(p) + '</div>' +
+          '<div class="rail"><span class="dot" style="border-color:' + pinColor + '">' + p.order + '</span></div>' +
+          '<div class="body"><div class="place">' + esc(pname(p)) +
+          (isNow ? '<span class="now-tag' + (nowInfo.next ? ' next' : '') + '">' + (nowInfo.next ? '다음' : '지금') + '</span>' : '') + '</div>' +
+          (pname(p) !== p.place ? '<div class="meta" style="margin-top:0">' + esc(p.place) + '</div>' : '') +
+          (p.activity ? '<div class="activity">' + esc(p.activity) + '</div>' : '') +
+          (p.memo ? '<div class="memo">' + esc(p.memo) + '</div>' : '') +
+          (p.stay ? '<div class="meta">' + p.stay + '분 머무름' + (p.fixed ? ', ' + esc(p.fixed) + ' 고정' : '') + '</div>'
+                  : (p.fixed ? '<div class="meta">' + esc(p.fixed) + ' 고정</div>' : '')) +
+          costLine(p) +
+          slackBadge(p.slack) +
+          warnHtml(p) +
+          (p.lat == null ? '<div class="meta">좌표 없음, 지도에 표시 안 됨</div>' : '') +
+          (hasEnd(p) ? '<div class="meta">▢ 종착점에서 다음 장소로 출발 (' + fmtDist(haversine([p.lat, p.lng], [p.endLat, p.endLng])) + ' 떨어짐)</div>' : '') +
+          placeCard(placeOf(p)) +
+          navBtn(p.lat, p.lng, true) +
+          '<button class="visit" type="button" data-vk="' + vk + '" aria-pressed="' + isVisited(p) + '">' +
+          (isVisited(p) ? '✓ 방문함' : '방문 체크') + '</button>' +
+          '</div></li>';
+
+        const s = segs.find(x => x.fromOrder === p.order);
+        if (s) {
+          const cls = MODE_CLASS[s.mode] || 'manual';
+          html += '<li class="leg mode-' + cls + '" tabindex="0" data-key="' + date + '#' + s.fromOrder + '#' + s.toOrder + '">' +
+            '<div class="time"></div><div class="rail"></div>' +
+            '<div class="body"><div class="leg-head">' + modeIcon(cls) + esc(segModeName(s)) + ' ' + s.minutes + '분' +
+            (s.transfers !== '' && Number(s.transfers) > 0 ? ', 환승 ' + s.transfers + '회' : '') +
+            (s.fare != null && !isNaN(s.fare) && s.fare > 0 ? ', ' + YEN(s.fare) : '') +
+            ' ' + passChip(s) + '</div>' +
+            (s.warn ? '<div class="warn"><span>' + esc(s.warn) + '</span></div>' : '') +
+            (s.walkHint ? '<div class="approx" style="color:var(--walk);font-weight:700">🚶 도보 추천: ' + esc(s.walkHint) + '</div>' : '') +
+            taxiBox(s) +
+            (Array.isArray(s.steps) && s.steps.length
+              ? stepsDetail(s.steps, s.summary)
+              : (s.summary ? '<div class="leg-sum">' + esc(s.summary) + '</div>' : '')) +
+            (s.link ? '<a href="' + s.link + '" target="_blank" rel="noopener">구글 지도로 보기</a>' : '') +
+            '</div></li>';
+        }
+      });
+      html += '</ol>';
+    });
+
+    list.innerHTML = html;
+    mountLotties(list);
+    bindTaxi(list);
+    // 도장·새로고침 때마다 맞추면 보던 위치가 튀어서, 날짜·사람이 바뀌었을 때만. 숨겨진 지도(크기 0)에선 안 맞춤
+    const fitKey = selected + '|' + (USER ? USER.id : '') + '|' + bounds.length;
+    if (bounds.length && currentView === 'plan' && map.getSize().x > 0 && fitKey !== lastFitKey) {
+      map.fitBounds(bounds, { padding: [30, 30], maxZoom: 15 });
+      lastFitKey = fitKey;
+    }
+    resetFocus(true);
+    updateWalkLabels();
+    renderDayLegend();
+
+    const rb = document.getElementById('replayBtn');
+    if (rb) rb.addEventListener('click', () => startReplay(rb.dataset.date));
+    list.querySelectorAll('.visit').forEach(btn => btn.addEventListener('click', e => {
+      e.stopPropagation();
+      toggleVisit(btn.dataset.vk);
+    }));
+    const nowEl = list.querySelector('.stop.is-now');
+    if (nowEl && !scrolledToNow) { scrolledToNow = true; setTimeout(() => nowEl.scrollIntoView({ block: 'center' }), 50); }
+    list.querySelectorAll('.pcard .linkbtn').forEach(btn => btn.addEventListener('click', e => {
+      e.stopPropagation();
+      openDetail(btn.dataset.place);
+    }));
+    list.querySelectorAll('.stop').forEach(el => {
+      const go = () => focusStop(el);
+      el.addEventListener('click', go);
+      el.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
+    });
+    list.querySelectorAll('.leg').forEach(el => {
+      const go = e => { if (e && e.target.tagName === 'A') return; focusLeg(el); };
+      el.addEventListener('click', go);
+      el.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
+    });
+  }
+
+  // 전체 탭 지도 범례: 날짜 색. 누르면 그날로 이동
+  let legendCtl = null;
+  function renderDayLegend() {
+    if (legendCtl) { map.removeControl(legendCtl); legendCtl = null; }
+    if (selected !== 'all' || DATA.dates.length < 2) return;
+    const Legend = L.Control.extend({
+      options: { position: 'bottomleft' },
+      onAdd: function () {
+        const box = L.DomUtil.create('div', 'day-legend');
+        box.innerHTML = DATA.dates.map(d => '<button type="button" data-d="' + d + '"><i class="sw" style="background:' + dayColor(d) + '"></i>' + dayLabel(d) + '</button>').join('');
+        L.DomEvent.disableClickPropagation(box);
+        L.DomEvent.disableScrollPropagation(box);
+        box.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+          selected = b.dataset.d;
+          renderTabs();
+          refresh();
+        }));
+        return box;
+      }
+    });
+    legendCtl = new Legend();
+    map.addControl(legendCtl);
+  }
+
+  // 대중교통 단계별 선 + 승차·환승·하차 역 표시. 강조 처리용으로 그린 것들 반환
+  // 역 이름 라벨은 확대했을 때만 (도보 거리 라벨과 같은 층)
+  function drawSteps(steps, gk) {
+    const out = [];
+    steps.forEach((st, i) => {
+      const transit = st.t === 'transit';
+      const c = transit ? (st.color || lineColor(st.line + ' ' + (st.full || '')) || MODE_COLOR.transit) : MODE_COLOR.walk;
+      const ll = st.poly ? decodePolyline(st.poly) : [];
+      if (ll.length > 1) {
+        out.push(reg(gk, L.polyline(ll, {
+          color: c, weight: transit ? 6 : 4, opacity: 0.95, dashArray: transit ? null : '2 7',
+          lineCap: 'round', lineJoin: 'round', interactive: false
+        }).addTo(layer)));
+      }
+      if (!transit) return;
+      const before = steps.slice(0, i).some(x => x.t === 'transit');
+      const nextT = steps.slice(i + 1).find(x => x.t === 'transit');
+      const ends = [
+        { p: st.fromLL, name: st.from + (st.jfrom && st.jfrom !== st.from ? ' ' + st.jfrom : ''), kind: before ? '환승' : '승차', label: true },
+        // 갈아타는 역이 다음 승차역과 이름이 같으면 라벨 한 번만
+        { p: st.toLL, name: st.to + (st.jto && st.jto !== st.to ? ' ' + st.jto : ''), kind: nextT ? '환승' : '하차', label: !nextT || nextT.from !== st.to },
+      ];
+      ends.forEach(e => {
+        if (!e.p) return;
+        out.push(reg(gk, L.circleMarker(e.p, { radius: 5, color: c, weight: 3, fillColor: '#ffffff', fillOpacity: 1, interactive: false }).addTo(layer)));
+        if (!e.label) return;
+        reg(gk, L.marker(e.p, {
+          icon: L.divIcon({
+            className: '',
+            html: '<span class="walk-label" style="color:' + esc(c) + ';border-color:' + esc(c) + ';margin-top:-18px">' + e.kind + ' ' + esc(e.name) + '</span>',
+            iconSize: null
+          }),
+          interactive: false, keyboard: false,
+        }).addTo(walkLayer));
+      });
+    });
+    return out;
+  }
+
+  // 두 점 사이 2차 베지어 곡선 (거리 멀수록 많이 휨)
+  function arcPoints(a, b, n) {
+    n = n || 48;
+    const far = haversine(a, b) > 300000;
+    const bend = far ? 0.22 : 0.12;
+    const dx = b[0] - a[0], dy = b[1] - a[1];
+    const c = [(a[0] + b[0]) / 2 - dy * bend, (a[1] + b[1]) / 2 + dx * bend];
+    const out = [];
+    for (let i = 0; i <= n; i++) {
+      const t = i / n, u = 1 - t;
+      out.push([u * u * a[0] + 2 * u * t * c[0] + t * t * b[0], u * u * a[1] + 2 * u * t * c[1] + t * t * b[1]]);
+    }
+    return out;
+  }
+
+  // 지도에 그린 것을 흐리기 그룹에 등록 (원래 투명도 기억)
+  function reg(key, lyr) {
+    (groups[key] = groups[key] || []).push(lyr);
+    if (lyr.options) { lyr._fop = lyr.options.opacity; lyr._ffop = lyr.options.fillOpacity; }
+    return lyr;
+  }
+
+  // 하나 진하게/흐리게: 핀·라벨은 setOpacity, 선·원은 원래 투명도 기준
+  function setDim(lyr, on, dim) {
+    if (lyr.setOpacity) { lyr.setOpacity(on ? 1 : dim); return; }
+    if (!lyr.setStyle) return;
+    const op = lyr._baseOp != null ? lyr._baseOp : (lyr._fop != null ? lyr._fop : 1);
+    const st = { opacity: on ? op : Math.min(dim, op) };
+    if (lyr._ffop != null) st.fillOpacity = on ? lyr._ffop : Math.min(dim, lyr._ffop);
+    lyr.setStyle(st);
+  }
+
+  // set에 든 그룹만 진하게, 나머지는 dim. set 없으면 전부 원래대로
+  function applyFocus(set, dim) {
+    Object.keys(groups).forEach(k => {
+      const on = !set || set.has(k);
+      groups[k].forEach(l => setDim(l, on, dim));
+    });
+    // 진한 구간은 맨 위로 (흐린 선에 가려지지 않게)
+    if (set) set.forEach(k => {
+      if (k.indexOf('L:') !== 0 || !groups[k]) return;
+      groups[k].forEach(l => { if (l.bringToFront && !(l.setOpacity)) l.bringToFront(); });
+    });
+  }
+
+  // 구간 굵기: 강조한 구간만 굵게
+  function applyWeight() {
+    Object.keys(lines).forEach(k => {
+      const base = lines[k]._baseW || 5;
+      lines[k].setStyle({ weight: k === hlKey ? base + 3 : base });
+      if (casings[k]) casings[k].setStyle({ weight: k === hlKey ? base + 7 : base + 4 });
+    });
+  }
+
+  // 구간 하나 + 양 끝 장소
+  function legSet(lkey) {
+    const [d, f, t] = lkey.split('#');
+    return new Set(['L:' + lkey, 'S:' + d + '#' + f, 'S:' + d + '#' + t]);
+  }
+
+  // 장소 하나 + 들어오는·나가는 구간
+  function stopSet(vk) {
+    const [d, o] = vk.split('#');
+    const set = new Set(['S:' + vk]);
+    Object.keys(lines).forEach(k => {
+      const [ld, f, t] = k.split('#');
+      if (ld === d && (f === o || t === o)) set.add('L:' + k);
+    });
+    return set;
+  }
+
+  // 지금 시각(도쿄)에 해당하는 장소·구간. 머무는 중이면 그 장소 + 다음 구간 + 다음 장소, 이동 중이면 그 구간 + 양 끝
+  function nowFocus() {
+    if (!DATA) return null;
+    const now = tokyoNow();
+    if (!DATA.dates.includes(now.date)) return null;
+    const pts = DATA.points.filter(p => p.date === now.date).sort((a, b) => a.order - b.order);
+    if (!pts.length) return null;
+    const segOut = p => DATA.segments.find(x => x.date === now.date && x.fromOrder === p.order);
+    const legKey = s => now.date + '#' + s.fromOrder + '#' + s.toOrder;
+    const atStop = (i, label) => {
+      const s = segOut(pts[i]);
+      const set = s ? legSet(legKey(s)) : new Set(['S:' + now.date + '#' + pts[i].order]);
+      return { set: set, label: label };
+    };
+    const tA = p => { const a = toMin(p.arrive); return a != null ? a : toMin(p.depart); };
+    const tD = p => { const d = toMin(p.depart); return d != null ? d : toMin(p.arrive); };
+    const first = tA(pts[0]);
+    if (first != null && now.min < first) return atStop(0, '출발 전 · ' + pname(pts[0]));
+    for (let i = 0; i < pts.length; i++) {
+      const a = tA(pts[i]), d = tD(pts[i]);
+      if (a != null && d != null && a <= now.min && now.min <= d) return atStop(i, '머무는 중 · ' + pname(pts[i]));
+      const nx = pts[i + 1];
+      const na = nx ? tA(nx) : null;
+      if (nx && d != null && na != null && d < now.min && now.min < na) {
+        const s = segOut(pts[i]);
+        const set = s ? legSet(legKey(s)) : new Set(['S:' + now.date + '#' + pts[i].order, 'S:' + now.date + '#' + nx.order]);
+        return { set: set, label: '이동 중 · ' + pname(pts[i]) + ' → ' + pname(nx) };
+      }
+    }
+    const last = pts[pts.length - 1];
+    return { set: new Set(['S:' + now.date + '#' + last.order]), label: '일정 끝 · ' + pname(last) };
+  }
+
+  // 지금 모드면 지금 것만 진하게, 아니면 전부 원래대로. fit이면 지금 것이 바뀌었을 때 그쪽으로 지도 맞춤
+  function resetFocus(fit) {
+    hlKey = null;
+    pickKey = null;
+    applyWeight();
+    const nf = nowMode ? nowFocus() : null;
+    // 지금 장소·구간이 지도에 하나도 없으면(다른 날 탭 등) 흐리지 않음
+    const usable = nf && Array.from(nf.set).some(k => groups[k]);
+    if (nowMode && nf) startNowTimer();
+    applyFocus(usable ? nf.set : null, DIM_NOW);
+    if (nowBtn) nowBtn.title = nowMode ? '지금 모드 켜짐' + (nf ? ' · ' + nf.label : '') : '지금 모드';
+    if (!usable || !fit) return;
+    const sig = Array.from(nf.set).sort().join('|');
+    if (sig === lastNowSig) return;
+    lastNowSig = sig;
+    fitGroups(nf.set);
+  }
+
+  function fitGroups(set) {
+    if (currentView !== 'plan' || map.getSize().x <= 0) return;
+    const b = L.latLngBounds([]);
+    set.forEach(k => (groups[k] || []).forEach(l => {
+      if (l.getBounds) b.extend(l.getBounds());
+      else if (l.getLatLng) b.extend(l.getLatLng());
+    }));
+    if (meMarker) b.extend(meMarker.getLatLng());
+    if (b.isValid()) map.fitBounds(b, { padding: [40, 40], maxZoom: 16 });
+  }
+
+  // 지금 모드 켜기/끄기: 켜면 오늘 탭으로, 내 위치도 같이 켬, 1분마다 다시 판정
+  function setNowMode(on) {
+    if (on) {
+      const t = tokyoNow();
+      if (!DATA || !DATA.dates.includes(t.date)) {
+        showToast('오늘(' + t.date + ')은 일정에 없는 날이라 지금 모드를 못 씀');
+        on = false;
+      }
+    }
+    nowMode = on;
+    try { localStorage.setItem('trip-now-mode', on ? '1' : '0'); } catch (e) { /* 무시 */ }
+    if (nowBtn) nowBtn.setAttribute('aria-pressed', String(on));
+    clearInterval(nowTimer);
+    nowTimer = null;
+    lastNowSig = '';
+    if (!on) { resetFocus(false); return; }
+    const today = tokyoNow().date;
+    if (selected !== today) { selected = today; stopReplay(); renderTabs(); refresh(); }
+    else resetFocus(true);
+    startNowTimer();
+  }
+
+  // 1분마다 지금 것 다시 판정 + 내 위치 켜기 (페이지 다시 열었을 때 지금 모드가 켜져 있던 경우도)
+  function startNowTimer() {
+    if (nowTimer) return;
+    locateMe({ noPan: true });
+    nowTimer = setInterval(() => {
+      if (!nowMode || currentView !== 'plan' || hlKey || pickKey) return;
+      resetFocus(true);
+    }, 60000);
+  }
+
+  // 구간 하나만 강조: 나머지는 흐리게, 고른 선은 굵게 맨 위로. key 없으면 원래대로(지금 모드면 지금 것만)
+  function highlightLeg(key) {
+    if (!key) { resetFocus(false); return; }
+    hlKey = key;
+    pickKey = null;
+    applyWeight();
+    applyFocus(legSet(key), DIM_PICK);
+  }
+
+  // 장소 하나만 강조: 그 장소 + 들어오는·나가는 구간
+  function highlightStop(vk) {
+    hlKey = null;
+    pickKey = vk;
+    applyWeight();
+    applyFocus(stopSet(vk), DIM_PICK);
+  }
+
+  // 지도 빈 곳 누르면 강조 해제
+  map.on('click', () => { if (hlKey || pickKey) { highlightLeg(null); clearActive(); } });
+
+  function focusStop(el) {
+    clearActive();
+    el.classList.add('active');
+    const m = markers[el.dataset.key];
+    if (!m) { highlightLeg(null); return; }
+    // 같은 장소 다시 누르면 강조 해제
+    if (pickKey === el.dataset.key) { highlightLeg(null); el.classList.remove('active'); map.closePopup(); return; }
+    highlightStop(el.dataset.key);
+    map.setView(m.getLatLng(), Math.max(map.getZoom(), 15));
+    m.openPopup();
+  }
+
+  function focusLeg(el) {
+    clearActive();
+    el.classList.add('active');
+    const line = lines[el.dataset.key];
+    if (!line) return;
+    // 같은 구간 다시 누르면 강조 해제
+    if (hlKey === el.dataset.key) { highlightLeg(null); el.classList.remove('active'); map.closePopup(); return; }
+    highlightLeg(el.dataset.key);
+    map.fitBounds(line.getBounds(), { padding: [40, 40], maxZoom: 16 });
+    line.openPopup(line.getCenter());
+  }
+
+  function clearActive() {
+    document.querySelectorAll('.stop.active, .leg.active').forEach(x => x.classList.remove('active'));
+  }
+
+  /* ── 이동수단 아이콘 ── */
+  const ICONS = {
+    transit: '<path d="M7 3h10a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3z"/><path d="M4 10h16"/><path d="M8 21l2-4M16 21l-2-4"/><circle cx="8.5" cy="13.5" r=".5"/><circle cx="15.5" cy="13.5" r=".5"/>',
+    walk: '<circle cx="13" cy="4" r="2"/><path d="M10 22l2-7 3 3v6"/><path d="M8 12l2-4 4 1 2 4"/><path d="M12 15l-2-3"/>',
+    car: '<path d="M5 16V11l2-5h10l2 5v5"/><path d="M3 16h18v3H3z"/><circle cx="7.5" cy="19" r="1.5"/><circle cx="16.5" cy="19" r="1.5"/>',
+    manual: '<path d="M2 16l20-6-20-6 4 6-4 6z"/><path d="M6 10h8"/>',
+  };
+  function modeIcon(cls) {
+    return '<svg class="mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      (ICONS[cls] || ICONS.manual) + '</svg>';
+  }
+</script>

@@ -1,0 +1,345 @@
+<!--App_Guide.html-->
+<script>
+  /* ── 장소 도감 ── */
+
+  // 도감·여권에 쓰는 이름: 별칭 있으면 별칭
+  function dn(pl) { return pl ? (pl.alias || pl.name) : ''; }
+  // 일정 한 줄의 표시 이름: 연결된 장소에 별칭 있으면 별칭, 없으면 일정에 적은 이름
+  function pname(p) { const pl = p && placeOf(p); return pl && pl.alias ? pl.alias : (p ? p.place : ''); }
+
+  function placeOf(p) {
+    if (!DATA || !DATA.places || !p.placeKey) return null;
+    return DATA.places.find(x => x.key === p.placeKey) || null;
+  }
+
+  function costText(pl) {
+    const a = pl.costMin, b = pl.costMax;
+    if (a == null && b == null) return '';
+    if ((a || 0) === 0 && (b || 0) === 0) return '무료';
+    if (a != null && b != null && a !== b) return YEN(a) + ' ~ ' + YEN(b);
+    return YEN(b != null ? b : a);
+  }
+
+  function placeCard(pl) {
+    if (!pl) return '';
+    const cost = costText(pl);
+    const hours = [pl.hours, pl.closed ? '휴무 ' + pl.closed : ''].filter(Boolean).join(', ');
+    return '<div class="pcard t-' + esc(pl.type) + '">' +
+      '<div class="row1"><span class="badge">' + esc(pl.type) + '</span>' +
+      (cost ? '<span class="cost">1인 ' + esc(cost) + '</span>' : '') +
+      (hours ? '<span class="meta" style="margin:0">' + esc(hours) + '</span>' : '') + '</div>' +
+      (pl.menu.length ? '<div class="chips">' + pl.menu.slice(0, 3).map(m => '<span class="chip">' + esc(m) + '</span>').join('') +
+        (pl.menu.length > 3 ? '<span class="chip">+' + (pl.menu.length - 3) + '</span>' : '') + '</div>' : '') +
+      (pl.intro ? '<div class="intro">' + esc(pl.intro) + '</div>' : '') +
+      '<button class="linkbtn" type="button" data-place="' + esc(pl.key) + '">도감에서 보기</button>' +
+      '</div>';
+  }
+
+  // 일정에 처음 나오는 순서대로 정렬
+  function orderedPlaces() {
+    const first = {};
+    DATA.points.slice().sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : a.order - b.order)
+      .forEach((p, i) => { if (p.placeKey && first[p.placeKey] == null) first[p.placeKey] = i; });
+    return DATA.places.slice().sort((a, b) => (first[a.key] ?? 1e9) - (first[b.key] ?? 1e9));
+  }
+
+  function renderGuide() {
+    if (!DATA) return;
+    const listEl = document.getElementById('dexList');
+    const page = document.getElementById('dexPage');
+    const filters = document.getElementById('filters');
+    const dayFilters = document.getElementById('dayFilters');
+    const areaFilters = document.getElementById('areaFilters');
+    if (!DATA.places || !DATA.places.length) {
+      document.getElementById('dexStats').innerHTML = '';
+      listEl.innerHTML = '';
+      page.innerHTML = '<p class="empty"><strong>장소 도감이 비어 있음.</strong><br>시트에서 여행 도구 → 장소 가이드 갱신을 실행한 뒤 새로고침.</p>';
+      return;
+    }
+    const all = orderedPlaces();
+    const no = {};
+    all.forEach((p, i) => { no[p.key] = i + 1; });
+
+    // 수집률
+    const got = all.filter(p => visitedFor(p.key).length).length;
+    const byType = {};
+    all.forEach(p => { const t = byType[p.type] = byType[p.type] || { n: 0, g: 0 }; t.n++; if (visitedFor(p.key).length) t.g++; });
+    document.getElementById('dexStats').innerHTML =
+      '<div class="pct">' + Math.round(got / all.length * 100) + '%<small>수집 ' + got + ' / ' + all.length + '</small></div>' +
+      '<div class="typebar">' + PLACE_TYPES.filter(t => byType[t]).map(t =>
+        '<i class="t-' + t + '" style="width:' + (byType[t].g / all.length * 100) + '%" title="' + t + ' ' + byType[t].g + '/' + byType[t].n + '"></i>' +
+        '<i class="t-' + t + ' dim" style="width:' + ((byType[t].n - byType[t].g) / all.length * 100) + '%"></i>').join('') + '</div>';
+
+    // 날짜 필터
+    if (guideDay !== '전체' && !DATA.dates.includes(guideDay)) guideDay = '전체';
+    dayFilters.innerHTML = '<span class="label">날짜</span>' + ['전체'].concat(DATA.dates).map(d =>
+      '<button class="filter" type="button" data-d="' + d + '" aria-pressed="' + (d === guideDay) + '">' + (d === '전체' ? '전체' : d.slice(5).replace('-', '/')) + '</button>').join('');
+    dayFilters.querySelectorAll('.filter').forEach(b => b.addEventListener('click', () => { guideDay = b.dataset.d; renderGuide(); }));
+
+    let base = all;
+    if (guideDay !== '전체') {
+      const keys = new Set(DATA.points.filter(p => p.date === guideDay).map(p => p.placeKey));
+      base = all.filter(p => keys.has(p.key));
+    }
+    const counts = {};
+    base.forEach(p => { counts[p.type] = (counts[p.type] || 0) + 1; });
+    const types = ['전체'].concat(PLACE_TYPES.filter(t => counts[t]));
+    if (!types.includes(guideFilter)) guideFilter = '전체';
+    filters.innerHTML = '<span class="label">종류</span>' + types.map(t =>
+      '<button class="filter" type="button" data-t="' + t + '" aria-pressed="' + (t === guideFilter) + '">' + t + '</button>').join('');
+    filters.querySelectorAll('.filter').forEach(b => b.addEventListener('click', () => { guideFilter = b.dataset.t; renderGuide(); }));
+
+    const byT = base.filter(p => guideFilter === '전체' || p.type === guideFilter);
+    const areas = Array.from(new Set(byT.map(p => p.area).filter(Boolean)));
+    if (guideArea !== '전체' && !areas.includes(guideArea)) guideArea = '전체';
+    areaFilters.innerHTML = areas.length < 2 ? '' : '<span class="label">지역</span>' + ['전체'].concat(areas).map(a =>
+      '<button class="filter" type="button" data-a="' + esc(a) + '" aria-pressed="' + (a === guideArea) + '">' + esc(a) + '</button>').join('');
+    areaFilters.querySelectorAll('.filter').forEach(b => b.addEventListener('click', () => { guideArea = b.dataset.a; renderGuide(); }));
+
+    const q = guideQuery.trim().toLowerCase();
+    const list = byT.filter(p => guideArea === '전체' || p.area === guideArea)
+      .filter(p => !q || (p.name + ' ' + (p.alias || '') + ' ' + p.area + ' ' + p.menu.join(' ') + ' ' + p.intro).toLowerCase().includes(q));
+
+    listEl.innerHTML = list.length ? list.map(p => {
+      const seen = visitedFor(p.key).length > 0;
+      const hide = spoiler && !seen;
+      return '<li><button type="button" class="t-' + esc(p.type) + (seen ? '' : ' unseen') + '" data-place="' + esc(p.key) + '"' +
+        (p.key === guideSel ? ' aria-current="true"' : '') + '>' +
+        '<span class="no">No.' + String(no[p.key]).padStart(3, '0') + '</span>' +
+        '<span class="ic">' + (p.photos.length && !hide ? '<img src="' + esc(p.photos[0]) + '" alt="" loading="lazy">' : esc(hide ? '?' : (Array.from(dn(p))[0] || ''))) + '</span>' +
+        '<span><span class="nm" style="display:block">' + esc(hide ? '？？？' : dn(p)) + '</span><span class="sb">' + esc([p.type, p.area].filter(Boolean).join(' · ')) + '</span></span>' +
+        (seen ? '<span class="got">✓</span>' : '') +
+        '</button></li>';
+    }).join('') : '<li class="empty">해당하는 장소 없음</li>';
+
+    if (!guideSel || !all.find(p => p.key === guideSel)) guideSel = (list[0] || all[0]).key;
+    listEl.querySelectorAll('button[data-place]').forEach(b => b.addEventListener('click', () => {
+      guideSel = b.dataset.place;
+      document.getElementById('dex').classList.add('show-page');
+      renderGuide();
+      document.getElementById('dexPage').scrollTop = 0;
+    }));
+
+    const sel = all.find(p => p.key === guideSel);
+    page.innerHTML = '<button class="btn pp-back" type="button" id="ppBack">← 목록</button>' + placePageHtml(sel, no, list);
+    bindPage(page, list);
+    const back = document.getElementById('ppBack');
+    if (back) back.addEventListener('click', () => document.getElementById('dex').classList.remove('show-page'));
+  }
+
+  // 장소 한 페이지 (도감 오른쪽, 다른 화면에선 상세 패널)
+  function placePageHtml(p, no, list) {
+    if (!p) return '';
+    no = no || (() => { const m = {}; orderedPlaces().forEach((x, i) => { m[x.key] = i + 1; }); return m; })();
+    const vis = visitedFor(p.key);
+    const seen = vis.length > 0;
+    const hide = spoiler && !seen;
+    const ap = appearances(p.key);
+    const stay = ap.reduce((a, x) => a + (x.stay || 0), 0);
+    const maxCost = Math.max(1, ...DATA.places.map(x => x.costMax || x.costMin || 0));
+    const maxStay = Math.max(1, ...DATA.places.map(x => appearances(x.key).reduce((a, y) => a + (y.stay || 0), 0)));
+    const cost = p.costMax != null ? p.costMax : p.costMin;
+    const bar = (label, ratio, val) => '<div class="statrow"><span>' + label + '</span><span class="bar"><i style="width:' +
+      Math.round(Math.max(0, Math.min(1, ratio)) * 100) + '%"></i></span><span class="val">' + val + '</span></div>';
+    const hm = m => (m >= 60 ? Math.floor(m / 60) + '시간 ' : '') + (m % 60 ? (m % 60) + '분' : (m >= 60 ? '' : '0분'));
+
+    const info = [['영업시간', p.hours], ['휴무', p.closed], ['메모', p.memo]].filter(r => r[1]);
+    const near = p.lat == null ? [] : DATA.places.filter(x => x.key !== p.key && x.lat != null)
+      .map(x => ({ x: x, d: haversine([p.lat, p.lng], [x.lat, x.lng]) })).sort((a, b) => a.d - b.d).slice(0, 4);
+    const idx = list ? list.findIndex(x => x.key === p.key) : -1;
+    const prev = idx > 0 ? list[idx - 1] : null;
+    const next = idx >= 0 && idx < list.length - 1 ? list[idx + 1] : null;
+
+    return '<div class="t-' + esc(p.type) + '">' +
+      '<div class="pp-head">' +
+        '<div class="pp-no">No.' + String(no[p.key] || 0).padStart(3, '0') + '</div>' +
+        '<h2>' + esc(hide ? '？？？' : dn(p)) + '</h2>' +
+        (p.alias && !hide ? '<div style="font-size:13px;color:var(--muted);margin:-2px 0 6px">' + esc(p.name) + '</div>' : '') +
+        '<div class="pp-meta"><span class="badge">' + esc(p.type) + '</span>' + (p.area ? '<span>' + esc(p.area) + '</span>' : '') +
+          '<span>' + (seen ? '방문 ' + vis.length + '회' : '아직 안 감') + '</span>' +
+          (seen && rareOf(p.key) ? '<span class="rare-tag">★ ' + esc(rareOf(p.key)) + '</span>' : '') +
+          (seen ? '<button class="linkbtn" type="button" data-unstamp="' + esc(p.key) + '" style="margin:0">도장 지우기</button>'
+                : (ap.length ? '<button class="linkbtn" type="button" data-stampit="' + esc(ap[0].date + '#' + ap[0].order) + '" style="margin:0">도장 찍기</button>' : '')) +
+          '</div>' +
+        (seen ? '<div class="pp-stamp">' + stampSvg(dn(p), p.type, vis[0].date.slice(5).replace('-', '.'), hashNum(p.key), rareOf(p.key)) + '</div>' : '') +
+      '</div>' +
+      '<div class="pp-media">' + (p.photos.length && !hide
+        ? '<div class="gallery">' + p.photos.map(u => '<img src="' + esc(u) + '" alt="" loading="lazy">').join('') + '</div>'
+        : '<div class="ph"><span>' + esc(hide ? '?' : (Array.from(dn(p))[0] || '')) + '</span></div>') + '</div>' +
+      (p.intro && !hide ? '<div class="pp-sec pp-intro">' + esc(p.intro) + '</div>' : '') +
+      '<div class="pp-sec"><h3>능력치</h3>' +
+        bar('비용', (cost || 0) / maxCost, cost == null ? '—' : (costText(p) || '무료')) +
+        bar('체류', stay / maxStay, hm(stay)) +
+        bar('방문', ap.length ? vis.length / ap.length : 0, vis.length + ' / ' + ap.length) +
+      '</div>' +
+      (p.menu.length ? '<div class="pp-sec"><h3>메뉴</h3><div class="chips">' + p.menu.map(m => '<span class="chip">' + esc(m) + '</span>').join('') + '</div></div>' : '') +
+      (info.length ? '<div class="pp-sec"><h3>정보</h3><dl class="pp-info">' + info.map(r => '<dt>' + r[0] + '</dt><dd>' + esc(r[1]) + '</dd>').join('') + '</dl></div>' : '') +
+      (ap.length ? '<div class="pp-sec"><h3>일정에서</h3><ul class="appear">' + ap.map(x =>
+        '<li><button type="button" data-date="' + x.date + '" data-order="' + x.order + '">' +
+        esc(dayLabel(x.date)) + ' ' + esc(x.arrive || '') + ' — ' + esc(x.activity || x.place) + (isVisited(x) ? ' ✓' : '') + '</button></li>').join('') + '</ul></div>' : '') +
+      (near.length ? '<div class="pp-sec"><h3>근처 장소</h3><div class="near">' + near.map(n =>
+        '<button type="button" data-near="' + esc(n.x.key) + '">' + esc(spoiler && !visitedFor(n.x.key).length ? '？？？' : dn(n.x)) + '<small>' + fmtDist(n.d) + '</small></button>').join('') + '</div></div>' : '') +
+      '<div class="links">' +
+        navBtn(p.lat, p.lng) +
+        (p.link ? '<a href="' + esc(p.link) + '" target="_blank" rel="noopener">구글 지도</a>' : '') +
+        (p.web ? '<a href="' + esc(p.web) + '" target="_blank" rel="noopener">웹사이트</a>' : '') +
+      '</div>' +
+      (list ? '<div class="pp-nav"><button class="btn" type="button" data-go="' + (prev ? esc(prev.key) : '') + '"' + (prev ? '' : ' disabled') + '>↑ 이전</button>' +
+        '<button class="btn" type="button" data-go="' + (next ? esc(next.key) : '') + '"' + (next ? '' : ' disabled') + '>다음 ↓</button></div>' : '') +
+      '</div>';
+  }
+
+  function bindPage(root, list) {
+    root.querySelectorAll('.appear button').forEach(b => b.addEventListener('click', () => jumpTo(b.dataset.date, Number(b.dataset.order))));
+    root.querySelectorAll('[data-near]').forEach(b => b.addEventListener('click', () => openDetail(b.dataset.near)));
+    root.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => { if (b.dataset.go) openDetail(b.dataset.go); }));
+    root.querySelectorAll('[data-unstamp]').forEach(b => b.addEventListener('click', () => {
+      const pl = DATA.places.find(x => x.key === b.dataset.unstamp);
+      removeStamp(b.dataset.unstamp, pl ? dn(pl) : '');
+    }));
+    root.querySelectorAll('[data-stampit]').forEach(b => b.addEventListener('click', () => toggleVisit(b.dataset.stampit)));
+  }
+
+  // 그날 그 장소에 도착하는 시각들 (숙소처럼 하루에 두 번 나오면 둘 다)
+  function dayTimes(key, date) {
+    return DATA.points.filter(p => p.placeKey === key && p.date === date)
+      .sort((a, b) => a.order - b.order).map(p => p.arrive).filter(Boolean).join(' · ');
+  }
+
+  function appearances(key) {
+    return DATA.points.filter(p => p.placeKey === key)
+      .sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : a.order - b.order);
+  }
+
+  function appearSummary(key) {
+    const days = Array.from(new Set(appearances(key).map(p => dayLabel(p.date))));
+    return days.join(' · ');
+  }
+
+  function openDetail(key) {
+    const p = DATA.places.find(x => x.key === key);
+    if (!p) return;
+    if (currentView === 'guide') {
+      guideSel = key;
+      document.getElementById('dex').classList.add('show-page');
+      renderGuide();
+      document.getElementById('dexPage').scrollTop = 0;
+      return;
+    }
+    const box = document.getElementById('detail');
+    box.className = 'detail t-' + p.type;
+    box.innerHTML = '<button class="close" type="button" id="closeDetail">닫기</button>' + placePageHtml(p, null, null);
+    bindPage(box, null);
+    document.getElementById('detailWrap').classList.add('open');
+    document.getElementById('closeDetail').addEventListener('click', closeDetail);
+    document.getElementById('closeDetail').focus();
+  }
+
+  function closeDetail() { document.getElementById('detailWrap').classList.remove('open'); }
+
+  // 도감 → 일정의 해당 날짜·장소로 이동
+  function jumpTo(date, order) {
+    closeDetail();
+    selected = date;
+    setView('plan');
+    renderTabs();
+    render();
+    setTimeout(() => {
+      const el = document.querySelector('.stop[data-key="' + date + '#' + order + '"]');
+      if (!el) return;
+      el.scrollIntoView({ block: 'center' });
+      focusStop(el);
+    }, 50);
+  }
+
+  // 예산 시트는 원화(₩)라서 화면에는 설정 시트 환율로 엔화로 바꿔 보여줌 (현지에서 쓰는 돈 기준)
+  function money(won) {
+    if (won == null || isNaN(won)) return '';
+    return DATA && DATA.rate ? YEN(won / DATA.rate) : WON.format(won);
+  }
+
+  function costLine(p) {
+    const hasYen = p.yen != null && !isNaN(p.yen);
+    const hasWon = p.won != null && !isNaN(p.won);
+    if (!hasYen && !hasWon) return '';
+    return '<div class="cost">' +
+      '<span class="amt">' + (hasYen ? YEN(p.yen) : WON.format(p.won)) + '</span>' +
+      (p.per ? '<span class="per">1인 ' + money(p.per) + '</span>' : '') +
+      (p.budgetId ? '<span class="' + (p.paid ? 'paid' : 'unpaid') + '">' + (p.paid ? '결제함' : '결제 전') + '</span>' : '') +
+      '</div>';
+  }
+
+  // 1인당 합계 (엔화로 표시). 같은 예산 번호는 한 번만 셈 (숙소 2박을 여러 행에 연결한 경우 등)
+  function spendBlock(pts, label) {
+    const seen = {};
+    let total = 0, paid = 0;
+    pts.forEach(p => {
+      if (!p.per) return;
+      const key = p.budgetId || (p.date + '#' + p.order);
+      if (seen[key]) return;
+      seen[key] = true;
+      total += p.per;
+      if (p.paid) paid += p.per;
+    });
+    if (!total) return '';
+    return '<dl class="spend">' +
+      '<dt>' + label + ' 1인당</dt><dt>결제함</dt><dt>남은 결제</dt>' +
+      '<dd>' + money(total) + '</dd><dd>' + money(paid) + '</dd>' +
+      '<dd class="' + (total - paid > 0 ? 'left' : '') + '">' + money(total - paid) + '</dd>' +
+      (DATA.rate ? '<dd class="note">원화로는 ' + WON.format(total) + ' (환율 ' + DATA.rate + ')</dd>' : '') +
+      '</dl>';
+  }
+
+  // 1인 교통비 합계 (구간 요금 기준)
+  function fareBlock(pts, label) {
+    let sum = 0, missing = 0;
+    pts.forEach(p => {
+      const s = DATA.segments.find(x => x.date === p.date && x.fromOrder === p.order);
+      if (!s) return;
+      if (p.fare == null || isNaN(p.fare)) { if (s.mode === '대중교통' || s.mode === '수동') missing++; return; }
+      sum += p.fare;
+    });
+    if (!sum && !missing) return '';
+    return '<p class="fare-sum">' + label + ' 교통비 1인 <b>' + YEN(sum) + '</b>' +
+      (missing ? ', 요금 미입력 ' + missing + '구간' : '') + '</p>';
+  }
+
+  function slackBadge(slack) {
+    if (slack === null || slack === undefined || isNaN(slack)) return '';
+    if (slack < 0) return '<span class="slack late">' + Math.abs(slack) + '분 늦음</span>';
+    return '<span class="slack ok">여유 ' + slack + '분</span>';
+  }
+
+  function timeRange(p) {
+    if (!p.arrive) return '';
+    return p.depart && p.depart !== p.arrive ? p.arrive + ' – ' + p.depart : p.arrive;
+  }
+
+  function dayLabel(d) {
+    const [y, m, day] = d.split('-').map(Number);
+    const w = new Date(Date.UTC(y, m - 1, day)).getUTCDay();
+    return m + '/' + day + ' (' + WEEK[w] + ')';
+  }
+
+  // 구글 인코딩 polyline → [[lat, lng], ...]
+  function decodePolyline(str) {
+    const out = [];
+    let index = 0, lat = 0, lng = 0;
+    while (index < str.length) {
+      let b, shift = 0, result = 0;
+      do { b = str.charCodeAt(index++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+      lat += (result & 1) ? ~(result >> 1) : (result >> 1);
+      shift = 0; result = 0;
+      do { b = str.charCodeAt(index++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+      lng += (result & 1) ? ~(result >> 1) : (result >> 1);
+      out.push([lat / 1e5, lng / 1e5]);
+    }
+    return out;
+  }
+
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+</script>

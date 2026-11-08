@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<!--index.html-->
+<html lang="ko">
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;700&family=DotGothic16&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/galmuri@2.40.3/dist/galmuri.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@11.2.10/swiper-bundle.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<?!= include('Style_Base'); ?>
+<?!= include('Style_Views'); ?>
+<?!= include('Style_Extra'); ?>
+</head>
+<body data-view="home">
+  <header>
+    <div class="title-row">
+      <h1>여행 타임라인<span class="subtitle" id="subtitle"></span></h1>
+      <div class="views">
+        <div class="seg" role="group" aria-label="보기">
+          <button class="view" id="viewHome" type="button" aria-pressed="true">홈</button>
+          <button class="view" id="viewPlan" type="button" aria-pressed="false">지도</button>
+          <button class="view" id="viewTl" type="button" aria-pressed="false">타임라인</button>
+          <button class="view" id="viewArea" type="button" aria-pressed="false">가이드</button>
+          <button class="view" id="viewGuide" type="button" aria-pressed="false">도감</button>
+          <button class="view" id="viewPass" type="button" aria-pressed="false">여권</button>
+        </div>
+        <button class="who-chip" id="whoBtn" type="button" aria-label="사용자 바꾸기" title="사용자 바꾸기"></button>
+        <button class="reload" id="reload" type="button" aria-label="새로고침" title="새로고침">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+        </button>
+      </div>
+    </div>
+    <nav class="days" id="days" role="tablist" aria-label="일자"></nav>
+  </header>
+  <div class="status" id="status" role="status"></div>
+  <main>
+    <div id="map" aria-label="지도"></div>
+    <section id="list" aria-live="polite"><p class="empty">불러오는 중</p></section>
+  </main>
+  <section id="who" aria-label="사용자 선택"><div class="who-inner" id="whoInner"></div></section>
+  <section id="home" aria-label="홈"><div class="home-inner">
+    <div class="board" id="board" aria-live="polite"></div>
+    <div id="homeBody"></div>
+  </div></section>
+  <section id="area" aria-label="장소 가이드"><div class="area-inner" id="areaInner"></div></section>
+  <section id="pass" aria-label="여권"><div class="pass-inner" id="passInner"></div></section>
+  <section id="wrap" aria-label="여행 결산"><div class="wrap-inner" id="wrapInner"></div></section>
+  <div class="stamp-overlay" id="stampOverlay" aria-hidden="true"></div>
+  <div class="boot" id="boot"><div class="boot-train" data-lt="train"></div><span>일정 불러오는 중</span></div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <div class="sheet-wrap" id="sheetWrap"><div class="sheet" id="sheet" role="dialog" aria-modal="true"></div></div>
+  <section id="tl" aria-label="타임라인"><div class="tl-box" id="tlInner"></div></section>
+  <section id="guide" aria-label="장소 도감">
+    <div class="dex" id="dex">
+      <aside class="dex-side">
+        <div class="dex-stats" id="dexStats"></div>
+        <input class="dex-search" id="dexSearch" type="search" placeholder="장소 검색" aria-label="장소 검색">
+        <div class="filters" id="dayFilters"></div>
+        <div class="filters" id="filters"></div>
+        <div class="filters" id="areaFilters"></div>
+        <label class="spoil"><input type="checkbox" id="spoiler"> 안 간 곳 이름 가리기</label>
+        <ol class="dex-list" id="dexList"></ol>
+      </aside>
+      <article class="dex-page" id="dexPage" aria-live="polite"></article>
+    </div>
+  </section>
+
+  <div class="detail-wrap" id="detailWrap"><aside class="detail" id="detail" role="dialog" aria-modal="true"></aside></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/swiper@11.2.10/swiper-bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lottie-web@5.13.0/build/player/lottie.min.js"></script>
+<!-- 설정 시트 사용자 목록 (서버가 페이지 열 때 넣어줌) -->
+<script>const BOOT_USERS = <?!= bootUsers ?>;</script>
+<?!= include('App_Core'); ?>
+<?!= include('App_Timeline'); ?>
+<?!= include('App_Fx'); ?>
+<?!= include('App_Replay'); ?>
+<?!= include('App_Home'); ?>
+<?!= include('App_Pass'); ?>
+<?!= include('App_Records'); ?>
+<?!= include('App_Guide'); ?>
+<?!= include('App_Area'); ?>
+<script>
+  // 모든 선언이 끝난 뒤 시작 (저장된 데이터로 즉시 그릴 때 변수 초기화 순서 문제 방지)
+  load();
+</script>
+</body>
+</html>

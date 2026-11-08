@@ -1,0 +1,404 @@
+<!--App_Pass.html-->
+<script>
+  /* ───────── 여권 (스탬프 랠리) ───────── */
+
+  const STAMP_COLORS = { '숙소': '#6b4fbb', '식당': '#c2410c', '카페': '#7c5a46', '관광지': '#1d4ed8', '쇼핑': '#be185d', '교통': '#475569', '기타': '#6b7280' };
+
+  function hashNum(str) { let h = 0; for (const c of String(str)) h = (h * 31 + c.charCodeAt(0)) | 0; return Math.abs(h); }
+
+  // 종류별 모양 + 잉크 번짐 필터로 도장 SVG 생성
+  // 금박 조건: 숙소·교통 빼고, 재방문 > 2시간 이상 머묾 > 저녁 6시 이후 관광·쇼핑
+  function rareOf(key) {
+    const v = visitedFor(key);
+    if (!v.length) return '';
+    const pl = (DATA.places || []).find(x => x.key === key);
+    const type = pl ? pl.type : '기타';
+    if (type === '숙소' || type === '교통') return '';
+    if (v.length >= 2) return '재방문';
+    if (v.some(p => (p.stay || 0) >= 120)) return '오래 머문 곳';
+    if ((type === '관광지' || type === '쇼핑') && v.some(p => { const a = toMin(p.arrive); return a != null && a >= 1080; })) return '밤 풍경';
+    return '';
+  }
+
+  let svgUid = 0;
+  function stampSvg(name, type, sub, seed, rare) {
+    const uid = ++svgUid;
+    const id = 'f' + seed + '_' + uid;
+    const gid = 'g' + seed + '_' + uid;
+    const c = rare ? 'url(#' + gid + ')' : (STAMP_COLORS[type] || STAMP_COLORS['기타']);
+    const rot = (seed % 25) - 12;
+    let shape;
+    if (type === '식당') shape = '<rect x="14" y="14" width="172" height="172" rx="26" fill="none" stroke="' + c + '" stroke-width="8"/><rect x="26" y="26" width="148" height="148" rx="18" fill="none" stroke="' + c + '" stroke-width="2.5"/>';
+    else if (type === '카페') shape = '<polygon points="100,10 178,55 178,145 100,190 22,145 22,55" fill="none" stroke="' + c + '" stroke-width="8"/>';
+    else if (type === '교통') shape = '<rect x="10" y="44" width="180" height="112" rx="14" fill="none" stroke="' + c + '" stroke-width="8"/><line x1="10" y1="72" x2="190" y2="72" stroke="' + c + '" stroke-width="3"/>';
+    else if (type === '숙소') shape = '<path d="M100 12 L188 80 L188 188 L12 188 L12 80 Z" fill="none" stroke="' + c + '" stroke-width="8" stroke-linejoin="round"/>';
+    else if (type === '쇼핑') shape = '<polygon points="60,12 140,12 188,60 188,140 140,188 60,188 12,140 12,60" fill="none" stroke="' + c + '" stroke-width="8"/>';
+    else shape = '<circle cx="100" cy="100" r="88" fill="none" stroke="' + c + '" stroke-width="8"/><circle cx="100" cy="100" r="74" fill="none" stroke="' + c + '" stroke-width="2.5"/>';
+    // 띄어쓰기 기준으로 최대 2줄, 한 줄 7자 안쪽
+    const MAX = 7;
+    const lines = [];
+    let cur = '';
+    String(name).split(/\s+/).filter(Boolean).forEach(w => {
+      let word = Array.from(w);
+      while (word.length) {
+        const room = MAX - Array.from(cur).length - (cur ? 1 : 0);
+        if (word.length <= room) { cur += (cur ? ' ' : '') + word.join(''); word = []; }
+        else if (!cur) { lines.push(word.slice(0, MAX).join('')); word = word.slice(MAX); }
+        else { lines.push(cur); cur = ''; }
+      }
+    });
+    if (cur) lines.push(cur);
+    if (lines.length > 2) { lines.length = 2; lines[1] = Array.from(lines[1]).slice(0, MAX - 1).join('') + '…'; }
+    const longest = Math.max.apply(null, lines.map(l => Array.from(l).length));
+    const fs = lines.length > 1 ? 19 : (longest <= 4 ? 30 : longest <= 6 ? 25 : 21);
+    const text = lines.map((l, i) => '<text x="100" y="' + (lines.length > 1 ? 98 + i * 24 : 110) + '" text-anchor="middle" font-size="' + fs + '" font-weight="700" fill="' + c + '" font-family="IBM Plex Sans KR, sans-serif">' + esc(l) + '</text>').join('');
+    return '<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="' + esc(name) + ' 도장">' +
+      '<defs><filter id="' + id + '"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="' + (seed % 50) + '"/>' +
+      '<feDisplacementMap in="SourceGraphic" scale="3.5"/><feComponentTransfer><feFuncA type="discrete" tableValues="0 .85 .95 1 1"/></feComponentTransfer></filter>' +
+      (rare ? '<linearGradient id="' + gid + '" x1="0" y1="0" x2="1" y2="1">' +
+        '<stop offset="0" stop-color="#8a6212"/><stop offset=".42" stop-color="#d9a930"/><stop offset=".5" stop-color="#fff4c8"/>' +
+        '<stop offset=".58" stop-color="#d9a930"/><stop offset="1" stop-color="#8a6212"/>' +
+        '<animateTransform attributeName="gradientTransform" type="translate" values="-1 -1;1 1;-1 -1" dur="4s" repeatCount="indefinite"/></linearGradient>' : '') +
+      '</defs>' +
+      '<g transform="rotate(' + rot + ' 100 100)" filter="url(#' + id + ')" opacity="' + (rare ? '1' : '.9') + '">' + shape +
+      '<text x="100" y="58" text-anchor="middle" font-size="' + (rare ? 13 : 15) + '" letter-spacing="' + (rare ? 1 : 2) + '" fill="' + c + '" font-family="Galmuri11, DotGothic16, monospace">' + esc(rare ? '★ ' + rare : type) + '</text>' +
+      text + '<text x="100" y="160" text-anchor="middle" font-size="14" fill="' + c + '" font-family="Galmuri11, DotGothic16, monospace">' + esc(sub) + '</text></g></svg>';
+  }
+
+  // 여권에 올라갈 장소 (일정 순서, 같은 장소 한 번)
+  function passPlaces() {
+    const seen = {}, out = [];
+    sortedPoints().forEach(p => {
+      const key = p.placeKey || ('n:' + p.place);
+      if (seen[key]) return;
+      seen[key] = true;
+      out.push({ key: key, point: p, place: placeOf(p) });
+    });
+    return out;
+  }
+
+  function visitedFor(key) {
+    return sortedPoints().filter(p => (p.placeKey || ('n:' + p.place)) === key && isVisited(p));
+  }
+
+  function stampedPlaces() { return passPlaces().filter(x => visitedFor(x.key).length); }
+
+  function renderPass() {
+    const box = document.getElementById('passInner');
+    const list = passPlaces();
+    const got = list.filter(x => visitedFor(x.key).length).length;
+    const gold = list.filter(x => rareOf(x.key)).length;
+    let html = '<div class="pass-head"><h2>여행 여권</h2><span style="color:var(--muted)">도장 <b style="color:var(--ink)">' + got + '</b> / ' + list.length +
+      (gold ? ' · <span class="rare-tag">금박 ' + gold + '</span>' : '') + '</span></div>';
+    const byDay = {};
+    list.forEach(x => { (byDay[x.point.date] = byDay[x.point.date] || []).push(x); });
+    const book = !!window.Swiper;
+    const md = d => Number(d.slice(5, 7)) + '/' + Number(d.slice(8, 10));
+    if (book) {
+      html += '<div class="swiper pass-swiper"><div class="swiper-wrapper">' +
+        '<div class="swiper-slide"><div class="pass-cover">' +
+          '<div class="t1">TRAVEL PASSPORT</div><div class="emblem">✈</div>' +
+          '<h3>여행 여권</h3>' +
+          '<div class="who">' + esc(USER ? USER.id : '') + '</div>' +
+          '<div class="meta">' + (DATA.dates.length ? md(DATA.dates[0]) + ' – ' + md(DATA.dates[DATA.dates.length - 1]) : '') + ', 도장 ' + got + ' / ' + list.length + (gold ? ', 금박 ' + gold : '') + '</div>' +
+          '<div class="hint">옆으로 넘기기 →</div></div></div>';
+    } else {
+      html += '<div class="pass-page">';
+    }
+    Object.keys(byDay).sort().forEach(date => {
+      if (book) html += '<div class="swiper-slide"><div class="pass-page">';
+      html += '<div class="pass-day">' + esc(dayLabel(date)) + '</div><div class="stamps">';
+      byDay[date].forEach(x => {
+        const v = visitedFor(x.key);
+        const type = x.place ? x.place.type : '기타';
+        const name = x.place ? dn(x.place) : x.point.place;
+        if (v.length) {
+          const when = v[0].date.slice(5).replace('-', '.');
+          html += '<div class="slot' + (rareOf(x.key) ? ' rare' : '') + '"><button type="button" data-stamped="' + esc(x.key) + '" aria-label="' + esc(name) + ' 도장">' +
+            stampSvg(name, type, when, hashNum(x.key), rareOf(x.key)) + '</button></div>';
+        } else {
+          if (!canStamp()) { html += '<div class="slot empty"><span style="padding:8px">' + esc(name) + '</span></div>'; return; }
+          html += '<div class="slot empty"><button type="button" data-vk="' + esc(x.point.date + '#' + x.point.order) + '" aria-label="' + esc(name) + ' 도장 찍기">' +
+            '<span>' + esc(name) + '<br><small style="opacity:.7">눌러서 도장</small></span></button></div>';
+        }
+      });
+      html += '</div>';
+      if (book) html += '</div></div>';
+    });
+    html += book ? '</div><div class="swiper-pagination"></div></div>' : '</div>';
+    if (passSwiper) { passSwiper.destroy(true, true); passSwiper = null; }
+    box.innerHTML = html;
+    if (book) {
+      passSwiper = new Swiper(box.querySelector('.pass-swiper'), {
+        effect: 'creative', grabCursor: true, autoHeight: true, speed: 520, initialSlide: passIdx,
+        creativeEffect: {
+          prev: { shadow: true, origin: 'left center', translate: ['-4%', 0, -220], rotate: [0, 95, 0] },
+          next: { shadow: true, origin: 'right center', translate: ['4%', 0, -220], rotate: [0, -95, 0] },
+        },
+        pagination: { el: box.querySelector('.swiper-pagination'), clickable: true },
+      });
+      passSwiper.on('slideChange', () => { passIdx = passSwiper.activeIndex; });
+    }
+    // 빈칸 → 도장 찍기 (그 장소가 처음 나오는 일정 행을 방문 처리)
+    box.querySelectorAll('[data-vk]').forEach(b => b.addEventListener('click', () => toggleVisit(b.dataset.vk)));
+    // 찍힌 도장 → 메뉴 (도감 보기 / 도장 지우기)
+    box.querySelectorAll('[data-stamped]').forEach(b => b.addEventListener('click', () => {
+      const key = b.dataset.stamped;
+      const x = passPlaces().find(y => y.key === key);
+      if (!x) return;
+      const name = x.place ? dn(x.place) : x.point.place;
+      const acts = [];
+      if (x.place) acts.push({ label: '도감에서 보기', fn: () => openDetail(x.place.key) });
+      if (canStamp()) acts.push({ label: '도장 지우기', danger: true, fn: () => removeStamp(key, name) });
+      openSheet(name, acts, stampSvg(name, x.place ? x.place.type : '기타', visitedFor(key)[0].date.slice(5).replace('-', '.'), hashNum(key), rareOf(key)));
+    }));
+  }
+
+  // 그 장소의 방문 체크를 모두 해제 (되돌리기 가능)
+  function removeStamp(key, name) {
+    const rows = visitedFor(key).map(p => p.date + '#' + p.order);
+    if (!rows.length) return;
+    rows.forEach(vk => toggleVisit(vk, { silent: true }));
+    showToast((name || '') + ' 도장 지움', () => rows.forEach(vk => toggleVisit(vk, { silent: true })));
+  }
+
+  let toastTimer = null;
+  function showToast(msg, undo) {
+    const el = document.getElementById('toast');
+    el.innerHTML = '<span>' + esc(msg) + '</span>' + (undo ? '<button type="button">되돌리기</button>' : '');
+    el.classList.add('show');
+    if (undo) el.querySelector('button').onclick = () => { el.classList.remove('show'); clearTimeout(toastTimer); undo(); };
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove('show'), 5000);
+  }
+
+  function openSheet(title, actions, preview) {
+    const wrap = document.getElementById('sheetWrap');
+    const sh = document.getElementById('sheet');
+    sh.innerHTML = (preview ? '<div class="stamp-prev">' + preview + '</div>' : '') + '<h4>' + esc(title) + '</h4>' +
+      actions.map((a, i) => '<button type="button" data-i="' + i + '" class="' + (a.danger ? 'danger' : '') + '">' + esc(a.label) + '</button>').join('') +
+      '<button type="button" class="cancel">취소</button>';
+    wrap.classList.add('open');
+    const close = () => wrap.classList.remove('open');
+    sh.querySelectorAll('[data-i]').forEach(b => b.onclick = () => { close(); actions[Number(b.dataset.i)].fn(); });
+    sh.querySelector('.cancel').onclick = close;
+    wrap.onclick = e => { if (e.target === wrap) close(); };
+  }
+
+  /* ── 전광판 플랩: 글자마다 고정 칸, 바뀐 칸만 넘어감 ── */
+  const FLAP_POOL = 'アイウエオカキクケコサシスセソタチツテトナニヌネノ';
+  const REDUCED = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  function cellClass(ch) {
+    if (ch === ' ') return 'fc sp';
+    return /[\u0000-\u00ff]/.test(ch) ? 'fc' : 'fc w';   // 숫자·영문은 좁은 칸, 한글·일본어는 넓은 칸
+  }
+
+  function cellsFor(el, text) {
+    el.innerHTML = Array.from(text).map(ch => '<span class="' + cellClass(ch) + '">' + (ch === ' ' ? '&nbsp;' : esc(ch)) + '</span>').join('');
+    el.dataset.final = text;
+  }
+
+  function flipCell(sp, ch) {
+    sp.className = cellClass(ch);
+    sp.textContent = ch === ' ' ? '\u00a0' : ch;
+    void sp.offsetWidth;
+    sp.classList.add('fl');
+  }
+
+  // 한 칸: 숫자는 이전 숫자에서 차례로 넘어가고, 그 외 글자는 몇 번 돌다가 멈춤
+  function runCell(sp, from, to, delay, done) {
+    if (sp._t) clearTimeout(sp._t);
+    let seq;
+    if (/\d/.test(from) && /\d/.test(to)) {
+      seq = [];
+      let d = Number(from);
+      while (d !== Number(to)) { d = (d + 9) % 10; seq.push(String(d)); }   // 카운트다운이라 아래로 넘김
+      if (seq.length > 5) seq = seq.slice(-5);
+    } else {
+      seq = to === ' ' ? [] : [0, 1, 2].map(() => FLAP_POOL[Math.floor(Math.random() * FLAP_POOL.length)]);
+      seq.push(to);
+    }
+    let i = 0;
+    const tick = () => {
+      flipCell(sp, seq[i]);
+      i++;
+      if (i < seq.length) sp._t = setTimeout(tick, 55);
+      else { sp._t = null; done(); }
+    };
+    sp._t = setTimeout(tick, delay);
+  }
+
+  function flapTo(el, to, onDone) {
+    const from = el.dataset.final != null ? el.dataset.final : el.textContent;
+    if (!el.querySelector('.fc')) cellsFor(el, from);
+    el.dataset.final = to;
+    const a = Array.from(from), b = Array.from(to);
+    if (REDUCED) { cellsFor(el, to); if (onDone) onDone(); return; }
+    // 글자 수가 바뀌면 칸을 새 길이로 맞추고(빈 칸은 공백) 바뀐 칸만 넘김
+    if (a.length !== b.length) {
+      const n = Math.max(a.length, b.length);
+      while (a.length < n) a.push(' ');
+      cellsFor(el, a.join(''));
+      el.dataset.final = to;
+    }
+    const cells = Array.from(el.querySelectorAll('.fc'));
+    let pending = 0;
+    const finish = () => {
+      if (--pending > 0) return;
+      if (a.length !== b.length) cellsFor(el, to);   // 남는 칸 정리
+      if (onDone) onDone();
+    };
+    cells.forEach((sp, i) => {
+      const t = i < b.length ? b[i] : ' ';
+      if ((a[i] || ' ') === t) return;
+      pending++;
+      runCell(sp, a[i] || ' ', t, i * 25, finish);
+    });
+    if (!pending && onDone) onDone();
+  }
+
+  // 전광판 다시 그릴 때: 처음엔 그대로, 이후엔 바뀐 칸만 넘김
+  function setBoard(board, html) {
+    const prev = {};
+    board.querySelectorAll('[data-flap]').forEach(e => { prev[e.dataset.flap] = e.dataset.final != null ? e.dataset.final : e.textContent; });
+    board.innerHTML = html;
+    let pending = 0;
+    board.querySelectorAll('[data-flap]').forEach(e => {
+      const to = e.textContent;
+      const from = prev[e.dataset.flap];
+      if (from == null || from === to) { cellsFor(e, to); return; }
+      cellsFor(e, from);   // 직전 글자 그대로 보여준 상태에서 시작 (사라졌다 생기지 않게)
+      const isMq = e.classList.contains('mq');
+      if (isMq) pending++;
+      flapTo(e, to, isMq ? () => { if (--pending === 0) armMarquee(board); } : null);
+    });
+    if (!pending) armMarquee(board);
+  }
+
+  let stampTimer = null;
+  function showStamp(p) {
+    const ov = document.getElementById('stampOverlay');
+    const pl = placeOf(p);
+    const key = p.placeKey || ('n:' + p.place);
+    const seed = hashNum(key);
+    const rare = rareOf(key);
+    if (ov._fx) { ov._fx.destroy(); ov._fx = null; }
+    ov.innerHTML = '<div class="st-fx"></div><div class="st" style="--rot:' + ((seed % 25) - 12) + 'deg">' +
+      stampSvg(pl ? dn(pl) : p.place, pl ? pl.type : '기타', p.date.slice(5).replace('-', '.'), seed, rare) + '</div>';
+    ov.classList.remove('fade');
+    ov.classList.add('show');
+    // 도장이 닿는 순간 잉크 튐 (금박이면 별 반짝임 추가)
+    if (window.lottie && !REDUCED) {
+      const color = rare ? '#c99a1f' : (STAMP_COLORS[pl ? pl.type : '기타'] || STAMP_COLORS['기타']);
+      setTimeout(() => {
+        const box = ov.querySelector('.st-fx');
+        if (box) ov._fx = lottie.loadAnimation({ container: box, renderer: 'svg', loop: false, autoplay: true, animationData: fxStamp(color, !!rare) });
+      }, 260);
+    }
+    if (navigator.vibrate) navigator.vibrate(30);
+    clearTimeout(stampTimer);
+    stampTimer = setTimeout(() => {
+      ov.classList.add('fade');
+      stampTimer = setTimeout(() => { ov.classList.remove('show', 'fade'); if (ov._fx) { ov._fx.destroy(); ov._fx = null; } }, 500);
+    }, rareOf(key) ? 1500 : 1100);
+  }
+
+  /* ───────── 여행 결산 (Wrapped) ───────── */
+
+  let wrapIdx = 0;
+
+  function wrapStats() {
+    const pts = sortedPoints();
+    const anyVisit = pts.some(p => isVisited(p));
+    const use = anyVisit ? pts.filter(p => isVisited(p)) : pts;
+    const placesUsed = {};
+    use.forEach(p => { placesUsed[p.placeKey || ('n:' + p.place)] = p; });
+
+    // 이동: 구간 시간·거리 (계획 경로 기준)
+    let walkMin = 0, transitMin = 0, distM = 0, fare = 0;
+    DATA.segments.forEach(s => {
+      if (s.mode === '도보') walkMin += s.minutes;
+      else if (s.mode === '대중교통') transitMin += s.minutes;
+      if (s.polyline) {
+        const ll = decodePolyline(s.polyline);
+        for (let i = 1; i < ll.length; i++) distM += haversine(ll[i - 1], ll[i]);
+      }
+      String(s.summary || '').split(' → ').forEach(t => { const m = t.match(/^도보\s*(\d+)분$/); if (m && s.mode === '대중교통') walkMin += Number(m[1]); });
+    });
+    // 장소 안에서 시작점 → 종착점 걷는 거리 (시장·상점가 관통 등). 직선거리 기준
+    let insideM = 0;
+    use.forEach(p => { if (hasEnd(p)) insideM += haversine([p.lat, p.lng], [p.endLat, p.endLng]); });
+    distM += insideM;
+    pts.forEach(p => { if (p.fare != null && !isNaN(p.fare)) fare += p.fare; });
+
+    // 먹은 것
+    const food = Object.values(placesUsed).filter(p => { const pl = placeOf(p); return pl && (pl.type === '식당' || pl.type === '카페'); });
+
+    // 동네별 머문 시간
+    const areaMin = {};
+    use.forEach(p => { const pl = placeOf(p); const a = pl && pl.area; if (a) areaMin[a] = (areaMin[a] || 0) + (p.stay || 0); });
+    const topArea = Object.keys(areaMin).sort((a, b) => areaMin[b] - areaMin[a])[0];
+
+    // 돈
+    let perWon = 0; const seenB = {};
+    pts.forEach(p => { if (p.budgetId && p.per && !seenB[p.budgetId]) { seenB[p.budgetId] = true; perWon += p.per; } });
+    let actualYen = 0;
+    Object.values(DATA.spend || {}).forEach(x => { actualYen += x.amount; });
+
+    return {
+      anyVisit, days: DATA.dates.length, stops: Object.keys(placesUsed).length,
+      walkMin, transitMin, steps: Math.round(walkMin * 110), distKm: distM / 1000, insideKm: insideM / 1000, fare,
+      food, topArea, topAreaMin: topArea ? areaMin[topArea] : 0,
+      perWon, actualYen, stamped: stampedPlaces(),
+    };
+  }
+
+  function renderWrap() {
+    const box = document.getElementById('wrapInner');
+    const st = wrapStats();
+    const tag = '<span class="tag">' + (st.anyVisit ? '실제 기준' : '계획 기준') + '</span>';
+    const range = tripRange();
+    const hm = m => (m >= 60 ? Math.floor(m / 60) + '시간 ' : '') + (m % 60) + '분';
+    const slides = [
+      { bg: 'linear-gradient(150deg,#1d2633,#2b62d9)', html: tag + '<div class="k">이번 여행</div><div class="v">' + st.days + '<small>일</small></div>' +
+        '<div class="d">' + esc(dayLabel(DATA.dates[0])) + ' – ' + esc(dayLabel(DATA.dates[DATA.dates.length - 1])) + '<br>' + st.stops + '곳을 ' + (st.anyVisit ? '다녀왔음' : '갈 예정') + '</div>' },
+      { bg: 'linear-gradient(150deg,#0f5132,#13945f)', html: tag + '<div class="k">걸은 거리</div><div class="v">' + st.steps.toLocaleString() + '<small>보</small></div>' +
+        '<div class="d">걷기 약 ' + hm(st.walkMin) + ', 전철 ' + hm(st.transitMin) + '<br>이동 거리 총 ' + st.distKm.toFixed(1) + 'km' +
+        (st.insideKm >= 0.05 ? ' (시장·거리 관통 ' + st.insideKm.toFixed(1) + 'km 포함)' : '') +
+        (st.fare ? ', 교통비 1인 ' + YEN(st.fare) : '') + '</div>' },
+      { bg: 'linear-gradient(150deg,#7c2d12,#ea580c)', html: tag + '<div class="k">먹은 곳</div><div class="v">' + st.food.length + '<small>곳</small></div>' +
+        '<ul>' + st.food.slice(0, 8).map(p => '<li>' + esc(pname(p)) + '</li>').join('') + (st.food.length > 8 ? '<li>외 ' + (st.food.length - 8) + '곳</li>' : '') + '</ul>' },
+      { bg: 'linear-gradient(150deg,#3b0764,#7c3aed)', html: tag + '<div class="k">제일 오래 머문 동네</div><div class="v" style="font-size:clamp(34px,10vw,56px)">' + esc(st.topArea || '—') + '</div>' +
+        '<div class="d">' + (st.topArea ? hm(st.topAreaMin) + ' 머무름' : '장소 시트에 지역을 채우면 나옴') + '</div>' },
+      { bg: 'linear-gradient(150deg,#1f2937,#b45309)', html: tag + '<div class="k">1인 예산</div><div class="v" style="font-size:clamp(32px,10vw,54px)">' + WON.format(st.perWon) + '</div>' +
+        '<div class="d">' + (st.actualYen ? '여행 중 기록한 실제 지출 ' + YEN(st.actualYen) + (DATA.rate ? ' (약 ' + WON.format(st.actualYen * DATA.rate) + ')' : '') : '여행 중 "지출 입력"을 쓰면 실제 지출도 나옴') + '</div>' },
+      { bg: 'linear-gradient(150deg,#3a3326,#7a6a4a)', html: tag + '<div class="k">모은 도장</div><div class="v">' + st.stamped.length + '<small>/ ' + passPlaces().length + '</small></div>' +
+        '<div class="mini-stamps">' + st.stamped.slice(0, 18).map(x => stampSvg(x.place ? dn(x.place) : x.point.place, x.place ? x.place.type : '기타', '', hashNum(x.key), rareOf(x.key))).join('') + '</div>' },
+      { bg: 'linear-gradient(150deg,#111827,#c4302b)', html: '<div class="v" style="font-family:Galmuri11,DotGothic16,monospace;font-size:clamp(28px,8vw,46px)">おつかれさまでした</div>' +
+        '<div class="d">' + (range && new Date() < range.start ? '아직 출발 전. 여행 끝나고 다시 보면 실제 기록으로 바뀜' : '수고했음. 다음 여행도 이 앱으로') + '</div>' },
+    ];
+    wrapIdx = Math.max(0, Math.min(wrapIdx, slides.length - 1));
+    const sl = slides[wrapIdx];
+    box.innerHTML = '<div class="wbar">' + slides.map((_, i) => '<i class="' + (i <= wrapIdx ? 'on' : '') + '"></i>').join('') + '</div>' +
+      '<div class="wslide" id="wslide" style="--wbg:' + sl.bg + '">' + sl.html + '</div>' +
+      '<div class="wnav"><button class="btn" type="button" id="wPrev"' + (wrapIdx === 0 ? ' disabled' : '') + '>이전</button>' +
+      '<button class="btn" type="button" id="wHome">홈으로</button>' +
+      '<button class="btn primary" type="button" id="wNext">' + (wrapIdx === slides.length - 1 ? '처음부터' : '다음') + '</button></div>';
+    document.getElementById('wPrev').onclick = () => { wrapIdx--; renderWrap(); };
+    document.getElementById('wNext').onclick = () => { wrapIdx = wrapIdx === slides.length - 1 ? 0 : wrapIdx + 1; renderWrap(); };
+    document.getElementById('wHome').onclick = () => setView('home');
+    // 좌우 스와이프·탭으로 넘기기
+    const el = document.getElementById('wslide');
+    let x0 = null;
+    el.addEventListener('pointerdown', e => { x0 = e.clientX; });
+    el.addEventListener('pointerup', e => {
+      if (x0 == null) return;
+      const dx = e.clientX - x0; x0 = null;
+      if (Math.abs(dx) < 30) { const r = el.getBoundingClientRect(); wrapIdx += e.clientX > r.left + r.width / 2 ? 1 : -1; }
+      else wrapIdx += dx < 0 ? 1 : -1;
+      if (wrapIdx >= slides.length) wrapIdx = 0;
+      renderWrap();
+    });
+  }
+</script>

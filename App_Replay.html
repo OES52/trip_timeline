@@ -1,0 +1,147 @@
+<!--App_Replay.html-->
+<script>
+  /* ───────── 하루 리플레이 ───────── */
+
+  const replayLayer = L.layerGroup().addTo(map);
+  let RP = null;
+
+  // 다음 장소로 떠나는 지점: 종착점 있으면 종착점, 없으면 시작점
+  function outLL(p) { return hasEnd(p) ? [p.endLat, p.endLng] : [p.lat, p.lng]; }
+
+  function buildReplay(date) {
+    const pts = DATA.points.filter(p => p.date === date && p.lat != null).sort((a, b) => a.order - b.order);
+    const segs = DATA.segments.filter(s => s.date === date);
+    const ev = [];
+    pts.forEach((p, i) => {
+      const a = toMin(p.arrive), d = toMin(p.depart);
+      if (a != null) ev.push({ type: 'stay', p: p, a: a, d: d != null ? d : a });
+      const nx = pts[i + 1];
+      if (!nx) return;
+      const s = segs.find(x => x.fromOrder === p.order && x.toOrder === nx.order);
+      const dep = toMin(p.depart), arr = toMin(nx.arrive);
+      if (dep == null || arr == null) return;
+      let coords = s && s.polyline ? decodePolyline(s.polyline) : [];
+      if (coords.length < 2) coords = arcPoints(outLL(p), [nx.lat, nx.lng]);
+      const cum = [0];
+      for (let k = 1; k < coords.length; k++) cum.push(cum[k - 1] + haversine(coords[k - 1], coords[k]));
+      ev.push({ type: 'move', s: s, from: p, to: nx, a: dep, d: arr, coords: coords, cum: cum, total: cum[cum.length - 1] || 1 });
+    });
+    // 재생 길이: 이동은 그대로, 머무는 시간은 1/4로 압축
+    let u = 0;
+    ev.forEach(e => { e.u0 = u; e.len = Math.max(0.5, (e.d - e.a) * (e.type === 'stay' ? 0.25 : 1)); u += e.len; });
+    return { ev: ev, total: u };
+  }
+
+  // 머무는 동안 위치: 종착점이 있으면 시작점 → 종착점으로 천천히 걸어감
+  function stayPos(p, f) {
+    if (!hasEnd(p)) return [p.lat, p.lng];
+    return [p.lat + (p.endLat - p.lat) * f, p.lng + (p.endLng - p.lng) * f];
+  }
+
+  function startReplay(date) {
+    stopReplay();
+    const R = buildReplay(date);
+    if (!R.ev.length) { setStatus('리플레이할 좌표·시각이 없음', true); return; }
+    const first = R.ev[0].type === 'stay' ? [R.ev[0].p.lat, R.ev[0].p.lng] : R.ev[0].coords[0];
+    RP = Object.assign(R, {
+      date: date, u: 0, speed: 1, playing: true, last: null, stopKey: null,
+      perSec: R.total / 28,   // 1배속 기준 약 28초에 하루
+      marker: L.marker(first, { icon: L.divIcon({ className: '', html: '<div class="rp-dot"></div>', iconSize: [18, 18], iconAnchor: [9, 9] }), zIndexOffset: 2000 }).addTo(replayLayer),
+      trail: L.polyline([first], { color: '#ff3b30', weight: 5, opacity: .85 }).addTo(replayLayer),
+    });
+    map.setView(first, 15);
+    const panel = L.DomUtil.create('div', 'rp-panel', map.getContainer());
+    panel.id = 'rpPanel';
+    panel.innerHTML = '<div class="rp-clock" id="rpClock">--:--</div><div class="rp-label" id="rpLabel"></div>' +
+      '<div class="rp-ctrl"><button type="button" id="rpPlay" aria-label="일시정지">❚❚</button>' +
+      '<button type="button" id="rpSpeed" aria-label="속도">1x</button><button type="button" id="rpClose" aria-label="닫기">✕</button></div>' +
+      '<input class="rp-range" id="rpRange" type="range" min="0" max="1000" value="0" aria-label="재생 위치">';
+    L.DomEvent.disableClickPropagation(panel);
+    L.DomEvent.disableScrollPropagation(panel);
+    document.getElementById('rpPlay').onclick = () => {
+      if (RP.u >= RP.total) RP.u = 0;
+      RP.playing = !RP.playing; RP.last = null;
+      document.getElementById('rpPlay').textContent = RP.playing ? '❚❚' : '▶';
+      if (RP.playing) RP.raf = requestAnimationFrame(rpFrame);
+    };
+    document.getElementById('rpSpeed').onclick = () => {
+      RP.speed = RP.speed === 1 ? 2 : RP.speed === 2 ? 4 : 1;
+      document.getElementById('rpSpeed').textContent = RP.speed + 'x';
+    };
+    document.getElementById('rpClose').onclick = stopReplay;
+    document.getElementById('rpRange').oninput = e => { RP.u = e.target.value / 1000 * RP.total; rpDraw(true); };
+    RP.raf = requestAnimationFrame(rpFrame);
+  }
+
+  function rpFrame(ts) {
+    if (!RP || !RP.playing) return;
+    if (RP.last != null) RP.u += (ts - RP.last) / 1000 * RP.perSec * RP.speed;
+    RP.last = ts;
+    if (RP.u >= RP.total) {
+      RP.u = RP.total; rpDraw(false); RP.playing = false;
+      document.getElementById('rpPlay').textContent = '▶';
+      const b = RP.trail.getBounds(); if (b.isValid()) map.fitBounds(b, { padding: [40, 40] });
+      return;
+    }
+    rpDraw(false);
+    RP.raf = requestAnimationFrame(rpFrame);
+  }
+
+  function rpDraw(seek) {
+    const e = RP.ev.find(x => RP.u >= x.u0 && RP.u < x.u0 + x.len) || RP.ev[RP.ev.length - 1];
+    const f = Math.max(0, Math.min(1, (RP.u - e.u0) / e.len));
+    const clock = e.a + f * (e.d - e.a);
+    let pos, label;
+    if (e.type === 'stay') {
+      pos = stayPos(e.p, f);
+      label = '📍 ' + pname(e.p) + (e.p.activity ? ' · ' + e.p.activity : '');
+      const key = e.p.date + '#' + e.p.order;
+      if (RP.stopKey !== key) {
+        RP.stopKey = key;
+        const el = document.querySelector('.stop[data-key="' + key + '"]');
+        if (el) { clearActive(); el.classList.add('active'); el.scrollIntoView({ block: 'nearest' }); }
+      }
+    } else {
+      const dist = f * e.total;
+      let k = 1;
+      while (k < e.cum.length - 1 && e.cum[k] < dist) k++;
+      const s0 = e.cum[k - 1], s1 = e.cum[k] || s0 + 1;
+      const t = Math.max(0, Math.min(1, (dist - s0) / (s1 - s0)));
+      pos = [e.coords[k - 1][0] + (e.coords[k][0] - e.coords[k - 1][0]) * t, e.coords[k - 1][1] + (e.coords[k][1] - e.coords[k - 1][1]) * t];
+      label = (e.s ? e.s.mode : '이동') + ' → ' + pname(e.to);
+    }
+    RP.marker.setLatLng(pos);
+    if (seek) {
+      // 탐색했을 땐 그 시점까지 지나온 경로를 다시 그림
+      const pts = [];
+      RP.ev.forEach(x => {
+        if (x.u0 > RP.u) return;
+        if (x.type === 'move') {
+          const ff = Math.min(1, (RP.u - x.u0) / x.len);
+          x.coords.forEach((c, i) => { if (x.cum[i] <= ff * x.total) pts.push(c); });
+        } else {
+          pts.push([x.p.lat, x.p.lng]);
+          if (hasEnd(x.p)) pts.push(stayPos(x.p, Math.min(1, (RP.u - x.u0) / x.len)));
+        }
+      });
+      pts.push(pos);
+      RP.trail.setLatLngs(pts);
+      map.panTo(pos);
+    } else {
+      RP.trail.addLatLng(pos);
+      if (!map.getBounds().pad(-0.25).contains(pos)) map.panTo(pos, { animate: true, duration: 0.6 });
+    }
+    document.getElementById('rpClock').textContent = hhmm(Math.round(clock));
+    document.getElementById('rpLabel').textContent = label;
+    document.getElementById('rpRange').value = Math.round(RP.u / RP.total * 1000);
+  }
+
+  function stopReplay() {
+    if (!RP) return;
+    cancelAnimationFrame(RP.raf);
+    replayLayer.clearLayers();
+    const panel = document.getElementById('rpPanel');
+    if (panel) panel.remove();
+    RP = null;
+  }
+</script>

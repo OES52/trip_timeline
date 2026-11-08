@@ -1,0 +1,208 @@
+<!--Style_Extra.html-->
+<style>
+  /* ───────── Lottie: 날씨·로딩 ───────── */
+  .wxl { display: inline-block; width: 30px; height: 30px; vertical-align: middle; margin: -4px 4px 0 -2px; }
+  .boot { position: fixed; inset: 0; z-index: 4000; background: var(--paper); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--muted); font-size: 14px; transition: opacity .3s; }
+  .boot.hide { opacity: 0; pointer-events: none; }
+  .boot-train { width: 180px; height: 70px; }
+
+  /* ───────── 지도 리스트 날짜 스와이프 ───────── */
+  #list.slide-l { animation: inL .28s var(--ease); }
+  #list.slide-r { animation: inR .28s var(--ease); }
+  @keyframes inL { from { transform: translateX(36px); opacity: .2; } to { transform: none; opacity: 1; } }
+  @keyframes inR { from { transform: translateX(-36px); opacity: .2; } to { transform: none; opacity: 1; } }
+
+  /* ───────── 여권 책 ───────── */
+  .pass-swiper { margin-top: 14px; padding-bottom: 34px; perspective: 1400px; }
+  .pass-swiper .swiper-slide { box-sizing: border-box; }
+  .pass-swiper .pass-page { margin-top: 0; min-height: 360px; }
+  .pass-swiper .swiper-pagination-bullet-active { background: #7a6a4a; }
+  .pass-cover {
+    min-height: 360px; border-radius: 14px; padding: 30px 22px; box-sizing: border-box; color: #e8c97a;
+    background: radial-gradient(120% 80% at 50% 0%, #26365a, #141c30); border: 1px solid #0d1322;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center;
+    box-shadow: inset 0 0 0 6px rgba(232, 201, 122, .12), var(--shadow-2);
+  }
+  .pass-cover .t1 { font-family: "Galmuri11", "DotGothic16", monospace; letter-spacing: .3em; font-size: 13px; opacity: .85; }
+  .pass-cover .emblem { width: 92px; height: 92px; border-radius: 50%; border: 2px solid #e8c97a; display: grid; place-items: center; font-size: 40px; margin: 8px 0; }
+  .pass-cover h3 { font-size: 26px; margin: 0; letter-spacing: .08em; }
+  .pass-cover .who { font-size: 15px; color: #f4e3b5; }
+  .pass-cover .meta { font-size: 13px; opacity: .8; }
+  .pass-cover .hint { font-size: 12px; opacity: .55; margin-top: 12px; }
+  .pass-nav { display: flex; justify-content: space-between; margin-top: 4px; }
+
+  /* ───────── 사용자 선택 ───────── */
+  #who { flex: 1; min-height: 0; overflow-y: auto; }
+  .who-inner { max-width: 640px; margin: 0 auto; padding: 32px 16px 60px; }
+  .who-inner h2 { font-size: 24px; letter-spacing: -0.02em; margin: 0 0 4px; }
+  .who-inner .lead { color: var(--muted); font-size: 14px; margin: 0 0 22px; }
+  .who-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; }
+  .who-card {
+    position: relative; text-align: left; font: inherit; color: var(--ink); cursor: pointer;
+    background: var(--panel); border: 1px solid var(--rule); border-radius: 16px; padding: 18px 16px 16px;
+    box-shadow: var(--shadow-1); transition: transform .15s var(--ease), box-shadow .15s var(--ease), border-color .15s var(--ease);
+  }
+  .who-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-2); }
+  .who-card[aria-current="true"] { border-color: var(--uc); box-shadow: 0 0 0 2px var(--uc); }
+  .avatar { width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; color: #fff; font-weight: 700; font-size: 20px;
+    background: var(--uc); font-family: "Galmuri11", "DotGothic16", monospace; }
+  .who-card b { display: block; font-size: 18px; margin-top: 12px; }
+  .who-card .rng { display: block; font-size: 13px; color: var(--muted); margin-top: 2px; }
+  .who-card .tag { display: inline-block; font-size: 11px; font-weight: 700; margin-top: 10px; padding: 1px 8px; border-radius: 10px;
+    color: var(--uc); background: color-mix(in srgb, var(--uc) 14%, var(--panel)); }
+  .who-card .now { position: absolute; top: 14px; right: 14px; font-size: 11px; color: var(--uc); font-weight: 700; }
+  .who-chip {
+    display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px 0 4px; border-radius: 16px; cursor: pointer;
+    font: inherit; font-size: 13px; font-weight: 500; color: var(--ink); background: var(--panel); border: 1px solid var(--rule);
+  }
+  .who-chip .avatar { width: 24px; height: 24px; font-size: 11px; }
+  @media (max-width: 640px) { .who-chip .nm { display: none; } .who-chip { padding: 0 4px; } }
+
+  /* ───────── 타임라인 시간 비례 ───────── */
+  .tl-tools { display: flex; justify-content: flex-end; gap: 8px; margin-bottom: 10px; }
+  .tl-tools .btn { font-size: 13px; padding: 5px 12px; }
+  .tl-tools .btn[aria-pressed="true"] { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+  .tcard { display: flex; flex-direction: column; }
+  .tcard .actions { margin-top: auto; padding-top: 8px; }
+
+  /* ───────── 실제 도착·예상 시각·일정 조정 ───────── */
+  .ttime .real, .time .real { display: block; font-size: 12px; font-weight: 700; color: var(--ok); margin-top: 3px; }
+  .ttime .pred, .time .pred { display: block; font-size: 12px; font-weight: 700; margin-top: 3px; }
+  .pred.late { color: var(--late); } .pred.early { color: var(--ok); }
+  .pace { font-size: 13px; font-weight: 700; margin: -6px 0 14px; padding: 6px 10px; border-radius: 8px; background: var(--panel-2); }
+  .pace.late { color: var(--late); } .pace.early, .pace.ok { color: var(--ok); }
+  #list .pace { margin-left: calc(var(--rail-x) + 22px); }
+  .arr-btn, .edit-btn { font: inherit; font-size: 12px; color: var(--muted); background: var(--panel); border: 1px solid var(--rule); border-radius: 12px; padding: 1px 10px; cursor: pointer; }
+  .arr-btn.has { color: var(--ok); border-color: var(--ok); font-weight: 700; }
+  .arr-form, .edit-row { display: none; gap: 6px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+  .arr-form.open, .edit-row.open { display: flex; }
+  .arr-form input { font: inherit; font-size: 16px; padding: 4px 8px; border: 1px solid var(--rule); border-radius: 8px; background: var(--panel); color: var(--ink); }
+  .arr-form button, .edit-row button { font: inherit; font-size: 13px; border-radius: 8px; padding: 5px 12px; cursor: pointer; border: 1px solid var(--rule); background: var(--panel); color: var(--ink); }
+  .arr-form button.save { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+  .edit-row button.danger { color: var(--late); border-color: var(--late); }
+  .edit-row .hint { font-size: 11px; color: var(--muted); width: 100%; }
+  body.guest .arr-btn, body.guest .arr-form, body.noedit .edit-btn, body.noedit .edit-row { display: none !important; }
+  /* 카드 버튼이 많아져서 줄바꿈되면 글자 단위로 깨지지 않게 */
+  .tcard .actions { flex-wrap: wrap; gap: 6px 8px; }
+  .tcard .actions button { white-space: nowrap; }
+  /* 전광판 시각 칸: "~10:27" 6글자 들어가게 */
+  .brow { grid-template-columns: 54px 74px 1fr auto; }
+  .brow .t { white-space: nowrap; }
+  @media (max-width: 520px) { .brow { grid-template-columns: 44px 68px 1fr; } }
+
+  /* ───────── 되돌리기 토스트 ───────── */
+  .toast {
+    position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); z-index: 2500;
+    transform: translate(-50%, 30px); opacity: 0; pointer-events: none;
+    display: flex; align-items: center; gap: 14px; max-width: calc(100vw - 32px);
+    background: #1d2633; color: #fff; border-radius: 12px; padding: 10px 12px 10px 16px; box-shadow: var(--shadow-2);
+    font-size: 14px; transition: transform .25s var(--ease), opacity .25s var(--ease);
+  }
+  .toast.show { transform: translate(-50%, 0); opacity: 1; pointer-events: auto; }
+  .toast button { font: inherit; font-size: 14px; font-weight: 700; color: #ffd166; background: none; border: 0; padding: 4px 6px; cursor: pointer; white-space: nowrap; }
+
+  /* ───────── 액션 시트 ───────── */
+  .sheet-wrap { position: fixed; inset: 0; z-index: 2400; background: rgba(0,0,0,.35); display: none; align-items: flex-end; justify-content: center; }
+  .sheet-wrap.open { display: flex; }
+  .sheet { width: min(420px, 100%); background: var(--panel); border-radius: 16px 16px 0 0; padding: 14px 14px calc(14px + env(safe-area-inset-bottom, 0px)); animation: slideUp .2s var(--ease); }
+  .sheet h4 { margin: 4px 6px 12px; font-size: 15px; }
+  .sheet .stamp-prev { width: 96px; height: 96px; margin: 0 auto 8px; }
+  .sheet .stamp-prev svg { width: 100%; height: 100%; }
+  .sheet button { display: block; width: 100%; font: inherit; font-size: 15px; text-align: center; padding: 12px; border-radius: 10px; border: 0; background: var(--panel-2); color: var(--ink); margin-top: 6px; cursor: pointer; }
+  .sheet button.danger { color: var(--late); font-weight: 700; }
+  .sheet button.cancel { background: none; color: var(--muted); }
+
+  /* ───────── 전광판 플랩 ───────── */
+  .board [data-flap] { perspective: 300px; }
+  /* 글자마다 폭이 고정된 칸. 바뀐 칸만 뒤집힘 */
+  .fc { display: inline-block; width: .62em; text-align: center; transform-origin: 50% 50%; }
+  .fc.w { width: 1em; }
+  .fc.sp { width: .35em; }
+  .fc.fl { animation: flipc .09s ease-out; }
+  @keyframes flipc { 0% { transform: scaleY(.15); } 100% { transform: none; } }
+
+  /* ───────── 금박 도장 ───────── */
+  .rare-tag { display: inline-block; font-size: 11px; font-weight: 700; color: #7a5a00; background: linear-gradient(90deg, #f3d77a, #fff1bf, #e2b84a); border-radius: 10px; padding: 1px 8px; }
+  .slot.rare::after { content: "★"; position: absolute; top: 4px; right: 6px; color: #c99a1f; font-size: 14px; text-shadow: 0 0 6px rgba(255, 210, 90, .8); }
+
+  /* ───────── 하루 리플레이 ───────── */
+  #map { position: relative; }
+  .plane { font-size: 20px; line-height: 24px; text-align: center; color: var(--manual); text-shadow: 0 1px 2px rgba(255,255,255,.9); }
+  .replay-btn { margin: 0 0 14px calc(var(--rail-x) + 22px); }
+  .rp-panel {
+    position: absolute; left: 10px; right: 10px; bottom: 12px; z-index: 800;
+    background: var(--panel); color: var(--ink); border-radius: 14px; box-shadow: var(--shadow-2);
+    padding: 10px 12px; display: grid; grid-template-columns: auto 1fr auto; gap: 4px 12px; align-items: center;
+  }
+  .rp-clock { font-family: "Galmuri11", "DotGothic16", monospace; font-size: 26px; color: #ffae00; background: #0a0a0a;
+    border-radius: 8px; padding: 4px 10px; text-shadow: 0 0 6px rgba(255,174,0,.5); grid-row: span 2; }
+  .rp-label { font-size: 14px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rp-ctrl { display: flex; gap: 6px; grid-row: span 2; }
+  .rp-ctrl button { font: inherit; font-size: 13px; min-width: 38px; height: 34px; border-radius: 8px; border: 1px solid var(--rule); background: var(--panel); color: var(--ink); cursor: pointer; }
+  .rp-range { width: 100%; accent-color: var(--ink); }
+  .rp-dot { width: 18px; height: 18px; border-radius: 50%; background: #ff3b30; border: 3px solid #fff; box-shadow: 0 0 0 0 rgba(255,59,48,.6); animation: pulse 1.4s infinite; }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(255,59,48,.55); } 70% { box-shadow: 0 0 0 14px rgba(255,59,48,0); } 100% { box-shadow: 0 0 0 0 rgba(255,59,48,0); } }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
+
+  /* ───────── 전체 탭 날짜 색 ───────── */
+  .sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: 0; }
+  .day-legend {
+    background: var(--panel); color: var(--ink); border-radius: 10px; box-shadow: var(--shadow-2);
+    padding: 6px; display: flex; flex-direction: column; gap: 2px; max-height: 40vh; overflow-y: auto;
+  }
+  .day-legend button {
+    font: inherit; font-size: 12px; text-align: left; color: var(--ink); background: none; border: 0;
+    border-radius: 6px; padding: 3px 8px; cursor: pointer; white-space: nowrap;
+  }
+  .day-legend button:hover { background: var(--panel-2); }
+
+  /* ───────── 사진 핀 ───────── */
+  .pin-photo {
+    position: relative; width: 40px; height: 40px; border-radius: 50%;
+    border: 3px solid var(--pin, #1d2633); background: #fff; box-shadow: 0 2px 6px rgba(29, 38, 51, .4);
+  }
+  .pin-photo img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; }
+  .pin-photo span {
+    position: absolute; right: -6px; bottom: -4px; min-width: 18px; height: 18px; padding: 0 4px; box-sizing: border-box;
+    border-radius: 9px; background: var(--pin, #1d2633); color: #fff; border: 2px solid #fff;
+    font: 700 10px/14px "IBM Plex Sans KR", sans-serif; text-align: center;
+  }
+  .pop-photo { display: block; width: 200px; max-width: 100%; height: 110px; object-fit: cover; border-radius: 8px; margin-bottom: 6px; }
+
+  /* ───────── 도보 거리 라벨 ───────── */
+  .walk-label {
+    display: inline-block; transform: translate(-50%, -50%); white-space: nowrap;
+    font: 700 11px/1 "IBM Plex Sans KR", sans-serif; color: #0f6b45;
+    background: #fff; border: 1.5px solid #13945f; border-radius: 10px; padding: 3px 7px;
+    box-shadow: 0 1px 3px rgba(29, 38, 51, .3);
+  }
+
+  /* ───────── 여기로 길찾기 ───────── */
+  .nav-btn {
+    display: inline-flex; align-items: center; gap: 5px; font-size: 13px; font-weight: 700; text-decoration: none;
+    color: #fff; background: #1a73e8; border-radius: 16px; padding: 5px 12px; white-space: nowrap;
+  }
+  .nav-btn:hover { background: #1557b0; }
+  .nav-btn.sm { font-size: 12px; padding: 2px 10px; margin: 8px 6px 0 0; vertical-align: middle; }
+  .tcard .actions .nav-btn.sm { margin-top: 0; }
+  .leaflet-popup-content .nav-btn { color: #fff; margin-top: 6px; }
+  .links .nav-btn { margin-right: 4px; }
+
+  /* ───────── 일몰 선 (타임라인) ───────── */
+  :root { --sun: #c96a12; }
+  @media (prefers-color-scheme: dark) { :root { --sun: #f2a04e; } }
+  .tsun { display: grid; grid-template-columns: 58px 1fr; gap: 0 12px; align-items: center; margin: 4px 0; }
+  .tsun .sun-t { text-align: right; font-size: 12px; font-weight: 700; color: var(--sun); }
+  .tsun .sun-l { position: relative; display: flex; align-items: center; min-height: 24px; }
+  .tsun .sun-l::before {
+    content: ""; position: absolute; left: -12px; right: 0; top: 50%; height: 2px; border-radius: 1px;
+    background: linear-gradient(90deg, var(--sun), color-mix(in srgb, var(--sun) 15%, transparent));
+  }
+  .tsun .sun-l span {
+    position: relative; font-size: 12px; font-weight: 700; color: var(--sun);
+    background: var(--paper); padding: 0 8px; margin-left: 10px;
+  }
+</style>

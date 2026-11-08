@@ -1,0 +1,256 @@
+<!--App_Home.html-->
+<script>
+  /* ───────── 여행 시작·끝 시각 ───────── */
+
+  function sortedPoints() {
+    return DATA.points.slice().sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : a.order - b.order);
+  }
+
+  // "2026-12-25" + "25:10" → 그 시각의 Date (일본·한국 같은 +09:00)
+  function toDateTime(date, hm) {
+    const m = toMin(hm);
+    if (m == null) return null;
+    const base = new Date(date + 'T00:00:00+09:00');
+    return new Date(base.getTime() + m * 60000);
+  }
+
+  function tripRange() {
+    const pts = sortedPoints();
+    if (!pts.length) return null;
+    const first = pts[0], last = pts[pts.length - 1];
+    return {
+      start: toDateTime(first.date, first.arrive || first.depart) || new Date(first.date + 'T00:00:00+09:00'),
+      end: toDateTime(last.date, last.depart || last.arrive) || new Date(last.date + 'T23:59:00+09:00'),
+      first: first,
+    };
+  }
+
+  /* ───────── 홈 ───────── */
+
+  let homeTimer = null;
+  let myPos = null, homeWatch = null;
+
+  function renderHome() {
+    renderBoard();
+    renderHomeBody();
+    if (homeTimer) clearInterval(homeTimer);
+    homeTimer = setInterval(() => { if (currentView === 'home') renderBoard(); }, 1000);
+  }
+
+  function tokyoClock() {
+    return new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(new Date());
+  }
+
+  function mqSpan(text, k) { return '<span class="mq"' + (k ? ' data-flap="' + k + '"' : '') + '>' + esc(text) + '</span>'; }
+
+  // 긴 장소명은 전광판처럼 흘러가게
+  function armMarquee(root) {
+    root.querySelectorAll('.dest').forEach(d => {
+      const mq = d.querySelector('.mq');
+      if (mq && mq.scrollWidth > d.clientWidth + 2) {
+        mq.classList.add('scroll');
+        mq.style.setProperty('--dur', Math.max(6, mq.scrollWidth / 40) + 's');
+      }
+    });
+  }
+
+  // 다음 이동 한 줄 (전광판 분위기 유지: LED 색 글자만 씀)
+  //  대중교통: 첫 탑승 시각·승차역(일본어)·노선·방면 + 환승 횟수 + 패스/카드 표시
+  //  택시로 가기 구간: 택시 시간·1인 요금
+  function boardMoveLine(seg) {
+    const led = (txt, color) => '<span style="color:' + color + '">' + esc(txt) + '</span>';
+    const t = seg.taxi;
+    if (t && t.on) {
+      const yen = n => '¥' + Math.round(n).toLocaleString('en-US');
+      return '<div class="bsub">' + led('🚕 택시', 'var(--led)') + ' ' + t.min + '분 · ' +
+        '<span class="ln">' + esc(t.people > 1 ? '1인 ' + yen(t.perLow) + '~' + yen(t.perHigh).slice(1) : yen(t.low) + '~' + yen(t.high).slice(1)) + '</span>' +
+        (t.transitMin != null ? ' ' + led('(전철 ' + t.transitMin + '분)', '#8a8a8a') : '') + '</div>';
+    }
+    const steps = Array.isArray(seg.steps) ? seg.steps : [];
+    const rides = steps.filter(x => x.t === 'transit');
+    let detail = '';
+    if (rides.length) {
+      const f = rides[0];
+      detail = '<span class="ln">' + esc((f.dep ? f.dep + ' ' : '') + f.from) + '</span>' +
+        (f.jfrom && f.jfrom !== f.from ? ' ' + led(f.jfrom, '#8fd3ff') : '') +
+        '<span class="ln">' + esc(' 승차 · ' + f.line + (f.head ? ' ' + f.head + ' 방면' : '')) + '</span>' +
+        (rides.length > 1 ? '<span class="ln">' + esc(' · 환승 ' + (rides.length - 1) + '회') + '</span>' : '');
+      // 패스 날만: 전부 패스면 초록 PASS, 섞이면 PASS+IC, 전부 아니면 주황 IC
+      const marks = rides.map(x => x.pass);
+      if (marks.some(m => m === true || m === false)) {
+        const allPass = marks.every(m => m === true), noPass = marks.every(m => m === false);
+        detail += ' ' + (allPass ? led('[🎫 PASS]', 'var(--led-g)')
+          : noPass ? led('[💳 IC]', 'var(--led)')
+          : led('[🎫 PASS', 'var(--led-g)') + led(' + 💳 IC]', 'var(--led)'));
+      }
+    } else if (seg.mode === '대중교통') {
+      detail = '<span class="ln">' + esc(String(seg.summary || '').replace('[같은 요일 시간표 기준] ', '')) + '</span>';
+    }
+    return '<div class="bsub">' + esc(segModeName(seg)) + ' ' + seg.minutes + '분' +
+      (detail ? ' · ' + detail : '') +
+      (seg.warn ? ' ' + led('⚠', 'var(--led-r)') : '') + '</div>';
+  }
+
+  function renderBoard() {
+    const board = document.getElementById('board');
+    const range = tripRange();
+    if (!range) { board.innerHTML = '<div class="count-sub">일정이 없음</div>'; return; }
+    const now = new Date();
+    const head = '<div class="bhead"><span>旅程案内 · 여행 안내</span><span class="clock glow">' + tokyoClock() + '</span></div>';
+
+    // 여행 전: 카운트다운
+    if (now < range.start) {
+      let sec = Math.floor((range.start - now) / 1000);
+      const d = Math.floor(sec / 86400); sec -= d * 86400;
+      const h = Math.floor(sec / 3600); sec -= h * 3600;
+      const m = Math.floor(sec / 60); const s2 = sec - m * 60;
+      const u = t => '<span class="count-unit">' + t + '</span>';
+      const sig = [range.first.date, d, h, m].join('|');
+      if (board.dataset.sig === sig) {  // 초만 바꿔서 깜빡임 방지
+        const secEl = board.querySelector('.sec');
+        const clk = board.querySelector('.clock');
+        if (secEl) flapTo(secEl, String(s2).padStart(2, '0'));
+        if (clk) clk.textContent = tokyoClock();
+        return;
+      }
+      board.dataset.sig = sig;
+      setBoard(board, head +
+        '<div class="count-sub">出発まで · 출발까지</div>' +
+        '<div class="count-big glow"><span data-flap="cd">' + d + '</span>' + u('일') + '<span data-flap="ch">' + String(h).padStart(2, '0') + '</span>' + u('시간') +
+          '<span data-flap="cm">' + String(m).padStart(2, '0') + '</span>' + u('분') +
+          '<span class="sec" data-flap="cs">' + String(s2).padStart(2, '0') + '</span>' + u('초') + '</div>' +
+        '<div class="count-sub">' + esc(dayLabel(range.first.date)) + ' ' + esc(range.first.arrive || '') + ' ' + esc(pname(range.first)) + '에서 출발</div>');
+      return;
+    }
+
+    // 여행 끝
+    if (now > range.end) {
+      if (board.dataset.sig === 'end') { const clk = board.querySelector('.clock'); if (clk) clk.textContent = tokyoClock(); return; }
+      board.dataset.sig = 'end';
+      setBoard(board, head + '<div class="count-big glow" style="font-size:clamp(24px,6vw,40px)"><span data-flap="end">おつかれさまでした</span></div>' +
+        '<div class="count-sub">여행 끝. 결산 보러 가기 ↓</div>');
+      return;
+    }
+
+    // 여행 중: 지금 / 다음 / 그다음
+    const nt = tokyoNow();
+    const pts = sortedPoints().filter(p => p.date === nt.date);
+    const list = pts.length ? pts : sortedPoints().filter(p => p.date > nt.date).slice(0, 3);
+    let cur = null, nextIdx = -1;
+    list.forEach((p, i) => {
+      const a = toMin(p.arrive), dd = toMin(p.depart);
+      if (p.date === nt.date && a != null && dd != null && a <= nt.min && nt.min <= dd) cur = p;
+      if (nextIdx === -1 && (p.date > nt.date || (toMin(p.arrive) != null && toMin(p.arrive) > nt.min))) nextIdx = i;
+    });
+    const next = nextIdx >= 0 ? list[nextIdx] : null;
+    const after = nextIdx >= 0 ? list[nextIdx + 1] : null;
+    const sig = [nt.date, nt.min, cur && cur.order, next && next.order].join('|');
+    if (board.dataset.sig === sig) { const clk = board.querySelector('.clock'); if (clk) clk.textContent = tokyoClock(); return; }
+    board.dataset.sig = sig;
+
+    const remain = p => {
+      const pr = predictedMin(p);
+      const a = pr != null ? pr : toMin(p.arrive);
+      if (a == null || p.date !== nt.date) return '';
+      const r = a - nt.min;
+      return r >= 60 ? 'あと' + Math.floor(r / 60) + '時間' + (r % 60) + '分' : 'あと' + r + '分';
+    };
+    let rows = '';
+    if (cur) {
+      const left = toMin(cur.depart) - nt.min;
+      rows += '<div class="brow glow"><span class="kind now">今</span><span class="t" data-flap="t0">~' + esc(cur.depart) + '</span>' +
+        '<span class="dest">' + mqSpan(pname(cur), 'd0') + '</span><span class="rem" data-flap="r0">' + (left > 0 ? '출발까지 ' + left + '분' : '출발') + '</span></div>';
+    }
+    if (next) {
+      const seg = DATA.segments.find(x => x.date === next.date && x.toOrder === next.order);
+      const npr = predictedMin(next);
+      rows += '<div class="brow glow"><span class="kind next">次</span><span class="t" data-flap="t1">' + esc(npr != null ? hhmm(npr) : (next.arrive || '')) + '</span>' +
+        '<span class="dest">' + mqSpan(pname(next), 'd1') + '</span><span class="rem" data-flap="r1">' + remain(next) + '</span></div>';
+      if (seg) rows += boardMoveLine(seg);
+    }
+    if (after) {
+      rows += '<div class="brow glow"><span class="kind after">その次</span><span class="t" data-flap="t2">' + esc(after.arrive || '') + '</span>' +
+        '<span class="dest">' + mqSpan(pname(after), 'd2') + '</span><span class="rem"></span></div>';
+    }
+    if (!rows) rows = '<div class="count-sub">오늘 일정 끝. 푹 쉬기</div>';
+    setBoard(board, head + rows + '<div class="bfoot">일본 시간 기준</div>');
+  }
+
+  function nextStopNow() {
+    const nt = tokyoNow();
+    const range = tripRange();
+    const pts = sortedPoints();
+    if (!range || new Date() < range.start) return pts[0];
+    return pts.find(p => p.date > nt.date || (p.date === nt.date && toMin(p.arrive) != null && toMin(p.arrive) > nt.min)) || null;
+  }
+
+  function haversine(a, b) {
+    const R = 6371000, toRad = d => d * Math.PI / 180;
+    const dLat = toRad(b[0] - a[0]), dLng = toRad(b[1] - a[1]);
+    const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a[0])) * Math.cos(toRad(b[0])) * Math.sin(dLng / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(h));
+  }
+
+  function fmtDist(m) { return m >= 1000 ? (m / 1000).toFixed(m >= 10000 ? 0 : 1) + 'km' : Math.round(m) + 'm'; }
+
+  function distanceCard() {
+    const target = nextStopNow();
+    if (!target || target.lat == null) return '';
+    let body;
+    if (myPos) {
+      const d = haversine(myPos, [target.lat, target.lng]);
+      body = '<div class="dist"><span class="big">' + fmtDist(d) + '</span><span class="sub">직선거리, 걸으면 약 ' + Math.max(1, Math.round(d * 1.3 / 80)) + '분</span></div>';
+    } else {
+      body = '<p style="color:var(--muted)">현재 위치에서 몇 m 떨어졌는지 보려면 위치 권한 허용</p>' +
+        '<button class="btn primary" type="button" id="locBtn">내 위치로 거리 보기</button>';
+    }
+    return '<div class="hcard"><h2>다음 장소까지 · ' + esc(pname(target)) + '</h2>' + body +
+      '<div style="margin-top:10px">' + navBtn(target.lat, target.lng) + '</div></div>';
+  }
+
+  function startHomeLocation() {
+    if (!navigator.geolocation || homeWatch != null) return;
+    homeWatch = navigator.geolocation.watchPosition(pos => {
+      myPos = [pos.coords.latitude, pos.coords.longitude];
+      if (currentView === 'home') renderHomeBody();
+    }, err => {
+      homeWatch = null;
+      setStatus(err.code === 1
+        ? '위치 권한이 막혀 있음. 구글 웹앱 화면 안에서는 차단될 수 있어서, 홈랩 등 별도 주소로 열면 동작함'
+        : '위치를 못 가져옴 (' + err.message + ')', true);
+    }, { enableHighAccuracy: true, maximumAge: 15000, timeout: 15000 });
+  }
+
+  function renderHomeBody() {
+    const box = document.getElementById('homeBody');
+    const range = tripRange();
+    const nt = tokyoNow();
+    let html = distanceCard();
+
+    // 오늘(여행 중) 또는 첫날(여행 전) 미리보기
+    const day = DATA.dates.includes(nt.date) ? nt.date : (range && new Date() < range.start ? DATA.dates[0] : null);
+    if (day) {
+      const pts = DATA.points.filter(p => p.date === day).sort((a, b) => a.order - b.order);
+      const done = pts.filter(p => isVisited(p)).length;
+      html += '<div class="hcard"><h2>' + (day === nt.date ? '오늘 ' : '첫날 ') + esc(dayLabel(day)) + wxShort(day) + '</h2>' +
+        wxLine(day) +
+        (done ? '<p>방문 ' + done + ' / ' + pts.length + '</p>' : '') +
+        '<ul class="mini-list">' + pts.slice(0, 6).map(p => '<li><span class="tm">' + esc(p.arrive || '') + '</span><span>' + esc(pname(p)) + '</span></li>').join('') +
+        (pts.length > 6 ? '<li><span class="tm"></span><span style="color:var(--muted)">외 ' + (pts.length - 6) + '곳</span></li>' : '') + '</ul></div>';
+    }
+
+    const stamped = stampedPlaces().length;
+    const totalPlaces = passPlaces().length;
+    html += '<div class="navgrid">' +
+      '<button type="button" data-go="tl"><b>타임라인</b><span>몇 시에 어디로</span></button>' +
+      '<button type="button" data-go="plan"><b>지도</b><span>경로·핀</span></button>' +
+      '<button type="button" data-go="guide"><b>도감</b><span>장소 ' + (DATA.places || []).length + '곳</span></button>' +
+      '<button type="button" data-go="pass"><b>여권</b><span>도장 ' + stamped + ' / ' + totalPlaces + '</span></button>' +
+      '<button type="button" data-go="wrap"><b>여행 결산</b><span>' + (stamped ? '실제 기준' : '계획 미리보기') + '</span></button>' +
+      '</div>';
+    box.innerHTML = html;
+    box.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => { wrapIdx = 0; setView(b.dataset.go); }));
+    const lb = document.getElementById('locBtn');
+    if (lb) lb.addEventListener('click', startHomeLocation);
+  }
+</script>

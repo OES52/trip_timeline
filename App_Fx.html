@@ -1,0 +1,171 @@
+<!--App_Fx.html-->
+<script>
+  /* ───────── Lottie 애니메이션 (외부 파일 없이 코드로 생성) ───────── */
+  const LB = (() => {
+    const st = v => ({ a: 0, k: v });
+    const arr = v => Array.isArray(v) ? v : [v];
+    // keys: [[frame, value], ...]  마지막 키 빼고 부드럽게
+    const an = keys => ({ a: 1, k: keys.map((k, i) => i < keys.length - 1
+      ? { t: k[0], s: arr(k[1]), i: { x: [0.3], y: [1] }, o: { x: [0.5], y: [0] } }
+      : { t: k[0], s: arr(k[1]) }) });
+    const tr = o => Object.assign({ ty: 'tr', p: st([0, 0]), a: st([0, 0]), s: st([100, 100]), r: st(0), o: st(100), sk: st(0), sa: st(0) }, o || {});
+    const group = (items, t) => ({ ty: 'gr', it: items.concat([tr(t)]) });
+    const ellipse = (w, h, p) => ({ ty: 'el', d: 1, p: st(p || [0, 0]), s: st([w, h]) });
+    const rect = (w, h, r, p) => ({ ty: 'rc', d: 1, p: st(p || [0, 0]), s: st([w, h]), r: st(r || 0) });
+    const star = (or, ir, pts) => ({ ty: 'sr', sy: 1, d: 1, pt: st(pts), p: st([0, 0]), r: st(0), ir: st(ir), is: st(0), or: st(or), os: st(0) });
+    const path = (pts, closed) => ({ ty: 'sh', d: 1, ks: st({ i: pts.map(() => [0, 0]), o: pts.map(() => [0, 0]), v: pts, c: !!closed }) });
+    const fill = (c, o) => ({ ty: 'fl', c: st(c.concat([1])), o: st(o == null ? 100 : o), r: 1 });
+    const stroke = (c, w) => ({ ty: 'st', c: st(c.concat([1])), o: st(100), w: st(w), lc: 2, lj: 2, ml: 4 });
+    let ind = 0;
+    const layer = (shapes, ks, ip, op) => ({
+      ddd: 0, ind: ++ind, ty: 4, nm: 'l' + ind, sr: 1, ao: 0, bm: 0, st: 0, ip: ip || 0, op: op,
+      ks: Object.assign({ o: st(100), r: st(0), p: st([0, 0, 0]), a: st([0, 0, 0]), s: st([100, 100, 100]) }, ks || {}),
+      shapes: shapes,
+    });
+    const doc = (w, h, op, layers) => ({ v: '5.7.4', fr: 60, ip: 0, op: op, w: w, h: h, nm: 'fx', ddd: 0, assets: [], layers: layers });
+    const hex = h => { const n = parseInt(h.replace('#', ''), 16); return [(n >> 16 & 255) / 255, (n >> 8 & 255) / 255, (n & 255) / 255]; };
+    return { st, an, group, ellipse, rect, star, path, fill, stroke, layer, doc, hex };
+  })();
+
+  // 도장 찍힐 때: 잉크 방울 + 퍼지는 고리 / 금박이면 별 반짝임 더
+  function fxStamp(color, gold) {
+    const W = 400, H = 400, C = [200, 200], OP = gold ? 80 : 50;
+    const ink = LB.hex(color);
+    const layers = [];
+    // 퍼지는 고리
+    layers.push(LB.layer([LB.group([LB.ellipse(200, 200), LB.stroke(ink, 6)])], {
+      p: LB.st([C[0], C[1], 0]),
+      s: LB.an([[0, [60, 60, 100]], [26, [160, 160, 100]]]),
+      o: LB.an([[0, [80]], [26, [0]]]),
+    }, 0, OP));
+    // 잉크 방울
+    const n = 14;
+    for (let i = 0; i < n; i++) {
+      const ang = (i / n) * Math.PI * 2 + Math.random() * 0.4;
+      const dist = 120 + Math.random() * 60;
+      const size = 8 + Math.random() * 14;
+      const tx = C[0] + Math.cos(ang) * dist, ty = C[1] + Math.sin(ang) * dist;
+      layers.push(LB.layer([LB.group([LB.ellipse(size, size), LB.fill(ink)])], {
+        p: LB.an([[0, [C[0], C[1], 0]], [18 + Math.random() * 8, [tx, ty, 0]]]),
+        s: LB.an([[0, [40, 40, 100]], [10, [120, 120, 100]], [36, [70, 70, 100]]]),
+        o: LB.an([[0, [0]], [3, [95]], [30, [90]], [44, [0]]]),
+      }, 0, OP));
+    }
+    if (gold) {
+      const goldC = [[0.98, 0.84, 0.36], [1, 0.95, 0.7], [0.85, 0.65, 0.13]];
+      for (let i = 0; i < 18; i++) {
+        const ang = Math.random() * Math.PI * 2;
+        const dist = 90 + Math.random() * 110;
+        const tx = C[0] + Math.cos(ang) * dist, ty = C[1] + Math.sin(ang) * dist;
+        const d0 = 6 + Math.random() * 14;
+        layers.push(LB.layer([LB.group([LB.star(14, 5, 4), LB.fill(goldC[i % 3])])], {
+          p: LB.an([[d0, [C[0], C[1], 0]], [d0 + 30, [tx, ty, 0]]]),
+          r: LB.an([[d0, [0]], [d0 + 40, [180]]]),
+          s: LB.an([[d0, [20, 20, 100]], [d0 + 14, [130, 130, 100]], [d0 + 40, [40, 40, 100]]]),
+          o: LB.an([[d0, [0]], [d0 + 4, [100]], [d0 + 34, [100]], [d0 + 44, [0]]]),
+        }, 0, OP));
+      }
+    }
+    return LB.doc(W, H, OP, layers);
+  }
+
+  // 날씨 아이콘 (64×64, 반복)
+  function fxWeather(kind) {
+    const W = 64, OP = 120, layers = [];
+    const sunC = [1, 0.75, 0.15], cloudC = [0.9, 0.92, 0.95], cloudD = [0.62, 0.66, 0.72], rainC = [0.3, 0.55, 0.95], snowC = [0.85, 0.92, 1];
+    const sun = (cx, cy, r) => {
+      const rays = [];
+      for (let i = 0; i < 8; i++) rays.push(LB.group([LB.rect(3, 7, 1.5, [0, -(r + 6)]), LB.fill(sunC)], { r: LB.st(i * 45) }));
+      layers.push(LB.layer([LB.group(rays.concat([LB.group([LB.ellipse(r * 2, r * 2), LB.fill(sunC)])]))], {
+        p: LB.st([cx, cy, 0]), r: LB.an([[0, [0]], [OP, [90]]]),
+      }, 0, OP));
+    };
+    const cloud = (cx, cy, k, c) => {
+      layers.push(LB.layer([LB.group([
+        LB.ellipse(20 * k, 20 * k, [-9 * k, 2 * k]), LB.ellipse(24 * k, 24 * k, [2 * k, -3 * k]), LB.ellipse(18 * k, 18 * k, [11 * k, 3 * k]),
+        LB.rect(38 * k, 12 * k, 6 * k, [1 * k, 7 * k]), LB.fill(c || cloudC)])], {
+        p: LB.an([[0, [cx - 2, cy, 0]], [OP / 2, [cx + 2, cy, 0]], [OP, [cx - 2, cy, 0]]]),
+      }, 0, OP));
+    };
+    const drops = (shape, c, n) => {
+      for (let i = 0; i < n; i++) {
+        const x = 20 + i * 12, d = (i * 17) % 40;
+        layers.push(LB.layer([LB.group([shape, LB.fill(c)])], {
+          p: LB.an([[d, [x, 40, 0]], [d + 40, [x - 3, 60, 0]]]),
+          o: LB.an([[d, [0]], [d + 5, [100]], [d + 32, [100]], [d + 40, [0]]]),
+        }, 0, OP));
+        layers.push(LB.layer([LB.group([shape, LB.fill(c)])], {
+          p: LB.an([[d + 60, [x, 40, 0]], [d + 100, [x - 3, 60, 0]]]),
+          o: LB.an([[d + 60, [0]], [d + 65, [100]], [d + 92, [100]], [d + 100, [0]]]),
+        }, 0, OP));
+      }
+    };
+    if (kind === 'sun') sun(32, 32, 11);
+    else if (kind === 'partly') { sun(24, 24, 9); cloud(36, 38, 0.8); }
+    else if (kind === 'cloud') { cloud(26, 28, 0.7, cloudD); cloud(36, 36, 0.85); }
+    else if (kind === 'rain') { drops(LB.rect(2.5, 8, 1.2), rainC, 3); cloud(32, 28, 0.9, cloudD); }
+    else if (kind === 'snow') { drops(LB.ellipse(5, 5), snowC, 3); cloud(32, 28, 0.9); }
+    else if (kind === 'thunder') {
+      layers.push(LB.layer([LB.group([LB.path([[2, 0], [-6, 12], [0, 12], [-4, 24], [8, 8], [2, 8], [6, 0]], true), LB.fill(sunC)])], {
+        p: LB.st([33, 34, 0]), o: LB.an([[0, [0]], [50, [0]], [54, [100]], [62, [20]], [66, [100]], [80, [0]]]),
+      }, 0, OP));
+      cloud(32, 28, 0.9, cloudD);
+    } else if (kind === 'fog') {
+      for (let i = 0; i < 3; i++) layers.push(LB.layer([LB.group([LB.rect(40, 4, 2), LB.fill(cloudD)])], {
+        p: LB.an([[0, [30 + (i % 2 ? 4 : -4), 22 + i * 10, 0]], [OP / 2, [34 - (i % 2 ? 4 : -4), 22 + i * 10, 0]], [OP, [30 + (i % 2 ? 4 : -4), 22 + i * 10, 0]]]),
+      }, 0, OP));
+    }
+    // Lottie는 아래 레이어가 뒤라서 순서 뒤집음 (먼저 추가한 게 위로 오게)
+    return LB.doc(W, W, OP, layers.reverse());
+  }
+
+  // 로딩: 달리는 전철
+  function fxTrain() {
+    const W = 180, H = 70, OP = 90, layers = [];
+    const body = [0.17, 0.38, 0.85], win = [0.92, 0.96, 1], dark = [0.15, 0.17, 0.2], rail = [0.6, 0.64, 0.7];
+    // 침목: 왼쪽으로 흘러감
+    for (let i = 0; i < 10; i++) {
+      const x = i * 20;
+      layers.push(LB.layer([LB.group([LB.rect(10, 3, 1), LB.fill(rail)])], {
+        p: LB.an([[0, [x + 10, 62, 0]], [OP, [x - 10, 62, 0]]]),
+      }, 0, OP));
+    }
+    layers.push(LB.layer([LB.group([LB.rect(180, 2, 0), LB.fill(rail)])], { p: LB.st([90, 58, 0]) }, 0, OP));
+    // 차체 (살짝 덜컹)
+    // Lottie는 배열 앞쪽이 위에 그려짐
+    const car = [
+      LB.group([LB.rect(16, 12, 3, [-38, -5]), LB.rect(16, 12, 3, [-16, -5]), LB.rect(16, 12, 3, [6, -5]), LB.rect(16, 12, 3, [28, -5]), LB.fill(win)]),
+      LB.group([LB.rect(110, 4, 0, [0, 9]), LB.fill([1, 0.8, 0.2])]),
+      LB.group([LB.rect(110, 34, 10), LB.fill(body)]),
+      LB.group([LB.ellipse(10, 10, [-34, 18]), LB.ellipse(10, 10, [34, 18]), LB.fill(dark)]),
+    ];
+    layers.push(LB.layer(car, {
+      p: LB.an([[0, [90, 36, 0]], [OP / 4, [90, 35, 0]], [OP / 2, [90, 36, 0]], [OP * 3 / 4, [90, 35, 0]], [OP, [90, 36, 0]]]),
+    }, 0, OP));
+    return LB.doc(W, H, OP, layers.reverse());
+  }
+
+  let LOTTIES = [];
+  function mountLotties(root) {
+    if (!window.lottie) return;
+    // 화면에서 사라진 애니메이션 정리
+    LOTTIES = LOTTIES.filter(a => { if (!document.body.contains(a.wrapper)) { a.destroy(); return false; } return true; });
+    (root || document).querySelectorAll('[data-wx]:not([data-on]), [data-lt]:not([data-on])').forEach(el => {
+      el.dataset.on = '1';
+      el.textContent = '';
+      const data = el.dataset.wx ? fxWeather(el.dataset.wx) : fxTrain();
+      LOTTIES.push(lottie.loadAnimation({ container: el, renderer: 'svg', loop: true, autoplay: !REDUCED, animationData: data }));
+    });
+  }
+
+  function wxKind(code) {
+    if (code === 0) return 'sun';
+    if (code <= 2) return 'partly';
+    if (code === 3) return 'cloud';
+    if (code === 45 || code === 48) return 'fog';
+    if ((code >= 71 && code <= 77) || code === 85 || code === 86) return 'snow';
+    if (code >= 95) return 'thunder';
+    if (code >= 51) return 'rain';
+    return 'cloud';
+  }
+</script>

@@ -1,0 +1,287 @@
+<!--App_Timeline.html-->
+<script>
+  /* ── 세로 타임라인 ── */
+
+  function lineColor(text) {
+    for (const [re, c] of LINE_COLORS) if (re.test(text)) return c;
+    return '';
+  }
+
+  // "도보 8분 → 미도스지선 난바→우메다 (4정거장) → 도보 15분" 을 단계별로
+  function stepsHtml(summary) {
+    let text = String(summary || '');
+    let approx = false;
+    if (text.indexOf('[같은 요일 시간표 기준]') === 0) { approx = true; text = text.replace('[같은 요일 시간표 기준]', '').trim(); }
+    const parts = text.split(' → ').map(x => x.trim()).filter(Boolean);
+    if (parts.length < 2 && !/선|line/i.test(text)) return approx ? '<div class="approx">시간표는 같은 요일 기준 근사값</div>' : '';
+    const li = parts.map(t => {
+      const walk = t.match(/^도보\s*(\d+)분$/) || t.match(/^(\d+)분$/);
+      if (walk) return '<li><span class="wk">도보 ' + walk[1] + '분</span></li>';
+      // "JR 야마노테선 시부야→신주쿠 (3정거장)" → 이름 / 구간 (역 이름의 → 기준으로 나눔)
+      const m = t.match(/^(.*?)\s+(\S+→.+)$/) || t.match(/^(\S+)\s+(.+)$/);
+      const name = m ? m[1] : t;
+      const rest = m ? m[2] : '';
+      const c = lineColor(name);
+      return '<li><span class="ln"' + (c ? ' style="--lc:' + c + '"' : '') + '>' + esc(name) + '</span><span>' + esc(rest) + '</span></li>';
+    }).join('');
+    return '<ul class="steps">' + li + '</ul>' + (approx ? '<div class="approx">시간표는 같은 요일 기준 근사값</div>' : '');
+  }
+
+  // 일본어 이름 병기: 한국어랑 다를 때만 회색으로 (역 안내판·표 살 때 대조용)
+  function jaName(ko, ja) { return ja && ja !== ko ? ' <span class="ja">' + esc(ja) + '</span>' : ''; }
+
+  // 단계 정보로 "몇 시 어디서 승차 → 몇 시 어디서 하차/환승"
+  function stepsDetail(steps, summary) {
+    const approx = String(summary || '').indexOf('[같은 요일 시간표 기준]') === 0;
+    let seenTransit = false;
+    const li = steps.map((st, i) => {
+      if (st.t !== 'transit') {
+        if (!st.min) return '';
+        return '<li><span class="wk">' + (st.t === 'walk' ? '도보' : '이동') + ' ' + st.min + '분</span>' +
+          (st.m ? '<span style="color:var(--muted)">' + fmtDist(st.m) + '</span>' : '') + '</li>';
+      }
+      const kind = seenTransit ? '환승' : '승차';
+      seenTransit = true;
+      const later = steps.slice(i + 1).some(x => x.t === 'transit');
+      const c = st.color || lineColor(st.line + ' ' + (st.full || ''));
+      return '<li><span class="ln"' + (c ? ' style="--lc:' + esc(c) + '"' : '') + '>' + esc(st.line) + '</span><span>' +
+        (st.dep ? '<b>' + esc(st.dep) + '</b> ' : '') + esc(st.from) + jaName(st.from, st.jfrom) + ' ' + kind +
+        (st.head ? ' · ' + esc(st.head) + jaName(st.head, st.jhead) + ' 방면' : '') +
+        // 주유패스 날만 표시: 패스 노선이면 QR(패스), 아니면 IC카드·현금
+        (st.pass === true ? ' <span class="step-pass">🎫 주유패스</span>' : st.pass === false ? ' <span class="step-card">💳 IC카드·현금</span>' : '') + '<br>' +
+        (st.arr ? '<b>' + esc(st.arr) + '</b> ' : '') + esc(st.to) + jaName(st.to, st.jto) + ' ' + (later ? '하차 → 환승' : '하차') +
+        (st.stops ? ' · ' + st.stops + '정거장' : '') +
+        (st.jline && st.jline !== st.line ? ' · <span class="ja">' + esc(st.jline) + '</span>' : '') + '</span></li>';
+    }).join('');
+    return '<ul class="steps">' + li + '</ul>' + (approx ? '<div class="approx">시간표는 같은 요일 기준 근사값</div>' : '');
+  }
+
+  /* ── 일몰 ── */
+
+  // 그 지점의 일몰 시각(여행 시간대 기준, 분). NOAA 근사식이라 오차 1~2분. 해가 안 지는 날이면 null
+  function sunsetMin(date, lat, lng) {
+    if (lat == null || lng == null) return null;
+    const rad = Math.PI / 180;
+    const [y, mo, d] = date.split('-').map(Number);
+    const N = Math.round((Date.UTC(y, mo - 1, d) - Date.UTC(y, 0, 0)) / 864e5);
+    const lngHour = lng / 15;
+    const t = N + (18 - lngHour) / 24;
+    const M = 0.9856 * t - 3.289;
+    let L = M + 1.916 * Math.sin(M * rad) + 0.020 * Math.sin(2 * M * rad) + 282.634;
+    L = ((L % 360) + 360) % 360;
+    let RA = Math.atan(0.91764 * Math.tan(L * rad)) / rad;
+    RA = ((RA % 360) + 360) % 360;
+    RA = (RA + Math.floor(L / 90) * 90 - Math.floor(RA / 90) * 90) / 15;
+    const sinDec = 0.39782 * Math.sin(L * rad);
+    const cosDec = Math.cos(Math.asin(sinDec));
+    const cosH = (Math.cos(90.833 * rad) - sinDec * Math.sin(lat * rad)) / (cosDec * Math.cos(lat * rad));
+    if (cosH > 1 || cosH < -1) return null;
+    const H = Math.acos(cosH) / rad / 15;
+    const UT = (((H + RA - 0.06571 * t - 6.622 - lngHour) % 24) + 24) % 24;
+    const tz = DATA && DATA.tzOffsetMin != null ? DATA.tzOffsetMin : 540;
+    return Math.round((UT * 60 + tz + 1440) % 1440);
+  }
+
+  // 타임라인에 끼우는 일몰 선. where: '이동 중' / 'OO에 있을 때' / ''
+  function sunLine(min, where) {
+    return '<div class="tsun" role="separator" aria-label="일몰 ' + hhmm(min) + '">' +
+      '<div class="sun-t">' + hhmm(min) + '</div>' +
+      '<div class="sun-l"><span>🌇 일몰' + (where ? ', ' + esc(where) : '') + '</span></div></div>';
+  }
+
+  function renderTimeline() {
+    const box = document.getElementById('tlInner');
+    if (!DATA) return;
+    if (!DATA.points.length) { box.innerHTML = '<p class="empty">표시할 일정이 없음</p>'; return; }
+    // 날짜 하나 고른 상태면 모든 날짜를 옆으로 넘기는 슬라이드로
+    const useSwipe = selected !== 'all' && DATA.dates.length > 1 && !!window.Swiper;
+    const dates = selected === 'all' || useSwipe ? DATA.dates : [selected];
+    const prevSlide = box.querySelector('.swiper-slide-active') || box.querySelector('.tl-scroll');
+    const keepScroll = prevSlide && tlLastDate === selected ? prevSlide.scrollTop : null;
+    let html = '<div class="tl-tools"><button class="btn" type="button" id="tlScaleBtn" aria-pressed="' + tlScale + '">시간 비례 ' + (tlScale ? '켜짐' : '꺼짐') + '</button></div>';
+    const parts = [];
+    dates.forEach(date => {
+      let html = '';
+      const pts = DATA.points.filter(p => p.date === date).sort((a, b) => a.order - b.order);
+      const segs = DATA.segments.filter(s => s.date === date);
+      const nowInfo = nowStop(date, pts);
+      const done = pts.filter(p => isVisited(p)).length;
+      html += '<h2 class="tl-day">' + dayLabel(date) + '</h2>' + wxLine(date) + spendBlock(pts, '이날') + fareBlock(pts, '이날') + walkLine(date) + actualBlock(pts) +
+        (done ? '<p class="progress">방문 <b>' + done + '</b> / ' + pts.length + '</p>' : '') + paceLine(date);
+
+      // 일몰 선: 장소마다 그 좌표의 일몰을 구해서, 처음으로 해가 지는 구간 한 곳에만
+      let sunDone = false, prevDep = null, lastLL = null;
+      pts.forEach(p => {
+        const pl = placeOf(p);
+        const vk = date + '#' + p.order;
+        if (p.lat != null) lastLL = [p.lat, p.lng];
+        const sun = !sunDone && lastLL ? sunsetMin(date, lastLL[0], lastLL[1]) : null;
+        const pa = toMin(p.arrive), pd = toMin(p.depart);
+        if (sun != null && pa != null && pa >= sun) {
+          html += sunLine(sun, prevDep != null && prevDep < sun ? '이동 중' : '');   // 이동하는 사이 해 짐
+          sunDone = true;
+        }
+        const isNow = nowInfo && nowInfo.order === p.order;
+        const cost = pl ? costText(pl) : '';
+        const facts = [];
+        if (p.stay) facts.push('<span>체류 <b>' + p.stay + '분</b></span>');
+        if (p.fixed) facts.push('<span>고정 <b>' + esc(p.fixed) + '</b></span>');
+        if (p.yen != null && !isNaN(p.yen)) facts.push('<span>예산 <b>' + YEN(p.yen) + '</b>' + (p.per ? ' (1인 ' + money(p.per) + ')' : '') + '</span>');
+        else if (cost) facts.push('<span>예상 <b>' + esc(cost) + '</b></span>');
+        // 그날 요일·날짜에 맞는 영업시간만 (예외 시간표면 어느 요일·날짜 기준인지 같이)
+        const hf = pl ? hoursFor(pl.hours, date) : null;
+        if (hf) facts.push('<span>' + (hf.closed ? '<b>휴무</b>' : '영업 ' + esc(hf.text)) + (hf.label ? ' (' + esc(hf.label) + ')' : '') +
+          (pl.closed ? ', 휴무 ' + esc(pl.closed) : '') + '</span>');
+        else if (pl && pl.closed) facts.push('<span>휴무 ' + esc(pl.closed) + '</span>');
+        const sp = DATA.spend && DATA.spend[vk];
+        if (sp) facts.push('<span>실제 <b>' + YEN(sp.amount) + '</b>' + (sp.memo ? ' (' + esc(sp.memo) + ')' : '') + '</span>');
+
+        html += '<div class="titem' + (isVisited(p) ? ' done' : '') + (isNow ? ' is-now' : '') + '" data-key="' + vk + '">' +
+          '<div class="ttime"><span class="a">' + esc(p.arrive || '') + '</span>' +
+          (p.depart && p.depart !== p.arrive ? '<span class="d">~ ' + esc(p.depart) + '</span>' : '') + timeExtra(p) + '</div>' +
+          '<article class="tcard' + (pl ? ' t-' + esc(pl.type) : '') + '"' +
+            (tlScale && p.stay ? ' style="min-height:' + tlPx(p.stay, 280) + 'px"' : '') + '>' +
+            (pl && pl.photos && pl.photos.length ? '<img class="photo" src="' + esc(pl.photos[0]) + '" alt="" loading="lazy">' : '') +
+            '<div class="top">' + (pl ? '<span class="badge">' + esc(pl.type) + '</span>' : '') +
+              (pl && pl.area ? '<span>' + esc(pl.area) + '</span>' : '') +
+              (isNow ? '<span class="now-tag' + (nowInfo.next ? ' next' : '') + '" style="margin:0">' + (nowInfo.next ? '다음' : '지금') + '</span>' : '') +
+            '</div>' +
+            '<h3>' + esc(pname(p)) + '</h3>' +
+            (pname(p) !== p.place ? '<div style="font-size:12px;color:var(--muted);margin-top:1px">' + esc(p.place) + '</div>' : '') +
+            (p.activity ? '<div class="act">' + esc(p.activity) + '</div>' : '') +
+            (facts.length ? '<div class="facts">' + facts.join('') + '</div>' : '') +
+            (pl && pl.menu.length ? '<div class="chips">' + pl.menu.slice(0, 4).map(m => '<span class="chip">' + esc(m) + '</span>').join('') + '</div>' : '') +
+            (pl && pl.intro ? '<div class="note">' + esc(pl.intro) + '</div>' : '') +
+            (p.memo ? '<div class="note memo">' + esc(p.memo) + '</div>' : '') +
+            slackBadge(p.slack) +
+            warnHtml(p) +
+            '<div class="actions">' +
+              '<button class="visit" type="button" data-vk="' + vk + '" aria-pressed="' + isVisited(p) + '">' + (isVisited(p) ? '✓ 방문함' : '방문 체크') + '</button>' +
+              '<button class="spend-btn' + (sp ? ' has' : '') + '" type="button" data-vk="' + vk + '">' + (sp ? '지출 ' + YEN(sp.amount) : '지출 입력') + '</button>' +
+              '<button class="arr-btn' + (arrivedAt(p) ? ' has' : '') + '" type="button" data-vk="' + vk + '">' + (arrivedAt(p) ? '도착 ' + esc(arrivedAt(p)) : '도착') + '</button>' +
+              '<button class="edit-btn" type="button" data-vk="' + vk + '">조정</button>' +
+              navBtn(p.lat, p.lng, true) +
+              (pl ? '<button class="linkbtn" type="button" data-place="' + esc(pl.key) + '">도감</button>' : '') +
+            '</div>' +
+            '<div class="arr-form" data-vk="' + vk + '">' +
+              '<input type="time" value="' + esc(arrivedAt(p) && toMin(arrivedAt(p)) < 1440 ? arrivedAt(p).padStart(5, '0') : '') + '" aria-label="실제 도착 시각">' +
+              '<button class="save" type="button">저장</button><button class="del" type="button">지우기</button>' +
+            '</div>' +
+            '<div class="edit-row" data-vk="' + vk + '" data-stay="' + (p.stay || 0) + '" data-name="' + esc(pname(p)) + '">' +
+              '<button type="button" data-d="-15">체류 −15분</button><button type="button" data-d="15">체류 +15분</button>' +
+              '<button type="button" class="danger" data-skip="1">건너뛰기</button>' +
+              '<span class="hint">시트에 바로 반영. 모든 사람 일정이 바뀜</span>' +
+            '</div>' +
+            '<div class="spend-form" data-vk="' + vk + '" data-place="' + esc(p.place) + '">' +
+              '<input type="number" inputmode="numeric" min="0" step="1" placeholder="¥ 금액" aria-label="실제 지출 엔화" value="' + (sp ? sp.amount : '') + '">' +
+              '<input class="memo-in" type="text" placeholder="메모 (선택)" aria-label="지출 메모" value="' + (sp ? esc(sp.memo) : '') + '">' +
+              '<button class="save" type="button">저장</button>' +
+              (sp ? '<button class="del" type="button">삭제</button>' : '') +
+            '</div>' +
+          '</article></div>';
+
+        // 머무는 동안 해 짐: 카드 바로 아래
+        if (sun != null && !sunDone && pa != null && pd != null && pd > sun) {
+          html += sunLine(sun, pname(p) + '에 있을 때');
+          sunDone = true;
+        }
+        if (pd != null) prevDep = pd;
+
+        const s = segs.find(x => x.fromOrder === p.order);
+        if (s) {
+          const cls = MODE_CLASS[s.mode] || 'manual';
+          const head = [esc(segModeName(s)) + ' ' + s.minutes + '분'];
+          if (s.fare != null && !isNaN(s.fare) && s.fare > 0) head.push(YEN(s.fare));
+          if (s.transfers !== '' && Number(s.transfers) > 0) head.push('환승 ' + s.transfers + '회');
+          html += '<div class="tmove mode-' + cls + '"' +
+            (tlScale ? ' style="min-height:' + Math.max(44, tlPx(s.minutes, 170)) + 'px"' : '') +
+            '><div class="rail2"></div><div class="mv">' +
+            '<div class="mv-head">' + modeIcon(cls) + head.join(', ') + ' ' + passChip(s) + '</div>' +
+            '<div class="mv-time">' + esc(s.dep) + ' 출발 → ' + esc(s.arr) + ' 도착</div>' +
+            (s.warn ? '<div class="warn"><span>' + esc(s.warn) + '</span></div>' : '') +
+            (s.walkHint ? '<div class="approx" style="color:var(--walk);font-weight:700">🚶 도보 추천: ' + esc(s.walkHint) + '</div>' : '') +
+            taxiBox(s) +
+            (cls === 'transit'
+              ? (Array.isArray(s.steps) && s.steps.length ? stepsDetail(s.steps, s.summary) : stepsHtml(s.summary))
+              : (s.summary && cls !== 'walk' ? '<div class="mv-time">' + esc(s.summary) + '</div>' : '')) +
+            (s.link ? '<a href="' + s.link + '" target="_blank" rel="noopener">구글 지도 길찾기</a>' : '') +
+            '</div></div>';
+        }
+      });
+      parts.push(html);
+    });
+    if (useSwipe) {
+      html += '<div class="swiper tl-swiper"><div class="swiper-wrapper">' + parts.map((h, i) =>
+        '<div class="swiper-slide" data-date="' + dates[i] + '"><div class="tl-inner">' + h + '</div></div>').join('') + '</div></div>';
+    } else {
+      html += '<div class="tl-scroll"><div class="tl-inner">' + parts.join('') + '</div></div>';
+    }
+    if (tlSwiper) { tlSwiper.destroy(true, true); tlSwiper = null; }
+    box.innerHTML = html;
+    if (useSwipe) {
+      tlSwiper = new Swiper(box.querySelector('.tl-swiper'), {
+        initialSlide: Math.max(0, dates.indexOf(selected)), threshold: 8, touchAngle: 35, resistanceRatio: 0.6, speed: 280,
+      });
+      tlSwiper.on('slideChange', () => {
+        selected = dates[tlSwiper.activeIndex];
+        tlLastDate = selected;
+        stopReplay();
+        renderTabs();
+      });
+    }
+    const curSlide = box.querySelector('.swiper-slide-active') || box.querySelector('.tl-scroll');
+    if (keepScroll != null && curSlide) curSlide.scrollTop = keepScroll;
+    tlLastDate = selected;
+    mountLotties(box);
+    bindTaxi(box);
+
+    document.getElementById('tlScaleBtn').addEventListener('click', () => {
+      tlScale = !tlScale;
+      try { localStorage.setItem('trip-tl-scale', tlScale ? '1' : '0'); } catch (e) { /* 무시 */ }
+      renderTimeline();
+    });
+    box.querySelectorAll('.visit').forEach(b => b.addEventListener('click', () => toggleVisit(b.dataset.vk)));
+    box.querySelectorAll('.spend-btn').forEach(b => b.addEventListener('click', () => {
+      const f = box.querySelector('.spend-form[data-vk="' + b.dataset.vk + '"]');
+      f.classList.toggle('open');
+      if (f.classList.contains('open')) f.querySelector('input').focus();
+    }));
+    box.querySelectorAll('.spend-form').forEach(f => {
+      const [amt, memo] = f.querySelectorAll('input');
+      f.querySelector('.save').addEventListener('click', () => saveSpend(f.dataset.vk, f.dataset.place, amt.value, memo.value));
+      const del = f.querySelector('.del');
+      if (del) del.addEventListener('click', () => saveSpend(f.dataset.vk, f.dataset.place, '', ''));
+      amt.addEventListener('keydown', e => { if (e.key === 'Enter') saveSpend(f.dataset.vk, f.dataset.place, amt.value, memo.value); });
+    });
+    box.querySelectorAll('.linkbtn').forEach(b => b.addEventListener('click', () => openDetail(b.dataset.place)));
+    // 도착: 처음 누르면 지금 시각으로 기록, 기록 있으면 시각 고치기 폼
+    box.querySelectorAll('.arr-btn').forEach(b => b.addEventListener('click', () => {
+      const vk = b.dataset.vk;
+      if (!(DATA.arrived && DATA.arrived[vk])) { recordArrivalNow(vk); return; }
+      box.querySelector('.arr-form[data-vk="' + vk + '"]').classList.toggle('open');
+    }));
+    box.querySelectorAll('.arr-form').forEach(f => {
+      const inp = f.querySelector('input');
+      f.querySelector('.save').addEventListener('click', () => { if (inp.value) saveArrival(f.dataset.vk, inp.value); });
+      f.querySelector('.del').addEventListener('click', () => saveArrival(f.dataset.vk, ''));
+    });
+    // 조정: 체류 ±15분 / 건너뛰기
+    box.querySelectorAll('.edit-btn').forEach(b => b.addEventListener('click', () =>
+      box.querySelector('.edit-row[data-vk="' + b.dataset.vk + '"]').classList.toggle('open')));
+    box.querySelectorAll('.edit-row').forEach(r => {
+      const vk = r.dataset.vk, name = r.dataset.name;
+      r.querySelectorAll('[data-d]').forEach(b => b.addEventListener('click', () => {
+        const d = Number(b.dataset.d);
+        if (d < 0 && Number(r.dataset.stay) <= 0) return;
+        editPlan(vk, 'stay', d, name + ' 체류 ' + (d > 0 ? '+' : '−') + Math.abs(d) + '분', () => editPlan(vk, 'stay', -d, '체류 되돌림'));
+      }));
+      r.querySelector('[data-skip]').addEventListener('click', () => {
+        if (!confirm(name + ' 을(를) 건너뛸까? 앞뒤 장소가 바로 이어지게 경로를 다시 계산함 (시트에서도 빠짐)')) return;
+        editPlan(vk, 'skip', 0, name + ' 건너뜀', () => editPlan(vk, 'unskip', 0, name + ' 되돌림'));
+      });
+    });
+    const nowEl = (box.querySelector('.swiper-slide-active') || box).querySelector('.titem.is-now');
+    if (nowEl && !tlScrolled) { tlScrolled = true; setTimeout(() => nowEl.scrollIntoView({ block: 'center' }), 50); }
+  }
+
+</script>
