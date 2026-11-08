@@ -218,11 +218,21 @@ async function apiData(req, res) {
 const BLOCK = new net.BlockList();
 [['0.0.0.0', 8], ['10.0.0.0', 8], ['100.64.0.0', 10], ['127.0.0.0', 8], ['169.254.0.0', 16], ['172.16.0.0', 12], ['192.0.0.0', 24],
   ['192.168.0.0', 16], ['198.18.0.0', 15], ['224.0.0.0', 3]].forEach(([a, p]) => BLOCK.addSubnet(a, p, 'ipv4'));
-[['::', 128], ['::1', 128], ['fc00::', 7], ['fe80::', 10], ['ff00::', 8], ['::ffff:0:0', 96], ['64:ff9b::', 96]].forEach(([a, p]) => BLOCK.addSubnet(a, p, 'ipv6'));
+// 주의: ::ffff:0:0/96(IPv4 매핑)을 넣으면 Node BlockList가 모든 IPv4를 막음 → 매핑 주소는 isBlocked에서 IPv4로 바꿔 확인
+[['::', 128], ['::1', 128], ['fc00::', 7], ['fe80::', 10], ['ff00::', 8]].forEach(([a, p]) => BLOCK.addSubnet(a, p, 'ipv6'));
+function isBlocked(addr) {
+  const m = String(addr).match(/^::ffff:(?:(\d+\.\d+\.\d+\.\d+)|([0-9a-f]{1,4}):([0-9a-f]{1,4}))$/i);
+  if (m) {
+    const v4 = m[1] || [parseInt(m[2], 16) >> 8, parseInt(m[2], 16) & 255, parseInt(m[3], 16) >> 8, parseInt(m[3], 16) & 255].join('.');
+    return BLOCK.check(v4, 'ipv4');
+  }
+  const fam = net.isIP(addr);
+  return fam ? BLOCK.check(addr, fam === 6 ? 'ipv6' : 'ipv4') : true;
+}
 function safeLookup(host, opts, cb) {
   dns.lookup(host, { all: true }, (err, addrs) => {
     if (err) return cb(err);
-    const good = addrs.filter(a => !BLOCK.check(a.address, a.family === 6 ? 'ipv6' : 'ipv4'));
+    const good = addrs.filter(a => !isBlocked(a.address));
     if (!good.length) return cb(new Error('차단된 주소: ' + host));
     if (opts && opts.all) return cb(null, good);
     cb(null, good[0].address, good[0].family);
@@ -234,8 +244,7 @@ function getOnce(u) {
     if (url.protocol !== 'https:' || (url.port && url.port !== '443')) return reject(new Error('https 443만 허용'));
     // IP를 직접 쓴 주소는 lookup을 안 거치므로 여기서 확인
     const host = url.hostname.replace(/^\[|\]$/g, '');
-    const fam = net.isIP(host);
-    if (fam && BLOCK.check(host, fam === 6 ? 'ipv6' : 'ipv4')) return reject(new Error('차단된 주소: ' + host));
+    if (net.isIP(host) && isBlocked(host)) return reject(new Error('차단된 주소: ' + host));
     const req = https.get(url, { lookup: safeLookup, timeout: 15000, headers: { 'User-Agent': 'trip-api/1 (photo cache)', Accept: 'image/*' } }, resolve);
     req.on('timeout', () => req.destroy(new Error('시간 초과')));
     req.on('error', reject);
@@ -303,6 +312,7 @@ async function apiPhoto(req, res, q) {
     }
     send(res, 200, hdr(img.type), img.buf);
   } catch (e) {
+    log('사진 실패', u.slice(0, 120), e.message);
     fail(req, res, 502, '사진 못 받음: ' + e.message, { 'Cache-Control': 'no-store' });
   }
 }
