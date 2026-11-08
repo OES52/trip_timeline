@@ -82,6 +82,22 @@
     return Math.round((UT * 60 + tz + 1440) % 1440);
   }
 
+  // 타임라인 탭용 대중교통 쪼개 보기 (단계 데이터는 App_Core의 splitStepRows)
+  //  시간 비례 켜면 단계 줄 높이도 걸리는 시간에 맞춤
+  function tlSplitHtml(s, fromName, toName) {
+    return splitStepRows(s, fromName, toName).map(r => {
+      if (r.type === 'station') {
+        return '<div class="tst" style="--c1:' + esc(r.c1) + ';--c2:' + esc(r.c2) + '">' +
+          '<div class="rail2"><span class="t">' + esc(r.time || '') + (r.time2 ? '<small>' + esc(r.time2) + ' 출발</small>' : '') + '</span><i class="sdot"></i></div>' +
+          '<div class="st-b"><b>' + esc(r.name) + '</b>' + jaName(r.name, r.ja) + '<span class="k">' + esc(r.kind) + '</span></div></div>';
+      }
+      return '<div class="tmove tstep mode-' + (r.k === 'walk' ? 'walk' : 'transit') + '" style="--c:' + esc(r.c) +
+        (tlScale ? ';min-height:' + Math.max(30, tlPx(r.min, 170)) + 'px' : '') + '">' +
+        '<div class="rail2"></div><div class="mv"><div class="mv-head">' + r.head + '</div>' +
+        (r.sub ? '<div class="mv-time">' + r.sub + '</div>' : '') + '</div></div>';
+    }).join('');
+  }
+
   // 타임라인에 끼우는 일몰 선. where: '이동 중' / 'OO에 있을 때' / ''
   function sunLine(min, where) {
     return '<div class="tsun" role="separator" aria-label="일몰 ' + hhmm(min) + '">' +
@@ -190,22 +206,28 @@
         const s = segs.find(x => x.fromOrder === p.order);
         if (s) {
           const cls = MODE_CLASS[s.mode] || 'manual';
+          // 탑승 단계가 있는 대중교통 구간은 요약 줄 + 단계별 줄(도보·노선·역)로 쪼개서 보여줌
+          const split = cls === 'transit' && Array.isArray(s.steps) && s.steps.some(x => x.t === 'transit');
+          const toPt = pts.find(x => x.order === s.toOrder);
           const head = [esc(segModeName(s)) + ' ' + s.minutes + '분'];
           if (s.fare != null && !isNaN(s.fare) && s.fare > 0) head.push(YEN(s.fare));
           if (s.transfers !== '' && Number(s.transfers) > 0) head.push('환승 ' + s.transfers + '회');
-          html += '<div class="tmove mode-' + cls + '"' +
-            (tlScale ? ' style="min-height:' + Math.max(44, tlPx(s.minutes, 170)) + 'px"' : '') +
+          html += '<div class="tmove mode-' + cls + (split ? ' tmove-split' : '') + '"' +
+            (tlScale && !split ? ' style="min-height:' + Math.max(44, tlPx(s.minutes, 170)) + 'px"' : '') +
             '><div class="rail2"></div><div class="mv">' +
             '<div class="mv-head">' + modeIcon(cls) + head.join(', ') + ' ' + passChip(s) + '</div>' +
             '<div class="mv-time">' + esc(s.dep) + ' 출발 → ' + esc(s.arr) + ' 도착</div>' +
             (s.warn ? '<div class="warn"><span>' + esc(s.warn) + '</span></div>' : '') +
             (s.walkHint ? '<div class="approx" style="color:var(--walk);font-weight:700">🚶 도보 추천: ' + esc(s.walkHint) + '</div>' : '') +
             taxiBox(s) +
-            (cls === 'transit'
-              ? (Array.isArray(s.steps) && s.steps.length ? stepsDetail(s.steps, s.summary) : stepsHtml(s.summary))
-              : (s.summary && cls !== 'walk' ? '<div class="mv-time">' + esc(s.summary) + '</div>' : '')) +
+            (split
+              ? (String(s.summary || '').indexOf('[같은 요일 시간표 기준]') === 0 ? '<div class="approx">시간표는 같은 요일 기준 근사값</div>' : '')
+              : cls === 'transit'
+                ? (Array.isArray(s.steps) && s.steps.length ? stepsDetail(s.steps, s.summary) : stepsHtml(s.summary))
+                : (s.summary && cls !== 'walk' ? '<div class="mv-time">' + esc(s.summary) + '</div>' : '')) +
             (s.link ? '<a href="' + s.link + '" target="_blank" rel="noopener">구글 지도 길찾기</a>' : '') +
             '</div></div>';
+          if (split) html += tlSplitHtml(s, pname(p), toPt ? pname(toPt) : '');
         }
       });
       parts.push(html);

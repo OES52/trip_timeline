@@ -1,6 +1,19 @@
 /* ───────────────────────── 웹앱 ───────────────────────── */
 /* WebApps.gs  */
-function doGet() {
+// 그냥 열면 웹앱 화면, ?api=... 이면 JSON (외부 정적 페이지용)
+//  GET ?api=data  → getMapData() 결과
+//  GET ?api=users → 사용자 목록 (PIN 값은 빼고 있는지만)
+//  GET ?api=ping  → 살아 있는지
+function doGet(e) {
+  const p = (e && e.parameter) || {};
+  if (p.api) {
+    return apiRespond_(() => {
+      if (p.api === 'data') return getMapData();
+      if (p.api === 'users') return JSON.parse(bootUsersJson_());   // \u003c 이스케이프는 JSON.parse가 그대로 풀어줌
+      if (p.api === 'ping') return { ok: true, at: new Date().toISOString() };
+      throw new Error('알 수 없는 api: ' + p.api);
+    });
+  }
   const t = HtmlService.createTemplateFromFile('Index');
   t.bootUsers = bootUsersJson_();
   return t.evaluate()
@@ -17,6 +30,42 @@ function bootUsersJson_() {
     list = [];
   }
   return JSON.stringify(list).replace(/</g, '\\u003c');
+}
+
+/* ── 외부 정적 페이지용 API ── */
+// 정적 페이지가 호출할 수 있는 서버 함수 목록. 여기 없는 이름은 거부
+//  (google.script.run으로 부르던 함수와 같은 이름·같은 인자)
+const API_FNS_ = {
+  getMapData: () => getMapData(),
+  checkPin: (user, pin) => checkPin(user, pin),
+  setSpend: (key, place, amount, memo, user, pin) => setSpend(key, place, amount, memo, user, pin),
+  setVisited: (key, on, user, pin) => setVisited(key, on, user, pin),
+  setVisitedMany: (changes, user, pin) => setVisitedMany(changes, user, pin),
+  setArrived: (key, hhmm, user, pin) => setArrived(key, hhmm, user, pin),
+  editPlan: (key, op, value, user, pin) => editPlan(key, op, value, user, pin),
+};
+
+// POST 본문: {"fn":"setSpend","args":[...]}
+//  브라우저가 CORS 사전 요청을 안 보내게 정적 페이지는 Content-Type: text/plain 으로 보냄
+function doPost(e) {
+  return apiRespond_(() => {
+    let body;
+    try { body = JSON.parse((e && e.postData && e.postData.contents) || '{}'); } catch (err) { throw new Error('JSON 형식이 아님'); }
+    const fn = API_FNS_[body.fn];
+    if (!fn) throw new Error('호출할 수 없는 함수: ' + body.fn);
+    return fn.apply(null, Array.isArray(body.args) ? body.args : []);
+  });
+}
+
+// 결과를 {ok, result} / {ok:false, error} JSON으로
+function apiRespond_(work) {
+  let out;
+  try {
+    out = { ok: true, result: work() };
+  } catch (err) {
+    out = { ok: false, error: String(err && err.message || err) };
+  }
+  return ContentService.createTextOutput(JSON.stringify(out)).setMimeType(ContentService.MimeType.JSON);
 }
 
 // Index.html에서 <?!= include('Style'); ?> 처럼 다른 HTML 파일을 끼워 넣음
