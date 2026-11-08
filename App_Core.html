@@ -637,6 +637,8 @@
     Object.keys(lines).forEach(k => delete lines[k]);
     Object.keys(casings).forEach(k => delete casings[k]);
     Object.keys(groups).forEach(k => delete groups[k]);
+    Object.keys(stepLayers).forEach(k => delete stepLayers[k]);
+    stepKey = null;
     hlKey = null;
     pickKey = null;
 
@@ -807,7 +809,11 @@
         const s = segs.find(x => x.fromOrder === p.order);
         if (s) {
           const cls = MODE_CLASS[s.mode] || 'manual';
-          html += '<li class="leg mode-' + cls + '" tabindex="0" data-key="' + date + '#' + s.fromOrder + '#' + s.toOrder + '">' +
+          const lkey = date + '#' + s.fromOrder + '#' + s.toOrder;
+          // 탑승 단계가 있는 대중교통 구간은 요약 줄 + 단계별 줄(도보·노선·역)로 쪼개서 보여줌
+          const split = cls === 'transit' && Array.isArray(s.steps) && s.steps.some(x => x.t === 'transit');
+          const toPt = pts.find(x => x.order === s.toOrder);
+          html += '<li class="leg mode-' + cls + (split ? ' leg-split' : '') + '" tabindex="0" data-key="' + lkey + '">' +
             '<div class="time"></div><div class="rail"></div>' +
             '<div class="body"><div class="leg-head">' + modeIcon(cls) + esc(segModeName(s)) + ' ' + s.minutes + '분' +
             (s.transfers !== '' && Number(s.transfers) > 0 ? ', 환승 ' + s.transfers + '회' : '') +
@@ -816,11 +822,14 @@
             (s.warn ? '<div class="warn"><span>' + esc(s.warn) + '</span></div>' : '') +
             (s.walkHint ? '<div class="approx" style="color:var(--walk);font-weight:700">🚶 도보 추천: ' + esc(s.walkHint) + '</div>' : '') +
             taxiBox(s) +
-            (Array.isArray(s.steps) && s.steps.length
-              ? stepsDetail(s.steps, s.summary)
-              : (s.summary ? '<div class="leg-sum">' + esc(s.summary) + '</div>' : '')) +
+            (split
+              ? (String(s.summary || '').indexOf('[같은 요일 시간표 기준]') === 0 ? '<div class="approx">시간표는 같은 요일 기준 근사값</div>' : '')
+              : (Array.isArray(s.steps) && s.steps.length
+                ? stepsDetail(s.steps, s.summary)
+                : (s.summary ? '<div class="leg-sum">' + esc(s.summary) + '</div>' : ''))) +
             (s.link ? '<a href="' + s.link + '" target="_blank" rel="noopener">구글 지도로 보기</a>' : '') +
             '</div></li>';
+          if (split) html += splitStepsHtml(s, lkey, pname(p), toPt ? pname(toPt) : '');
         }
       });
       html += '</ol>';
@@ -861,6 +870,11 @@
       el.addEventListener('click', go);
       el.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
     });
+    list.querySelectorAll('.sleg').forEach(el => {
+      const go = () => focusStep(el);
+      el.addEventListener('click', go);
+      el.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
+    });
   }
 
   // 전체 탭 지도 범례: 날짜 색. 누르면 그날로 이동
@@ -887,19 +901,26 @@
     map.addControl(legendCtl);
   }
 
+  // 단계별로 그린 것 (단계 강조용). 키: "L:구간키|단계번호", 역 표시는 "L:구간키|st"
+  const stepLayers = {};
+
   // 대중교통 단계별 선 + 승차·환승·하차 역 표시. 강조 처리용으로 그린 것들 반환
   // 역 이름 라벨은 확대했을 때만 (도보 거리 라벨과 같은 층)
   function drawSteps(steps, gk) {
     const out = [];
+    const stations = stepLayers[gk + '|st'] = [];
     steps.forEach((st, i) => {
+      const mine = stepLayers[gk + '|' + i] = [];
       const transit = st.t === 'transit';
       const c = transit ? (st.color || lineColor(st.line + ' ' + (st.full || '')) || MODE_COLOR.transit) : MODE_COLOR.walk;
       const ll = st.poly ? decodePolyline(st.poly) : [];
       if (ll.length > 1) {
-        out.push(reg(gk, L.polyline(ll, {
+        const pl = reg(gk, L.polyline(ll, {
           color: c, weight: transit ? 6 : 4, opacity: 0.95, dashArray: transit ? null : '2 7',
           lineCap: 'round', lineJoin: 'round', interactive: false
-        }).addTo(layer)));
+        }).addTo(layer));
+        out.push(pl);
+        mine.push(pl);
       }
       if (!transit) return;
       const before = steps.slice(0, i).some(x => x.t === 'transit');
@@ -911,19 +932,123 @@
       ];
       ends.forEach(e => {
         if (!e.p) return;
-        out.push(reg(gk, L.circleMarker(e.p, { radius: 5, color: c, weight: 3, fillColor: '#ffffff', fillOpacity: 1, interactive: false }).addTo(layer)));
+        const dot = reg(gk, L.circleMarker(e.p, { radius: 5, color: c, weight: 3, fillColor: '#ffffff', fillOpacity: 1, interactive: false }).addTo(layer));
+        out.push(dot);
+        stations.push(dot);
         if (!e.label) return;
-        reg(gk, L.marker(e.p, {
+        stations.push(reg(gk, L.marker(e.p, {
           icon: L.divIcon({
             className: '',
             html: '<span class="walk-label" style="color:' + esc(c) + ';border-color:' + esc(c) + ';margin-top:-18px">' + e.kind + ' ' + esc(e.name) + '</span>',
             iconSize: null
           }),
           interactive: false, keyboard: false,
-        }).addTo(walkLayer));
+        }).addTo(walkLayer)));
       });
     });
     return out;
+  }
+
+  // 구간 안 단계만 강조. idxs: 단계 번호 배열. 역 표시는 계속 진하게
+  //  단계 선이 없으면(전체 탭 등) 구간 전체 강조로 대신함
+  function highlightSteps(lkey, idxs) {
+    if (!lines[lkey]) return;
+    highlightLeg(lkey);
+    hlKey = 'step:' + lkey;   // 요약 줄을 다시 누르면 구간 전체 강조가 되게 (해제 토글 안 걸리게)
+    const fitOk = currentView === 'plan' && map.getSize().x > 0;
+    const gk = 'L:' + lkey;
+    const on = new Set((idxs || []).map(Number));
+    const b = L.latLngBounds([]);
+    Object.keys(stepLayers).forEach(k => {
+      const cut = k.lastIndexOf('|');
+      if (k.slice(0, cut) !== gk) return;
+      const tail = k.slice(cut + 1);
+      const sel = tail === 'st' || on.has(Number(tail));
+      stepLayers[k].forEach(l => {
+        setDim(l, sel, DIM_PICK);
+        if (!sel || tail === 'st') return;
+        if (l.getBounds) b.extend(l.getBounds());
+        else if (l.getLatLng) b.extend(l.getLatLng());
+        if (l.bringToFront) l.bringToFront();
+      });
+    });
+    if (!fitOk) return;
+    if (b.isValid()) map.fitBounds(b, { padding: [50, 50], maxZoom: 17 });
+    else map.fitBounds(lines[lkey].getBounds(), { padding: [40, 40], maxZoom: 16 });
+  }
+
+  // 대중교통 구간을 타임라인 줄로 쪼갬: 도보 줄 · 노선 줄 + 사이사이 역 줄(승차·하차·환승 시각)
+  //  fromName·toName: 구간 출발·도착 장소 이름 (첫·마지막 도보 설명용)
+  function splitStepsHtml(s, lkey, fromName, toName) {
+    const steps = s.steps;
+    const hmMin = v => { const m = String(v || '').match(/^(\d{1,2}):(\d{2})/); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
+    const gap = (a, b) => { const x = hmMin(a), y = hmMin(b); return x == null || y == null ? null : (y - x + 1440) % 1440; };
+    const prevRide = i => { for (let k = i - 1; k >= 0; k--) if (steps[k].t === 'transit') return steps[k]; return null; };
+    const nextRide = i => { for (let k = i + 1; k < steps.length; k++) if (steps[k].t === 'transit') return steps[k]; return null; };
+    const colorOf = st => st.t === 'transit' ? (st.color || lineColor(st.line + ' ' + (st.full || '')) || MODE_COLOR.transit) : MODE_COLOR.walk;
+    const rows = [];        // 역 줄은 객체, 단계 줄은 { html, c }
+    let railColor = MODE_COLOR.transit;
+    const pushStep = (htmlRow, c) => {
+      const tail = rows[rows.length - 1];
+      if (tail && tail.station) tail.c2 = c;
+      rows.push({ html: htmlRow, c: c });
+      railColor = c;
+    };
+    const pushStation = (name, ja, time, kind) => {
+      const tail = rows[rows.length - 1];
+      // 같은 역에서 바로 갈아타면(사이 도보 없음) 역 줄 하나로: 하차 시각 + 출발 시각
+      if (tail && tail.station && tail.name === name && kind === '환승') {
+        tail.time2 = time;
+        tail.kind = '환승';
+        return;
+      }
+      rows.push({ station: true, name: name, ja: ja, time: time, kind: kind, c1: railColor, c2: railColor });
+    };
+    steps.forEach((st, i) => {
+      const c = colorOf(st);
+      if (st.t !== 'transit') {
+        if (!st.min) return;
+        const pr = prevRide(i), nx = nextRide(i);
+        let sub;
+        if (pr && nx) {
+          sub = esc(pr.to) + ' → ' + esc(nx.from) + (pr.to === nx.from ? ' (같은 역 안 환승)' : ' (환승)');
+          const g = gap(pr.arr, nx.dep);
+          if (g != null && g - st.min > 0) sub += ' · 대기 약 ' + (g - st.min) + '분';
+        } else if (!pr) {
+          sub = esc(fromName || '출발지') + ' → ' + (nx ? esc(nx.from) + ' 승차' : esc(toName || '도착지'));
+        } else {
+          sub = esc(pr.to) + ' 하차 → ' + esc(toName || '도착지');
+        }
+        pushStep('<li class="sleg k-walk" tabindex="0" data-key="' + lkey + '" data-si="' + i + '" style="--c:' + esc(c) + '">' +
+          '<div class="time"></div><div class="rail"></div>' +
+          '<div class="body"><div class="s-head">' + modeIcon('walk') + (st.t === 'walk' ? '도보' : '이동') + ' ' + st.min + '분' +
+          (st.m ? ' · ' + fmtDist(st.m) : '') + '</div>' +
+          '<div class="s-sub">' + sub + '</div></div></li>', c);
+        return;
+      }
+      const pr = prevRide(i), nx = nextRide(i);
+      pushStation(st.from, st.jfrom, st.dep, pr ? '환승' : '승차');
+      const ride = gap(st.dep, st.arr);
+      const sub = [];
+      if (st.head) sub.push(esc(st.head) + jaName(st.head, st.jhead) + ' 방면');
+      if (st.full && st.full !== st.line) sub.push(esc(st.full));
+      if (st.jline && st.jline !== st.line) sub.push('<span class="ja">' + esc(st.jline) + '</span>');
+      if (st.ag) sub.push(esc(st.ag));
+      pushStep('<li class="sleg k-ride" tabindex="0" data-key="' + lkey + '" data-si="' + i + '" style="--c:' + esc(c) + '">' +
+        '<div class="time"></div><div class="rail"></div>' +
+        '<div class="body"><div class="s-head"><span class="ln">' + esc(st.line) + '</span>' +
+        (ride != null ? ride : st.min) + '분' + (st.stops ? ' · ' + st.stops + '정거장' : '') +
+        (st.pass === true ? ' <span class="step-pass">🎫 주유패스</span>' : st.pass === false ? ' <span class="step-card">💳 IC카드·현금</span>' : '') +
+        '</div>' + (sub.length ? '<div class="s-sub">' + sub.join(' · ') + '</div>' : '') + '</div></li>', c);
+      pushStation(st.to, st.jto, st.arr, nx ? '하차 → 환승' : '하차');
+    });
+    return rows.map(r => {
+      if (!r.station) return r.html;
+      return '<li class="sst" style="--c1:' + esc(r.c1) + ';--c2:' + esc(r.c2) + '">' +
+        '<div class="time">' + esc(r.time || '') + (r.time2 ? '<small>' + esc(r.time2) + ' 출발</small>' : '') + '</div>' +
+        '<div class="rail"><span class="sdot"></span></div>' +
+        '<div class="body"><b>' + esc(r.name) + '</b>' + jaName(r.name, r.ja) + '<span class="k">' + esc(r.kind) + '</span></div></li>';
+    }).join('');
   }
 
   // 두 점 사이 2차 베지어 곡선 (거리 멀수록 많이 휨)
@@ -1136,7 +1261,20 @@
   }
 
   function clearActive() {
-    document.querySelectorAll('.stop.active, .leg.active').forEach(x => x.classList.remove('active'));
+    document.querySelectorAll('.stop.active, .leg.active, .sleg.active').forEach(x => x.classList.remove('active'));
+    stepKey = null;
+  }
+
+  // 단계 줄 누르기: 그 단계만 강조 (같은 줄 다시 누르면 해제)
+  let stepKey = null;
+  function focusStep(el) {
+    const k = el.dataset.key + '|' + el.dataset.si;
+    const was = stepKey === k;
+    clearActive();
+    if (was) { highlightLeg(null); return; }
+    el.classList.add('active');
+    highlightSteps(el.dataset.key, [el.dataset.si]);
+    stepKey = k;
   }
 
   /* ── 이동수단 아이콘 ── */
