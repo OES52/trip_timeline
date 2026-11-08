@@ -1,0 +1,7 @@
+.git
+.github
+k8s
+node_modules
+web/dist
+*.js
+!web/*.mjs
