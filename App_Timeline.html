@@ -114,7 +114,14 @@
     const dates = selected === 'all' || useSwipe ? DATA.dates : [selected];
     const prevSlide = box.querySelector('.swiper-slide-active') || box.querySelector('.tl-scroll');
     const keepScroll = prevSlide && tlLastDate === selected ? prevSlide.scrollTop : null;
-    let html = '<div class="tl-tools"><button class="btn" type="button" id="tlScaleBtn" aria-pressed="' + tlScale + '">시간 비례 ' + (tlScale ? '켜짐' : '꺼짐') + '</button></div>';
+    // 카드 높이: 고르게 / 머무는·이동 시간대로 (작은 2칸 전환)
+    const ico = d => '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">' + d + '</svg>';
+    let html = '<div class="tl-tools"><div class="tl-mode" role="group" aria-label="카드 높이">' +
+      '<button type="button" data-scale="0" aria-pressed="' + !tlScale + '" title="카드 높이 고르게">' +
+        ico('<rect x="3" y="2.5" width="10" height="4" rx="1"/><rect x="3" y="9.5" width="10" height="4" rx="1"/>') + '<span>고르게</span></button>' +
+      '<button type="button" data-scale="1" aria-pressed="' + tlScale + '" title="머무는 시간·이동 시간만큼 길게">' +
+        ico('<rect x="3" y="1.5" width="10" height="7.5" rx="1"/><rect x="3" y="11" width="10" height="3.5" rx="1"/>') + '<span>시간대로</span></button>' +
+      '</div></div>';
     const parts = [];
     dates.forEach(date => {
       let html = '';
@@ -257,11 +264,13 @@
     mountLotties(box);
     bindTaxi(box);
 
-    document.getElementById('tlScaleBtn').addEventListener('click', () => {
-      tlScale = !tlScale;
+    box.querySelectorAll('.tl-mode [data-scale]').forEach(b => b.addEventListener('click', () => {
+      const on = b.dataset.scale === '1';
+      if (on === tlScale) return;
+      tlScale = on;
       try { localStorage.setItem('trip-tl-scale', tlScale ? '1' : '0'); } catch (e) { /* 무시 */ }
       renderTimeline();
-    });
+    }));
     box.querySelectorAll('.visit').forEach(b => b.addEventListener('click', () => toggleVisit(b.dataset.vk)));
     box.querySelectorAll('.spend-btn').forEach(b => b.addEventListener('click', () => {
       const f = box.querySelector('.spend-form[data-vk="' + b.dataset.vk + '"]');
