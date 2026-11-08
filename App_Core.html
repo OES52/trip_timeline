@@ -465,12 +465,13 @@
         });
       }
     } catch (e) {
-      throw new Error('연결 안 됨');
+      throw Object.assign(new Error('연결 안 됨'), { status: 0 });
     }
+    // status: 0 연결 안 됨 / 5xx 서버 쪽 / 4xx 요청 문제 (오프라인 대기열이 다시 보낼지 판단)
     let j = null;
     try { j = await res.json(); } catch (e) { j = null; }
-    if (!j) throw new Error(res.ok ? '서버 응답을 못 읽음' : '서버 오류 ' + res.status);
-    if (!j.ok) throw new Error(j.error || '서버 오류 ' + res.status);
+    if (!j) throw Object.assign(new Error(res.ok ? '서버 응답을 못 읽음' : '서버 오류 ' + res.status), { status: res.ok ? 502 : res.status });
+    if (!j.ok) throw Object.assign(new Error(j.error || '서버 오류 ' + res.status), { status: res.status });
     return j.result;
   }
 

@@ -6,7 +6,12 @@
  *  4. 사용자 선택 화면 아래 "이 기기" 패널: 설치·저장 공간·사진 미리 받기·출발 알림·도착 제안
  *  5. 위치: 권한 있으면 자동으로 켬, 다음 장소 거리·도착 예상, 지도·타임라인 아래 다음 장소 칩
  *  6. 도착 자동 제안 (앱 열려 있을 때만. 웹은 백그라운드 위치 불가)
- *  7. 출발 N분 전 푸시 (Web Push, iOS는 홈 화면에 추가한 뒤만) */
+ *  7. 출발 N분 전 푸시 (Web Push, iOS는 홈 화면에 추가한 뒤만)
+ *  8. 친구 기록 실시간 반영 (SSE /api/events → 바뀌면 다시 받음)
+ *  9. 오프라인 쓰기 대기열 (도장·도착·지출을 저장해뒀다가 연결되면 순서대로 전송)
+ * 10. 공유 (장소·하루 일정, Web Share → 안 되면 복사)
+ * 11. 화면 전환 애니메이션 (View Transitions)
+ * 12. 폰: 하단 탭바 + 스크롤하면 헤더 접기 */
 (function () {
   'use strict';
   const CFG = window.TRIP_CFG || {};
@@ -101,8 +106,8 @@
     });
   }
   if (CFG.photoProxy !== false) {
-    const applyData0 = applyData;
-    applyData = function (data, keepView) { proxyPhotos(data); return applyData0(data, keepView); };
+    const applyData1 = applyData;
+    applyData = function (data, keepView) { proxyPhotos(data); return applyData1(data, keepView); };
   }
 
   /* ── 4. "이 기기" 패널 (사용자 선택 화면 아래) ── */
@@ -358,8 +363,21 @@
     el.innerHTML = '<span>' + txt + '</span>';
     el.onclick = () => window.open(navUrl(t.lat, t.lng), '_blank', 'noopener');
   }
+  let animNext = false;
+  document.addEventListener('click', e => {
+    if (e.target.closest && e.target.closest('.seg .view, .tabbar button, .navgrid [data-go]')) { animNext = true; setTimeout(() => { animNext = false; }, 0); }
+  }, true);
   const setView0 = setView;
-  setView = function (v) { setView0(v); paintChip(); hideBar('geoAsk'); };
+  setView = function (v) {
+    const go = () => { setView0(v); paintChip(); hideBar('geoAsk'); afterView(); };
+    // 탭·보기 버튼을 직접 눌렀을 때만 애니메이션 (코드가 부르는 전환은 바로 바뀌어야 뒤 코드가 맞게 동작)
+    const anim = animNext; animNext = false;
+    if (!anim || v === currentView || !document.startViewTransition || matchMedia('(prefers-reduced-motion: reduce)').matches || !DATA) return go();
+    // 탭 순서 기준으로 왼쪽/오른쪽으로 밀리는 방향
+    const a = TAB_ORDER.indexOf(currentView), b = TAB_ORDER.indexOf(v);
+    document.documentElement.style.setProperty('--vt-dir', a >= 0 && b >= 0 && b < a ? '-1' : '1');
+    document.startViewTransition(go);
+  };
   setInterval(paintChip, 30000);
 
   /* ── 6. 도착 자동 제안 ── */
@@ -408,4 +426,327 @@
     const b = document.getElementById('geoStart');
     if (b) b.onclick = () => { startWatch(); setTimeout(paintGeo, 1500); };
   }
+
+  /* ── 8. 친구 기록 실시간 반영 ── */
+  //  프록시가 데이터 지문(_v)이 바뀔 때마다 알려줌 → 내가 가진 것과 다르면 다시 받음
+  //  입력 중(지출 칸 등)이거나 시트·상세가 열려 있으면 다 닫힐 때까지 미룸
+  let es = null, pendingPull = false, pulling = false;
+  function busy() {
+    const a = document.activeElement;
+    return (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) ||
+      document.querySelector('.sheet-wrap.open, .detail-wrap.open, .spend-form.open, .arr-form.open, .photo-view');
+  }
+  function startEvents() {
+    if (!window.EventSource || (es && es.readyState !== 2)) return;
+    es = new EventSource(API + '/events');
+    es.addEventListener('data', e => {
+      let d = null;
+      try { d = JSON.parse(e.data); } catch (err) { return; }
+      if (d && d.v && RAW && RAW._v !== d.v) pull();
+    });
+    es.onopen = () => flushOutbox();
+  }
+  function pull() {
+    if (pulling) { pendingPull = true; return; }
+    if (busy()) { pendingPull = true; setTimeout(() => { if (pendingPull) { pendingPull = false; pull(); } }, 3000); return; }
+    pulling = true; pendingPull = false;
+    const before = RAW;
+    apiCall('getMapData', []).then(data => {
+      applyData(data, true);
+      saveCache(data);
+      friendToast(before, RAW);
+    }, () => null).finally(() => { pulling = false; if (pendingPull) pull(); });
+  }
+  // 다른 사람이 새로 찍은 도착·도장 한 줄 알림
+  function friendToast(a, b) {
+    if (!a || !b || !USER) return;
+    const msgs = [];
+    const name = k => { const p = (b.points || []).find(x => x.date + '#' + x.order === k); return p ? pname(p) : ''; };
+    Object.keys(b.arrivedBy || {}).forEach(u => {
+      if (u === USER.id) return;
+      const old = (a.arrivedBy || {})[u] || {}, now = b.arrivedBy[u] || {};
+      Object.keys(now).filter(k => !old[k]).forEach(k => msgs.push(u + ' · ' + name(k) + ' 도착 ' + now[k]));
+    });
+    Object.keys(b.visitedBy || {}).forEach(u => {
+      if (u === USER.id) return;
+      const old = (a.visitedBy || {})[u] || {}, now = b.visitedBy[u] || {};
+      Object.keys(now).filter(k => !old[k] && !((b.arrivedBy || {})[u] || {})[k]).forEach(k => msgs.push(u + ' · ' + name(k) + ' 도장'));
+    });
+    if (msgs.length) showToast(msgs.length > 2 ? msgs[0] + ' 외 ' + (msgs.length - 1) + '건' : msgs.join(' / '));
+  }
+  addEventListener('load', startEvents);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+    startEvents();      // 폰이 백그라운드에서 끊은 연결 다시
+    flushOutbox();
+  });
+  addEventListener('online', () => { startEvents(); flushOutbox(); });
+
+  /* ── 9. 오프라인 쓰기 대기열 ── */
+  //  도장·도착·지출은 연결이 안 되면 대기열에 넣고 화면에는 저장된 것처럼 보여줌
+  //  일정 조정(경로 다시 계산)·PIN 확인은 서버가 꼭 필요해서 대기열 안 씀
+  const QUEUE_FNS = { setVisitedMany: 1, setVisited: 1, setArrived: 1, setSpend: 1 };
+  const OUTBOX_KEY = 'trip-outbox-v1';
+  let outbox = [], flushing = false;
+  (window.TRIP_STORE ? window.TRIP_STORE.get(OUTBOX_KEY) : Promise.resolve(LS.get(OUTBOX_KEY, null))).then(raw => {
+    try { outbox = JSON.parse(raw || '[]') || []; } catch (e) { outbox = []; }
+    paintOutbox();
+    if (outbox.length) flushOutbox();
+  }, () => null);
+  function saveOutbox() {
+    const raw = JSON.stringify(outbox);
+    if (window.TRIP_STORE) window.TRIP_STORE.set(OUTBOX_KEY, raw); else LS.set(OUTBOX_KEY, raw);
+    paintOutbox();
+  }
+  const retryable = e => !e || e.status == null || e.status === 0 || e.status === 429 || e.status >= 500;
+  // 대기열에 넣었을 때 성공 처리기에 넘길 값 = 지금 화면 상태 (화면은 이미 바꿔 둔 상태)
+  function localResult(fn) {
+    if (fn === 'setArrived') return Object.assign({}, DATA && DATA.arrived);
+    if (fn === 'setSpend') return Object.assign({}, DATA && DATA.spend);
+    return Object.assign({}, DATA && DATA.visited);
+  }
+  const apiCall0 = apiCall;
+  apiCall = async function (fn, args) {
+    if (!QUEUE_FNS[fn]) return apiCall0(fn, args);
+    // 앞에 밀린 게 있으면 순서 지키려고 뒤에 붙임
+    if (outbox.length || !navigator.onLine) { enqueue(fn, args); return localResult(fn); }
+    try {
+      return await apiCall0(fn, args);
+    } catch (e) {
+      if (!retryable(e)) throw e;
+      enqueue(fn, args);
+      return localResult(fn);
+    }
+  };
+  function enqueue(fn, args) {
+    outbox.push({ fn: fn, args: args, at: Date.now(), tries: 0 });
+    saveOutbox();
+    setTimeout(flushOutbox, 5000);
+  }
+  async function flushOutbox() {
+    if (flushing || !outbox.length || !navigator.onLine) return;
+    flushing = true;
+    let sent = 0;
+    try {
+      while (outbox.length) {
+        const op = outbox[0];
+        try {
+          await apiCall0(op.fn, op.args);
+          outbox.shift(); sent++;
+        } catch (e) {
+          if (retryable(e) && (e.status === 0 || e.status == null || ++op.tries < 8)) { saveOutbox(); break; }
+          outbox.shift();
+          showToast('보내지 못한 기록 1건 버림: ' + (e && e.message || e));
+        }
+        saveOutbox();
+      }
+    } finally {
+      flushing = false;
+    }
+    if (sent) { showToast('밀린 기록 ' + sent + '건 보냄'); pull(); }
+  }
+  setInterval(flushOutbox, 30000);
+  // 서버에서 받은 데이터에 아직 못 보낸 기록을 덮어서 보여줌 (받는 순간 깜빡 사라지지 않게)
+  function overlayOutbox(data) {
+    if (!data || !outbox.length) return;
+    outbox.forEach(op => {
+      const a = op.args || [];
+      if (op.fn === 'setVisitedMany' || op.fn === 'setVisited') {
+        const user = op.fn === 'setVisited' ? a[2] : a[1];
+        const changes = op.fn === 'setVisited' ? { [a[0]]: a[1] ? 1 : 0 } : (a[0] || {});
+        data.visitedBy = Object.assign({}, data.visitedBy);
+        const m = data.visitedBy[user] = Object.assign({}, data.visitedBy[user]);
+        Object.keys(changes).forEach(k => { if (changes[k]) m[k] = 1; else delete m[k]; });
+      } else if (op.fn === 'setArrived') {
+        data.arrivedBy = Object.assign({}, data.arrivedBy);
+        const m = data.arrivedBy[a[2]] = Object.assign({}, data.arrivedBy[a[2]]);
+        if (a[1]) m[a[0]] = a[1]; else delete m[a[0]];
+      } else if (op.fn === 'setSpend') {
+        data.spend = Object.assign({}, data.spend);
+        if (a[2] === '' || a[2] == null) delete data.spend[a[0]]; else data.spend[a[0]] = { amount: Number(a[2]), memo: a[3] || '' };
+      }
+    });
+  }
+  const applyData2 = applyData;
+  applyData = function (data, keepView) { overlayOutbox(data); return applyData2(data, keepView); };
+  // 헤더 새로고침 버튼 옆 "↑ 3" 표시
+  function paintOutbox() {
+    let el = document.getElementById('obx');
+    if (!outbox.length) { if (el) el.remove(); return; }
+    if (!el) {
+      el = document.createElement('button');
+      el.id = 'obx'; el.type = 'button'; el.className = 'obx';
+      el.onclick = () => { showToast('보낼 기록 ' + outbox.length + '건. 연결되면 자동으로 보냄'); flushOutbox(); };
+      const rl = document.getElementById('reload');
+      rl.parentNode.insertBefore(el, rl);
+    }
+    el.textContent = '↑ ' + outbox.length;
+    el.title = '아직 못 보낸 기록 ' + outbox.length + '건';
+  }
+
+  /* ── 10. 공유 ── */
+  async function share(title, text, url) {
+    const data = { title: title, text: text };
+    if (url) data.url = url;
+    try {
+      if (navigator.share) { await navigator.share(data); return; }
+    } catch (e) {
+      if (e && e.name === 'AbortError') return;   // 사용자가 닫음
+    }
+    const all = text + (url ? '\n' + url : '');
+    try { await navigator.clipboard.writeText(all); showToast('복사함. 붙여넣기로 보내기'); }
+    catch (e) { prompt('복사해서 보내기', all); }
+  }
+  function mapsUrl(p) {
+    const pl = typeof placeOf === 'function' ? placeOf(p) : null;
+    if (pl && pl.link && /^https?:\/\//.test(pl.link)) return pl.link;
+    return p.lat != null ? 'https://www.google.com/maps/search/?api=1&query=' + p.lat + ',' + p.lng : '';
+  }
+  function sharePlace(vk) {
+    const p = DATA.points.find(x => x.date + '#' + x.order === vk);
+    if (!p) return;
+    const pl = typeof placeOf === 'function' ? placeOf(p) : null;
+    const lines = [dayLabel(p.date) + ' ' + (p.arrive || '') + (p.depart && p.depart !== p.arrive ? '~' + p.depart : '') + ' ' + pname(p)];
+    if (pl && pl.name && pl.name !== pname(p)) lines.push(pl.name);
+    if (p.activity) lines.push(p.activity);
+    share(pname(p), lines.join('\n'), mapsUrl(p));
+  }
+  function shareDay(date) {
+    const pts = DATA.points.filter(p => p.date === date).sort((a, b) => a.order - b.order);
+    if (!pts.length) return;
+    const text = dayLabel(date) + ' 일정\n' + pts.map(p => (p.arrive || '  :  ') + ' ' + pname(p)).join('\n');
+    share(dayLabel(date) + ' 일정', text, location.origin + '/');
+  }
+  const renderTimeline0 = renderTimeline;
+  renderTimeline = function () {
+    renderTimeline0();
+    const box = document.getElementById('tlInner');
+    if (!box) return;
+    box.querySelectorAll('.titem[data-key] .tcard .actions').forEach(act => {
+      if (act.querySelector('.share-btn')) return;
+      const vk = act.closest('.titem').dataset.key;
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'share-btn'; b.textContent = '공유';
+      b.onclick = () => sharePlace(vk);
+      act.appendChild(b);
+    });
+    const tools = box.querySelector('.tl-tools');
+    if (tools && !tools.querySelector('.share-day')) {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'share-day';
+      b.innerHTML = '<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 10V2M5 5l3-3 3 3"/><path d="M3 9v4h10V9"/></svg><span>이 날 공유</span>';
+      b.onclick = () => shareDay(selected && selected !== 'all' ? selected : (DATA.dates.indexOf(tokyoNow().date) >= 0 ? tokyoNow().date : DATA.dates[0]));
+      tools.insertBefore(b, tools.firstChild);
+    }
+  };
+
+  /* ── 11·12. 하단 탭바 · 헤더 접기 · 화면 전환 ── */
+  const TAB_ORDER = ['home', 'plan', 'tl', 'area', 'guide', 'pass'];
+  const TABS = [
+    ['home', '홈', '<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20h14V9.5"/>'],
+    ['plan', '지도', '<path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/>'],
+    ['tl', '타임라인', '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>'],
+    ['area', '가이드', '<circle cx="12" cy="12" r="8.5"/><path d="m15.5 8.5-2 5-5 2 2-5z"/>'],
+    ['guide', '도감', '<path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5z"/><path d="M4 20.5A2.5 2.5 0 0 0 6.5 23H20v-5"/>'],
+    ['pass', '여권', '<rect x="5" y="3" width="14" height="18" rx="2"/><circle cx="12" cy="11" r="3"/><path d="M9 17h6"/>'],
+  ];
+  const tabbar = document.createElement('nav');
+  tabbar.className = 'tabbar';
+  tabbar.setAttribute('aria-label', '보기');
+  tabbar.innerHTML = TABS.map(t => '<button type="button" data-v="' + t[0] + '"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    t[2] + '</svg><span>' + t[1] + '</span></button>').join('');
+  tabbar.querySelectorAll('[data-v]').forEach(b => b.addEventListener('click', () => {
+    if (b.dataset.v === currentView) { scrollTopCurrent(); return; }   // 같은 탭 한 번 더 → 맨 위로
+    setView(b.dataset.v);
+  }));
+  document.body.appendChild(tabbar);
+  document.body.classList.add('has-tabbar');
+  function syncTabs() {
+    tabbar.querySelectorAll('[data-v]').forEach(b => { if (b.dataset.v === currentView) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
+  }
+  function scrollTopCurrent() {
+    const sel = { home: '#home', pass: '#pass', wrap: '#wrap', who: '#who', area: '#area', guide: '#dexList', plan: '#list', tl: '.swiper-slide-active, .tl-scroll' }[currentView];
+    const el = sel && document.querySelector(sel);
+    if (el) el.scrollTo({ top: 0, behavior: 'smooth' });
+    setHeaderMin(false);
+  }
+  // 탭바 높이 → 토스트·칩 위치 계산용
+  const tabH = () => document.documentElement.style.setProperty('--tabbar-h', (tabbar.offsetParent ? tabbar.offsetHeight : 0) + 'px');
+  if (window.ResizeObserver) new ResizeObserver(tabH).observe(tabbar);
+  addEventListener('resize', tabH);
+
+  // 헤더 접기: 폰에서 아래로 스크롤하면 제목줄 숨김, 위로 조금만 올려도 다시
+  const lastTop = new WeakMap();
+  let hdrMin = false;
+  function setHeaderMin(on) {
+    if (on === hdrMin) return;
+    hdrMin = on;
+    document.body.classList.toggle('hdr-min', on);
+    if (currentView === 'plan') setTimeout(() => { try { map.invalidateSize(); } catch (e) { /* 무시 */ } }, 260);
+  }
+  document.addEventListener('scroll', e => {
+    if (!matchMedia('(max-width: 640px)').matches) return;
+    const t = e.target;
+    if (!(t instanceof Element)) return;
+    const top = t.scrollTop, prev = lastTop.has(t) ? lastTop.get(t) : top;
+    lastTop.set(t, top);
+    const d = top - prev;
+    if (top < 40) setHeaderMin(false);
+    else if (d > 6) setHeaderMin(true);
+    else if (d < -10) setHeaderMin(false);
+  }, { capture: true, passive: true });
+
+  function afterView() { syncTabs(); setHeaderMin(false); tabH(); }
+  syncTabs();
+
+  const css2 = document.createElement('style');
+  css2.textContent = `
+  .share-btn { font: inherit; font-size: 12px; color: var(--muted); background: var(--panel); border: 1px solid var(--rule); border-radius: 12px; padding: 1px 10px; cursor: pointer; }
+  .tl-tools { align-items: center; }
+  .share-day { display: inline-flex; align-items: center; gap: 4px; margin-right: auto; font: inherit; font-size: 12px; color: var(--muted);
+    background: none; border: 1px solid var(--rule); border-radius: 8px; padding: 5px 9px; cursor: pointer; }
+  .obx { font: inherit; font-size: 12px; font-weight: 700; color: #c2410c; background: color-mix(in srgb, #c2410c 10%, var(--panel));
+    border: 1px solid color-mix(in srgb, #c2410c 35%, transparent); border-radius: 8px; height: 32px; padding: 0 9px; cursor: pointer; }
+
+  /* 화면 전환: 헤더·탭바는 그대로, 본문만 살짝 밀리며 바뀜 */
+  header { view-transition-name: hdr; }
+  .tabbar { view-transition-name: tabbar; }
+  ::view-transition-old(root) { animation: vt-out .16s cubic-bezier(.4, 0, 1, 1) both; }
+  ::view-transition-new(root) { animation: vt-in .22s cubic-bezier(.2, .7, .2, 1) both; }
+  @keyframes vt-out { to { opacity: 0; transform: translateX(calc(var(--vt-dir, 1) * -18px)); } }
+  @keyframes vt-in { from { opacity: 0; transform: translateX(calc(var(--vt-dir, 1) * 18px)); } }
+
+  /* 하단 탭바 (폰) */
+  .tabbar { display: none; }
+  @media (max-width: 640px) {
+    body.has-tabbar .views .seg { display: none; }
+    body.has-tabbar .views { width: auto; }
+    body.has-tabbar .title-row { flex-wrap: nowrap; align-items: center; }
+    .tabbar { display: grid; grid-template-columns: repeat(6, 1fr); order: 99; flex: none; position: relative; z-index: 600;
+      background: color-mix(in srgb, var(--panel) 94%, transparent); border-top: 1px solid var(--rule);
+      padding: 4px 6px calc(4px + env(safe-area-inset-bottom, 0px)); }
+    .tabbar button { display: flex; flex-direction: column; align-items: center; gap: 2px; font: inherit; font-size: 10.5px; font-weight: 500;
+      color: var(--muted); background: none; border: 0; padding: 6px 0 4px; border-radius: 10px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+    .tabbar button svg { transition: transform .18s var(--ease); }
+    .tabbar button[aria-current="page"] { color: var(--ink); font-weight: 700; }
+    .tabbar button[aria-current="page"] svg { transform: translateY(-1px); stroke-width: 2.1; }
+    .tabbar button:active svg { transform: scale(.9); }
+    body[data-view="who"] .tabbar { display: none; }
+    body.has-tabbar .toast { bottom: calc(var(--tabbar-h, 0px) + 12px); }
+    body.has-tabbar #nextChip { bottom: calc(var(--tabbar-h, 0px) + 10px); }
+    body.has-tabbar #geoAsk { bottom: calc(var(--tabbar-h, 0px) + 62px); }
+
+    /* 헤더 접기 */
+    body.has-tabbar .title-row { max-height: 90px; overflow: hidden; transition: max-height .22s var(--ease), opacity .18s var(--ease); }
+    body.has-tabbar.hdr-min .title-row { max-height: 0; opacity: 0; }
+    body.has-tabbar header { transition: padding .22s var(--ease); }
+    body.has-tabbar.hdr-min header { padding-top: env(safe-area-inset-top, 0px); }
+    body.has-tabbar.hdr-min .days { margin-top: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    ::view-transition-old(root), ::view-transition-new(root) { animation: none; }
+    body.has-tabbar .title-row, body.has-tabbar header { transition: none; }
+  }
+  `;
+  document.head.appendChild(css2);
 })();

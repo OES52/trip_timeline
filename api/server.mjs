@@ -1,5 +1,6 @@
 // trip-api: 여행 타임라인 정적 페이지 ↔ Apps Script 사이 프록시 (홈랩 k3s, trip 네임스페이스)
 //  GET  /api/data                 일정 데이터. 캐시 먼저 주고 오래됐으면 뒤에서 갱신 (Apps Script 콜드스타트 숨김), gzip·brotli, ETag
+//  GET  /api/events               SSE: 데이터가 바뀌면 {v} 알림 → 화면이 다시 받음 (친구 도장·도착 실시간)
 //  POST /api/call   {fn, args}    쓰기·PIN 확인. PIN은 여기서 먼저 확인 (틀리면 Apps Script까지 안 감), 레이트 리밋
 //  POST /api/hook/invalidate      Apps Script가 시트 바뀌면 부름 (X-Trip-Key)
 //  GET  /api/photo?u=URL          장소 사진을 받아 디스크에 캐시 (사설 IP 차단)
@@ -56,8 +57,13 @@ async function gas(method, params, body) {
 }
 
 /* ── 일정 데이터 캐시 ── */
-const cache = { data: null, body: null, gz: null, br: null, etag: '', at: 0, inflight: null, auth: null };
+const cache = { data: null, body: null, gz: null, br: null, etag: '', at: 0, inflight: null, auth: null, v: '' };
 function setData(data) {
+  // _v: 내용 지문. 화면이 들고 있는 데이터와 SSE로 받은 값을 비교해서 다르면 다시 받음
+  const plain = Object.assign({}, data);
+  delete plain._v;
+  const v = sha256(JSON.stringify(plain)).slice(0, 12);
+  data = Object.assign(plain, { _v: v });
   const body = Buffer.from(JSON.stringify({ ok: true, result: data }));
   cache.data = data;
   cache.body = body;
@@ -65,7 +71,25 @@ function setData(data) {
   cache.br = zlib.brotliCompressSync(body, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 9 } });
   cache.etag = '"' + sha256(body).slice(0, 20) + '"';
   cache.at = Date.now();
+  if (v !== cache.v) { cache.v = v; broadcast(); }
 }
+
+/* ── 실시간 알림 (SSE) ── */
+const sse = new Set();
+function broadcast() {
+  const msg = 'event: data\ndata: ' + JSON.stringify({ v: cache.v }) + '\n\n';
+  for (const res of sse) res.write(msg);
+}
+function apiEvents(req, res) {
+  if (sse.size >= 200) return fail(req, res, 503, '연결이 너무 많음');
+  res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
+  res.write('retry: 5000\n');
+  if (cache.v) res.write('event: data\ndata: ' + JSON.stringify({ v: cache.v }) + '\n\n');
+  sse.add(res);
+  req.on('close', () => sse.delete(res));
+}
+// 프록시·게이트웨이가 놀고 있는 연결을 끊지 않게 25초마다 빈 줄
+setInterval(() => { for (const res of sse) res.write(': ping\n\n'); }, 25000).unref();
 function refresh(reason) {
   if (cache.inflight) return cache.inflight;
   const t0 = Date.now();
@@ -186,15 +210,29 @@ async function apiCall(req, res) {
   try {
     const result = await gas('POST', null, { fn: body.fn, args: args, key: PROXY_KEY });
     if (spec[2]) {
-      // 일정 수정은 결과가 전체 데이터 → 바로 캐시 교체, 나머지는 곧 다시 받음
+      // 결과로 바로 캐시를 고쳐서 친구 화면에 즉시 알림 → 그 뒤 Apps Script에서 한 번 더 받아 맞춤
       if (body.fn === 'editPlan' && result && result.points) setData(result);
-      else refreshSoon(body.fn);
+      else {
+        patchRecords(body.fn, user, result);
+        refreshSoon(body.fn);
+      }
     }
     ok(req, res, result);
   } catch (e) {
     if (/PIN/.test(e.message)) { pinFailed(ip, user); refreshSoon('PIN 불일치'); }   // 설정 시트에서 PIN 바뀐 경우
     fail(req, res, /PIN|권한|보기 전용|수정할 수 없음|없는 사용자/.test(e.message) ? 403 : 502, e.message);
   }
+}
+
+// 쓰기 결과(그 사용자 기록 전체)를 캐시에 반영
+function patchRecords(fn, user, result) {
+  if (!cache.data || !result || typeof result !== 'object') return;
+  const d = Object.assign({}, cache.data);
+  if (fn === 'setVisitedMany' || fn === 'setVisited') d.visitedBy = Object.assign({}, d.visitedBy, { [user]: result });
+  else if (fn === 'setArrived') d.arrivedBy = Object.assign({}, d.arrivedBy, { [user]: result });
+  else if (fn === 'setSpend') d.spend = result;
+  else return;
+  setData(d);
 }
 
 async function apiData(req, res) {
@@ -453,6 +491,7 @@ const server = http.createServer(async (req, res) => {
   try {
     if (p === '/healthz') return send(res, 200, { 'Content-Type': 'text/plain' }, 'ok\n');
     if (p === '/api/data' && req.method === 'GET') return await apiData(req, res);
+    if (p === '/api/events' && req.method === 'GET') return apiEvents(req, res);
     if (p === '/api/call' && req.method === 'POST') return await apiCall(req, res);
     if (p === '/api/photo' && req.method === 'GET') return await apiPhoto(req, res, url.searchParams);
     if (p === '/api/hook/invalidate' && req.method === 'POST') {
@@ -475,6 +514,6 @@ server.headersTimeout = 20000;
 await scanPhotos().catch(e => log('사진 캐시 확인 실패', e.message));
 server.listen(PORT, () => log('trip-api 시작', PORT, PUSH_ON ? '알림 켜짐' : '알림 꺼짐 (VAPID 없음)'));
 refresh('시작').catch(e => log('시작 갱신 실패 (첫 요청 때 다시)', e.message));
-const stop = () => { log('종료'); server.close(); clearTimeout(pushSaveTimer); try { fs.writeFileSync(PUSH_FILE, JSON.stringify(push)); } catch (e) { /* 무시 */ } process.exit(0); };
+const stop = () => { log('종료'); for (const r of sse) r.end(); server.close(); clearTimeout(pushSaveTimer); try { fs.writeFileSync(PUSH_FILE, JSON.stringify(push)); } catch (e) { /* 무시 */ } process.exit(0); };
 process.on('SIGTERM', stop);
 process.on('SIGINT', stop);
