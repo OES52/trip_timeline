@@ -74,6 +74,9 @@ function runCalc_(force, opts) {
     }
   });
 
+  // 1-3. 종착점이 있는 장소: 시작점→종착점 도보 경로 조회해서 저장 (한 번 받으면 재사용, 웹앱 조정 중엔 생략)
+  if (!quick) rows.forEach(r => innerWalk_(r, true));
+
   // 2. 일자별로 구간 계산 (대중교통은 출발 시각에 따라 결과가 달라서 시각도 내부에서 같이 계산)
   //    다음 장소로는 종착점이 있으면 종착점에서, 없으면 시작점에서 출발
   const cache = force ? {} : loadRouteCache_(routeSh);
@@ -333,6 +336,54 @@ function passCoverage_(stepsJson, re) {
   const ok = rides.filter(s => re.test([s.line, s.full, s.ag].filter(Boolean).join(' ')));
   if (ok.length === rides.length) return 'all';
   return ok.length ? 'some' : '';
+}
+
+/* ── 장소 안 시작점→종착점 도보 (시장·상점가 관통 등) ── */
+
+// 저장 위치: 스크립트 속성 "iw|시작lat,lng|종착lat,lng" = "분|미터"
+let INNER_WALK_MEMO_ = null;
+function innerWalkStore_() {
+  if (!INNER_WALK_MEMO_) {
+    try { INNER_WALK_MEMO_ = PropertiesService.getScriptProperties().getProperties(); } catch (e) { INNER_WALK_MEMO_ = {}; }
+  }
+  return INNER_WALK_MEMO_;
+}
+
+// 시작점→종착점 걷는 시간·거리 { min, m, est } (종착점 없거나 시작점과 같으면 null)
+//  저장된 도보 경로가 있으면 그 값 (est: false)
+//  fetch = true면 없을 때 구글 도보 경로를 받아 저장 (경로 계산 때만)
+//  그래도 없으면 직선거리 × INNER_WALK_DETOUR, INNER_WALK_M_PER_MIN 속도로 어림 (est: true)
+function innerWalk_(r, fetch) {
+  if (!r || r.lat == null || r.lng == null || r.endLat == null || r.endLng == null) return null;
+  if (r.lat === r.endLat && r.lng === r.endLng) return null;
+  const f = v => Number(v).toFixed(5);
+  const key = 'iw|' + f(r.lat) + ',' + f(r.lng) + '|' + f(r.endLat) + ',' + f(r.endLng);
+  const store = innerWalkStore_();
+  const parse = s => {
+    const mm = String(s || '').match(/^(\d+)\|(\d+)$/);
+    return mm ? { min: Number(mm[1]), m: Number(mm[2]), est: false } : null;
+  };
+  const hit = parse(store[key]);
+  if (hit) return hit;
+  if (fetch) {
+    try {
+      const out = Maps.newDirectionFinder()
+        .setOrigin(r.lat, r.lng).setDestination(r.endLat, r.endLng)
+        .setMode(Maps.DirectionFinder.Mode.WALKING).setLanguage('ko').getDirections();
+      Utilities.sleep(CONFIG.SLEEP_MS);
+      const leg = out && out.status === 'OK' && out.routes && out.routes[0] ? out.routes[0].legs[0] : null;
+      if (leg && leg.duration && leg.distance) {
+        const val = Math.ceil(leg.duration.value / 60) + '|' + Math.round(leg.distance.value);
+        PropertiesService.getScriptProperties().setProperty(key, val);
+        store[key] = val;
+        return parse(val);
+      }
+    } catch (e) {
+      // 조회 실패하면 어림값
+    }
+  }
+  const m = distanceM_(r.lat, r.lng, r.endLat, r.endLng) * CONFIG.INNER_WALK_DETOUR;
+  return { min: Math.max(1, Math.ceil(m / CONFIG.INNER_WALK_M_PER_MIN)), m: Math.round(m), est: true };
 }
 
 /* ── 순서 제안: 고정점 사이 장소들 순서를 직선거리로 비교 (API 호출 없음) ── */
