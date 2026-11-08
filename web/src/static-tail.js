@@ -7,7 +7,7 @@
  *  5. 위치: 권한 있으면 자동으로 켬, 다음 장소 거리·도착 예상, 지도·타임라인 아래 다음 장소 칩
  *  6. 도착 자동 제안 (앱 열려 있을 때만. 웹은 백그라운드 위치 불가)
  *  7. 출발 N분 전 푸시 (Web Push, iOS는 홈 화면에 추가한 뒤만)
- *  8. 친구 기록 실시간 반영 (SSE /api/events → 바뀌면 다시 받음)
+ *  8. 친구 기록 실시간 반영 (SSE /api/events → 바뀌면 다시 받음, 알림 없이 화면만 갱신)
  *  9. 오프라인 쓰기 대기열 (도장·도착·지출을 저장해뒀다가 연결되면 순서대로 전송)
  * 10. 공유 (장소·하루 일정, Web Share → 안 되면 복사)
  * 11. 화면 전환 애니메이션 (View Transitions)
@@ -450,29 +450,10 @@
     if (pulling) { pendingPull = true; return; }
     if (busy()) { pendingPull = true; setTimeout(() => { if (pendingPull) { pendingPull = false; pull(); } }, 3000); return; }
     pulling = true; pendingPull = false;
-    const before = RAW;
     apiCall('getMapData', []).then(data => {
       applyData(data, true);
       saveCache(data);
-      friendToast(before, RAW);
     }, () => null).finally(() => { pulling = false; if (pendingPull) pull(); });
-  }
-  // 다른 사람이 새로 찍은 도착·도장 한 줄 알림
-  function friendToast(a, b) {
-    if (!a || !b || !USER) return;
-    const msgs = [];
-    const name = k => { const p = (b.points || []).find(x => x.date + '#' + x.order === k); return p ? pname(p) : ''; };
-    Object.keys(b.arrivedBy || {}).forEach(u => {
-      if (u === USER.id) return;
-      const old = (a.arrivedBy || {})[u] || {}, now = b.arrivedBy[u] || {};
-      Object.keys(now).filter(k => !old[k]).forEach(k => msgs.push(u + ' · ' + name(k) + ' 도착 ' + now[k]));
-    });
-    Object.keys(b.visitedBy || {}).forEach(u => {
-      if (u === USER.id) return;
-      const old = (a.visitedBy || {})[u] || {}, now = b.visitedBy[u] || {};
-      Object.keys(now).filter(k => !old[k] && !((b.arrivedBy || {})[u] || {})[k]).forEach(k => msgs.push(u + ' · ' + name(k) + ' 도장'));
-    });
-    if (msgs.length) showToast(msgs.length > 2 ? msgs[0] + ' 외 ' + (msgs.length - 1) + '건' : msgs.join(' / '));
   }
   addEventListener('load', startEvents);
   document.addEventListener('visibilitychange', () => {
