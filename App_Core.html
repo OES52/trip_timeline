@@ -429,6 +429,45 @@
   const CACHE_KEY = 'trip-timeline-cache-v1';
   const USER_KEY = 'trip-user-v1';
   const USER_COLORS = { OES: '#2b62d9', KanoC: '#d9480f', Keiz: '#13945f', Rinne: '#8a3ffc', Guest: '#5d6b7d' };
+  /* ── 서버 호출 ── */
+  // Apps Script 웹앱 안에서는 google.script.run 그대로, 외부 정적 페이지에서는 Apps Script API로 fetch
+  //  정적 페이지는 index.html에서 window.TRIP_API_URL = 'https://script.google.com/macros/s/.../exec' 지정
+  //  쓰는 법은 google.script.run과 같음: RUN().withSuccessHandler(f).withFailureHandler(g).setSpend(...)
+  const API_URL = (typeof window !== 'undefined' && window.TRIP_API_URL) || '';
+  function RUN() {
+    if (!API_URL && typeof google !== 'undefined' && google.script && google.script.run) return google.script.run;
+    let ok = () => {}, fail = () => {};
+    const runner = new Proxy({}, {
+      get(_, name) {
+        if (name === 'withSuccessHandler') return f => { ok = f || ok; return runner; };
+        if (name === 'withFailureHandler') return f => { fail = f || fail; return runner; };
+        if (name === 'withUserObject') return () => runner;
+        return (...args) => { apiCall(String(name), args).then(r => ok(r), e => fail(e)); };
+      }
+    });
+    return runner;
+  }
+  // POST {fn, args} → {ok, result} / {ok:false, error}
+  async function apiCall(fn, args) {
+    if (!API_URL) throw new Error('API 주소가 없음 (TRIP_API_URL)');
+    let res;
+    try {
+      res = await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ fn: fn, args: args }),
+        redirect: 'follow',
+      });
+    } catch (e) {
+      throw new Error('연결 안 됨');
+    }
+    if (!res.ok) throw new Error('서버 오류 ' + res.status);
+    let j;
+    try { j = await res.json(); } catch (e) { throw new Error('서버 응답을 못 읽음'); }
+    if (!j.ok) throw new Error(j.error || '서버 오류');
+    return j.result;
+  }
+
   // 설정 시트 사용자 (서버가 페이지 열 때 Index.html에 BOOT_USERS로 심어줌). 사용자 추가·수정은 설정 시트에서만
   const DEFAULT_USERS = (typeof BOOT_USERS !== 'undefined' && Array.isArray(BOOT_USERS)) ? BOOT_USERS : [];
   let RAW = null, USER = null;
@@ -498,7 +537,7 @@
     if (u.hasPin && !getPin(id)) {
       const v = prompt(id + ' PIN 입력');
       if (v == null || v === '') return;
-      google.script.run
+      RUN()
         .withSuccessHandler(() => { setPin(id, v); finishChoose(id); })
         .withFailureHandler(() => showToast('PIN이 틀림'))
         .checkPin(id, v);
@@ -603,7 +642,7 @@
     document.getElementById('reload').classList.add('spin');
 
     // 2. 서버에서 최신 데이터
-    google.script.run
+    RUN()
       .withSuccessHandler(data => {
         document.getElementById('reload').classList.remove('spin');
         applyData(data);

@@ -15,7 +15,7 @@
     else DATA.spend[vk] = { amount: Number(amount), memo: memo || '' };
     refresh();
     const seq = ++spendSeq;
-    google.script.run
+    RUN()
       .withSuccessHandler(map => { if (seq === spendSeq) { DATA.spend = map; RAW.spend = map; } })
       .withFailureHandler(err => handleWriteError(err, '지출'))
       .setSpend(vk, place, amount === '' ? '' : Number(amount), memo || '', USER.id, getPin(USER.id));
@@ -248,7 +248,7 @@
     const changes = visitQueue, user = USER.id;
     visitQueue = {};
     visitBusy = true;
-    google.script.run
+    RUN()
       .withSuccessHandler(map => {
         visitBusy = false;
         RAW.visitedBy = RAW.visitedBy || {};
@@ -325,7 +325,7 @@
     if (!opts.silent) showToast(hhmmStr ? '도착 ' + hhmmStr + ' 기록' : '도착 기록 삭제', () => saveArrival(vk, prev, { silent: true }));
     refresh();
     const seq = ++arrSeq, user = USER.id;
-    google.script.run
+    RUN()
       .withSuccessHandler(map => {
         RAW.arrivedBy = RAW.arrivedBy || {};
         RAW.arrivedBy[user] = map;
@@ -353,7 +353,7 @@
     // 체류 조정·건너뛰기 모두 서버에서 경로를 다시 계산함
     setStatus('일정 반영 중… 경로 다시 계산이라 10~30초 걸릴 수 있음');
     document.getElementById('reload').classList.add('spin');
-    google.script.run
+    RUN()
       .withSuccessHandler(data => {
         document.getElementById('reload').classList.remove('spin');
         applyData(data, true);
