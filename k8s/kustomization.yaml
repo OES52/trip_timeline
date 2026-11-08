@@ -9,4 +9,4 @@ images:
   - name: ghcr.io/oes52/trip-web
     newTag: 0f47b402e80fa3698f4c5ddf43da245aa02bf711
   - name: ghcr.io/oes52/trip-api
-    newTag: latest
+    newTag: 0f47b402e80fa3698f4c5ddf43da245aa02bf711
