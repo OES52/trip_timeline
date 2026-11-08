@@ -1,0 +1,186 @@
+<!--App_Theme.html-->
+<script>
+  /* ───────── 테마: 일본 역·열차 ─────────
+   *  도시 색, 날짜 머리 승차권(きっぷ), 지금 선(今), 교통 장소 역 이름판(駅名標),
+   *  사진 없음·실패 대체 그림, 홈 탑승권(여행 전), 날짜 탭·탭바 도시 색 */
+
+  // 도시별 강조색: 오사카 주황(미도스지·도톤보리 간판), 교토 주홍(도리이), 나라 녹색(나라공원), 도쿄 JR 연두, 한국 파랑
+  const CITY_COLORS = [
+    [/오사카|大阪|Osaka/i, '#f76b15'],
+    [/교토|京都|Kyoto/i, '#d6402b'],
+    [/나라|奈良|Nara/i, '#2f9e44'],
+    [/도쿄|東京|Tokyo|요코하마|横浜/i, '#4c9a2a'],
+    [/고베|神戸|Kobe/i, '#0b7285'],
+    [/인천|서울|김포|부산|한국/i, '#2b62d9'],
+  ];
+  function cityColor(name) {
+    for (const [re, c] of CITY_COLORS) if (re.test(name || '')) return c;
+    return '';
+  }
+  // 그날 대표 도시 (교통 말고 가장 많이 나오는 도시)
+  function dayCity(date) {
+    const cnt = {};
+    DATA.points.filter(p => p.date === date).forEach(p => {
+      const pl = placeOf(p);
+      if (!pl || !pl.city) return;
+      cnt[pl.city] = (cnt[pl.city] || 0) + (pl.type === '교통' ? 0.3 : 1);
+    });
+    const name = Object.keys(cnt).sort((a, b) => cnt[b] - cnt[a])[0] || '';
+    return { name: name, color: cityColor(name) || 'var(--ink)' };
+  }
+  // 그날 지나는 도시 순서 (연속 중복 제거)
+  function dayRoute(date) {
+    const out = [];
+    DATA.points.filter(p => p.date === date).sort((a, b) => a.order - b.order).forEach(p => {
+      const pl = placeOf(p);
+      const c = pl && pl.city;
+      if (c && out[out.length - 1] !== c) out.push(c);
+    });
+    return out;
+  }
+
+  /* ── 날짜 머리: 승차권 ── */
+  function kippuHead(date, inner) {
+    const nt = tokyoNow();
+    const i = DATA.dates.indexOf(date);
+    const city = dayCity(date);
+    const route = dayRoute(date);
+    const past = date < nt.date;
+    const today = date === nt.date;
+    return '<section class="kippu' + (today ? ' today' : '') + '" style="--city:' + city.color + '">' +
+      '<div class="kp-top"><span>乗車券 · ' + (i + 1) + '일차</span><span class="kp-no">No.' + String(i + 1).padStart(4, '0') + '</span></div>' +
+      '<div class="kp-main"><h2 class="tl-day">' + dayLabel(date) + '</h2>' +
+        (route.length ? '<div class="kp-route">' + route.map(c => '<span style="--cc:' + (cityColor(c) || 'var(--ink)') + '">' + esc(c) + '</span>').join('<i>→</i>') + '</div>' : '') +
+      '</div>' +
+      '<div class="kp-body">' + inner + '</div>' +
+      (past ? '<span class="kp-stamp" aria-label="지난 날">済</span>' : today ? '<span class="kp-today">本日</span>' : '') +
+      '</section>';
+  }
+
+  /* ── 지금 선 ── */
+  function nowLineHtml(min) {
+    return '<div class="tnow" role="separator" aria-label="지금 ' + hhmm(min) + '"><div class="tn-t"><b>今</b><span>' + hhmm(min) + '</span></div><div class="tn-l"></div></div>';
+  }
+
+  /* ── 장소 종류 그림 (사진 없음·실패 대체) ── */
+  const TYPE_ICONS = {
+    '교통': '<rect x="6" y="3" width="12" height="13" rx="3"/><path d="M6 10h12M9 19l-2 2M15 19l2 2"/><circle cx="9" cy="13" r=".8"/><circle cx="15" cy="13" r=".8"/>',
+    '식당': '<path d="M4 11h16a8 8 0 0 1-16 0z"/><path d="M8 7c0-1.5 1-1.5 1-3M12 7c0-1.5 1-1.5 1-3M16 7c0-1.5 1-1.5 1-3"/>',
+    '카페': '<path d="M5 9h11v5a5 5 0 0 1-5 5h-1a5 5 0 0 1-5-5z"/><path d="M16 11h1.5a2.5 2.5 0 0 1 0 5H16"/><path d="M9 4v2M12 4v2"/>',
+    '숙소': '<path d="M3 18V8M3 14h18v4M21 14v-2a3 3 0 0 0-3-3h-7v5"/><circle cx="7" cy="11" r="1.6"/>',
+    '관광지': '<path d="M3 6c4 1 14 1 18 0M5 9h14M7 6v14M17 6v14"/>',
+    '쇼핑': '<path d="M5 8h14l-1 12H6z"/><path d="M9 8a3 3 0 0 1 6 0"/>',
+    '기타': '<path d="M12 21s-6-5.5-6-10a6 6 0 0 1 12 0c0 4.5-6 10-6 10z"/><circle cx="12" cy="11" r="2"/>',
+  };
+  function typeIcon(type, size) {
+    return '<svg viewBox="0 0 24 24" width="' + (size || 22) + '" height="' + (size || 22) + '" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      (TYPE_ICONS[type] || TYPE_ICONS['기타']) + '</svg>';
+  }
+  function emblem(type) { return '<span class="emblem" aria-hidden="true">' + typeIcon(type, 20) + '</span>'; }
+
+  // 사진 실패: 카드 사진은 종류 그림으로, 갤러리 사진은 빼고(다 빠지면 갤러리째), 지도 핀 사진은 그림으로
+  document.addEventListener('error', e => {
+    const img = e.target;
+    if (!(img instanceof HTMLImageElement) || img.dataset.fb) return;
+    img.dataset.fb = '1';
+    const card = img.closest('[class*=" t-"], [class^="t-"]');
+    const type = card ? (Array.from(card.classList).find(c => c.indexOf('t-') === 0) || 't-기타').slice(2) : '기타';
+    if (img.matches('.gallery img')) {
+      const g = img.parentNode;
+      img.remove();
+      if (g && !g.querySelector('img')) g.remove();
+      return;
+    }
+    if (img.matches('.tcard .photo, .ph, .pin-photo img, .dex-list .ic img, .pp-media img, .photo')) {
+      const fb = document.createElement('span');
+      fb.className = (img.className || '') + ' photo-fb';
+      fb.innerHTML = typeIcon(type, img.matches('.tcard .photo') ? 30 : 22);
+      img.replaceWith(fb);
+    }
+  }, true);
+
+  /* ── 교통 장소: 역 이름판 ── */
+  function segColor(s, fromEnd) {
+    if (!s) return '';
+    const rides = Array.isArray(s.steps) ? s.steps.filter(x => x.t === 'transit') : [];
+    const r = fromEnd ? rides[rides.length - 1] : rides[0];
+    if (r) return r.color || lineColor(r.line + ' ' + (r.full || ''));
+    return '';
+  }
+  function stationSign(p, pts, segs) {
+    const i = pts.indexOf(p);
+    const prev = i > 0 ? pts[i - 1] : null, next = i < pts.length - 1 ? pts[i + 1] : null;
+    const out = segs.find(x => x.fromOrder === p.order), inn = segs.find(x => x.toOrder === p.order);
+    const pl = placeOf(p);
+    const c = segColor(out, false) || segColor(inn, true) || lineColor(pname(p)) || 'var(--t, var(--ink))';
+    const sub = pl && pl.name && pl.name !== pname(p) ? pl.name : (pname(p) !== p.place ? p.place : '');
+    return '<div class="ekimei" style="--lc:' + esc(c) + '">' +
+      '<div class="ek-name"><h3>' + esc(pname(p)) + '</h3>' + (sub ? '<span class="ek-sub">' + esc(sub) + '</span>' : '') + '</div>' +
+      '<div class="ek-bar"><span class="ek-prev">' + (prev ? '← ' + esc(pname(prev)) : '') + '</span>' +
+        '<span class="ek-next">' + (next ? esc(pname(next)) + ' →' : '') + '</span></div></div>';
+  }
+
+  /* ── 날짜 탭·탭바: 그날 도시 색 ── */
+  const renderTabs_theme = renderTabs;
+  renderTabs = function () {
+    renderTabs_theme();
+    document.querySelectorAll('#days .day[data-id]').forEach(b => {
+      if (b.dataset.id !== 'all') b.style.setProperty('--city', dayCity(b.dataset.id).color);
+    });
+    paintBodyCity();
+  };
+  function paintBodyCity() {
+    if (!DATA) return;
+    const nt = tokyoNow().date;
+    const d = selected && selected !== 'all' ? selected : (DATA.dates.indexOf(nt) >= 0 ? nt : '');
+    const c = d ? dayCity(d).color : 'var(--ink)';
+    document.body.style.setProperty('--city', c);
+    const range = tripRange();
+    const now = new Date();
+    document.body.classList.toggle('trip-live', !!range && now >= range.start && now <= range.end);
+  }
+
+  /* ── 홈: 여행 전 탑승권 ── */
+  function boardingPass() {
+    const range = tripRange();
+    if (!range || new Date() >= range.start) return '';
+    const pts = sortedPoints();
+    const cityOf = p => { const pl = placeOf(p); return pl && pl.city ? pl.city : ''; };
+    const from = cityOf(pts[0]) || pname(pts[0]);
+    const toPt = pts.find(p => cityOf(p) && cityOf(p) !== cityOf(pts[0]));
+    const to = toPt ? cityOf(toPt) : (pts.length > 1 ? pname(pts[pts.length - 1]) : '');
+    const days = Math.ceil((range.start - new Date()) / 86400000);
+    const color = cityColor(to) || 'var(--ink)';
+    return '<div class="bpass" style="--city:' + color + '">' +
+      '<div class="bp-main">' +
+        '<div class="bp-label">BOARDING PASS · 탑승권</div>' +
+        '<div class="bp-route"><div><small>FROM</small><b>' + esc(from) + '</b></div>' +
+          '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 13l8-1 6-7h2l-3 7 5 .5L22 11h1l-1 3 1 3h-1l-2-1.5-5 .5 3 7h-2l-6-7-8-1z"/></svg>' +
+          '<div><small>TO</small><b>' + esc(to) + '</b></div></div>' +
+        '<div class="bp-grid">' +
+          '<div><small>DATE</small><b>' + esc(dayLabel(range.first.date)) + '</b></div>' +
+          '<div><small>DEPART</small><b>' + esc(range.first.arrive || range.first.depart || '') + '</b></div>' +
+          '<div><small>PASSENGER</small><b>' + esc(USER ? USER.id : '-') + '</b></div>' +
+          '<div><small>DAYS</small><b>' + DATA.dates.length + '일</b></div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="bp-stub"><small>D-DAY</small><b>D-' + days + '</b><span class="bp-bar" aria-hidden="true"></span></div>' +
+      '</div>';
+  }
+  const renderHomeBody_theme = renderHomeBody;
+  renderHomeBody = function () {
+    renderHomeBody_theme();
+    paintBodyCity();
+    const bp = boardingPass();
+    if (bp) document.getElementById('homeBody').insertAdjacentHTML('afterbegin', bp);
+  };
+
+  /* ── 지금 선이 낡지 않게: 타임라인 보는 중이면 2분마다 다시 그림 (입력 중이면 건너뜀) ── */
+  setInterval(() => {
+    if (currentView !== 'tl' || !DATA) return;
+    const a = document.activeElement;
+    if ((a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) || document.querySelector('.spend-form.open, .arr-form.open, .edit-row.open, .sheet-wrap.open, .detail-wrap.open')) return;
+    if (!document.querySelector('#tlInner .tnow')) return;
+    renderTimeline();
+  }, 120000);
+</script>

@@ -129,8 +129,13 @@
       const segs = DATA.segments.filter(s => s.date === date);
       const nowInfo = nowStop(date, pts);
       const done = pts.filter(p => isVisited(p)).length;
-      html += '<h2 class="tl-day">' + dayLabel(date) + '</h2>' + wxLine(date) + spendBlock(pts, '이날') + fareBlock(pts, '이날') + walkLine(date) + actualBlock(pts) +
-        (done ? '<p class="progress">방문 <b>' + done + '</b> / ' + pts.length + '</p>' : '') + paceLine(date);
+      // 날짜 머리: 승차권 모양 (App_Theme)
+      html += kippuHead(date, wxLine(date) + spendBlock(pts, '이날') + fareBlock(pts, '이날') + walkLine(date) + actualBlock(pts) +
+        (done ? '<p class="progress">방문 <b>' + done + '</b> / ' + pts.length + '</p>' : '') + paceLine(date));
+      // 지금 선(今): 오늘이면 지금 시각이 들어갈 자리에 한 번
+      const nt = tokyoNow();
+      const isToday = date === nt.date;
+      let nowDone = !isToday;
 
       // 일몰 선: 장소마다 그 좌표의 일몰을 구해서, 처음으로 해가 지는 구간 한 곳에만
       let sunDone = false, prevDep = null, lastLL = null;
@@ -144,7 +149,10 @@
           html += sunLine(sun, prevDep != null && prevDep < sun ? '이동 중' : '');   // 이동하는 사이 해 짐
           sunDone = true;
         }
+        if (!nowDone && pa != null && pa > nt.min) { html += nowLineHtml(nt.min); nowDone = true; }
         const isNow = nowInfo && nowInfo.order === p.order;
+        const past = date < nt.date || (isToday && pd != null && pd < nt.min);
+        const isStation = pl && pl.type === '교통';
         const cost = pl ? costText(pl) : '';
         const facts = [];
         if (p.stay) facts.push('<span>체류 <b>' + p.stay + '분</b></span>');
@@ -159,18 +167,19 @@
         const sp = DATA.spend && DATA.spend[vk];
         if (sp) facts.push('<span>실제 <b>' + YEN(sp.amount) + '</b>' + (sp.memo ? ' (' + esc(sp.memo) + ')' : '') + '</span>');
 
-        html += '<div class="titem' + (isVisited(p) ? ' done' : '') + (isNow ? ' is-now' : '') + '" data-key="' + vk + '">' +
+        html += '<div class="titem' + (isVisited(p) ? ' done' : '') + (isNow ? ' is-now' : '') + (past ? ' past' : '') + '" data-key="' + vk + '">' +
           '<div class="ttime"><span class="a">' + esc(p.arrive || '') + '</span>' +
           (p.depart && p.depart !== p.arrive ? '<span class="d">~ ' + esc(p.depart) + '</span>' : '') + timeExtra(p) + '</div>' +
           '<article class="tcard' + (pl ? ' t-' + esc(pl.type) : '') + '"' +
             (tlScale && p.stay ? ' style="min-height:' + tlPx(p.stay, 280) + 'px"' : '') + '>' +
-            (pl && pl.photos && pl.photos.length ? '<img class="photo" src="' + esc(pl.photos[0]) + '" alt="" loading="lazy">' : '') +
+            (pl && pl.photos && pl.photos.length ? '<img class="photo" src="' + esc(pl.photos[0]) + '" alt="" loading="lazy">' : (pl && !isStation ? emblem(pl.type) : '')) +
             '<div class="top">' + (pl ? '<span class="badge">' + esc(pl.type) + '</span>' : '') +
               (pl && pl.area ? '<span>' + esc(pl.area) + '</span>' : '') +
               (isNow ? '<span class="now-tag' + (nowInfo.next ? ' next' : '') + '" style="margin:0">' + (nowInfo.next ? '다음' : '지금') + '</span>' : '') +
             '</div>' +
-            '<h3>' + esc(pname(p)) + '</h3>' +
-            (pname(p) !== p.place ? '<div style="font-size:12px;color:var(--muted);margin-top:1px">' + esc(p.place) + '</div>' : '') +
+            (isStation ? stationSign(p, pts, segs) :
+              '<h3>' + esc(pname(p)) + '</h3>' +
+              (pname(p) !== p.place ? '<div style="font-size:12px;color:var(--muted);margin-top:1px">' + esc(p.place) + '</div>' : '')) +
             (p.activity ? '<div class="act">' + esc(p.activity) + '</div>' : '') +
             (facts.length ? '<div class="facts">' + facts.join('') + '</div>' : '') +
             (pl && pl.menu.length ? '<div class="chips">' + pl.menu.slice(0, 4).map(m => '<span class="chip">' + esc(m) + '</span>').join('') + '</div>' : '') +
@@ -211,6 +220,8 @@
         if (pd != null) prevDep = pd;
 
         const s = segs.find(x => x.fromOrder === p.order);
+        // 머무는 중이면 카드와 이동 사이에 지금 선
+        if (!nowDone && s && pd != null && pd > nt.min) { html += nowLineHtml(nt.min); nowDone = true; }
         if (s) {
           const cls = MODE_CLASS[s.mode] || 'manual';
           // 탑승 단계가 있는 대중교통 구간은 요약 줄 + 단계별 줄(도보·노선·역)로 쪼개서 보여줌
@@ -219,8 +230,11 @@
           const head = [esc(segModeName(s)) + ' ' + s.minutes + '분'];
           if (s.fare != null && !isNaN(s.fare) && s.fare > 0) head.push(YEN(s.fare));
           if (s.transfers !== '' && Number(s.transfers) > 0) head.push('환승 ' + s.transfers + '회');
-          html += '<div class="tmove mode-' + cls + (split ? ' tmove-split' : '') + '"' +
-            (tlScale && !split ? ' style="min-height:' + Math.max(44, tlPx(s.minutes, 170)) + 'px"' : '') +
+          // 쪼개 보기 아닌 대중교통은 첫 노선 색으로 선을 그림
+          const segLc = cls === 'transit' && !split ? segColor(s, false) : '';
+          const segStyle = (segLc ? '--c:' + segLc + ';' : '') + (tlScale && !split ? 'min-height:' + Math.max(44, tlPx(s.minutes, 170)) + 'px' : '');
+          html += '<div class="tmove mode-' + cls + (split ? ' tmove-split' : '') + (past ? ' past' : '') + '"' +
+            (segStyle ? ' style="' + esc(segStyle) + '"' : '') +
             '><div class="rail2"></div><div class="mv">' +
             '<div class="mv-head">' + modeIcon(cls) + head.join(', ') + ' ' + passChip(s) + '</div>' +
             '<div class="mv-time">' + esc(s.dep) + ' 출발 → ' + esc(s.arr) + ' 도착</div>' +
@@ -237,6 +251,8 @@
           if (split) html += tlSplitHtml(s, pname(p), toPt ? pname(toPt) : '');
         }
       });
+      // 오늘 일정이 다 끝났으면 맨 아래에
+      if (!nowDone && pts.length) html += nowLineHtml(nt.min);
       parts.push(html);
     });
     if (useSwipe) {
