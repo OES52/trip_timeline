@@ -271,4 +271,49 @@
   .sst .time small { display: block; font-size: 11px; font-weight: 400; color: var(--muted); }
   .sst .body { align-self: center; padding: 4px 0; font-size: 13px; min-width: 0; }
   .sst .body .k { margin-left: 6px; font-size: 12px; color: var(--muted); }
+
+  /* ───────── 타임라인 탭: 대중교통 구간 쪼개 보기 (.tstep 단계 줄 · .tst 역 줄) ───────── */
+  .tmove.tmove-split .mv { padding-bottom: 4px; }
+  .tstep .mv { padding: 6px 0 8px 8px; }
+  .tstep .mv-head { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+  .tstep.mode-transit .mv-head { color: var(--ink); }
+  .tstep .mv-head .mi { width: 15px; height: 15px; }
+  .tstep .ln {
+    font-size: 11px; font-weight: 700; color: #fff; background: var(--c);
+    border-radius: 4px; padding: 0 6px; line-height: 18px;
+  }
+  .tstep .mv-time { overflow-wrap: anywhere; }
+  .tst { display: grid; grid-template-columns: 58px 1fr; gap: 0 12px; align-items: center; }
+  .tst .rail2 { position: relative; align-self: stretch; display: flex; align-items: center; justify-content: flex-end; min-height: 26px; }
+  .tst .rail2::after {
+    content: ""; position: absolute; right: -9px; top: 0; bottom: 0; width: 4px;
+    background: linear-gradient(to bottom, var(--c1) 0 50%, var(--c2) 50% 100%);
+  }
+  .tst .sdot {
+    position: absolute; right: -14px; top: 50%; margin-top: -7px; z-index: 1;
+    width: 14px; height: 14px; border-radius: 50%; background: var(--panel); border: 3px solid var(--c2);
+  }
+  .tst .t { font-size: 12px; font-weight: 700; text-align: right; }
+  .tst .t small { display: block; font-size: 11px; font-weight: 400; color: var(--muted); }
+  .tst .st-b { padding: 3px 0 3px 8px; font-size: 13px; min-width: 0; }
+  .tst .st-b .k { margin-left: 6px; font-size: 12px; color: var(--muted); }
+
+  /* ───────── 지도 탭 목록 일몰 선 ───────── */
+  .lsun { position: relative; display: grid; grid-template-columns: var(--rail-x) 44px 1fr; align-items: center; min-height: 26px; }
+  .lsun .time { font-size: 12px; font-weight: 700; color: var(--sun); }
+  .lsun .rail { align-self: stretch; }
+  .lsun .rail::before { content: ""; position: absolute; top: 0; bottom: 0; width: 2px; background: var(--rule); }
+  .lsun .rail::after {
+    content: ""; position: absolute; top: 50%; left: 50%; width: 10px; height: 10px; margin: -5px 0 0 -5px;
+    border-radius: 50%; background: var(--sun); z-index: 1;
+  }
+  .lsun .body { position: relative; display: flex; align-items: center; padding: 0; min-height: 24px; }
+  .lsun .body::before {
+    content: ""; position: absolute; left: -12px; right: 0; top: 50%; height: 2px; border-radius: 1px;
+    background: linear-gradient(90deg, var(--sun), color-mix(in srgb, var(--sun) 15%, transparent));
+  }
+  .lsun .body span {
+    position: relative; font-size: 12px; font-weight: 700; color: var(--sun);
+    background: var(--panel); padding: 0 8px; margin-left: 10px;
+  }
 </style>
