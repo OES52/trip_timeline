@@ -657,13 +657,11 @@
     return r;
   };
 
-  /* ───────── 오버홀: 벡터 지도 · 홈 지구본 · 사진 보기 ───────── */
+  /* ───────── 오버홀: 벡터 지도 · 사진 보기 ───────── */
   // 외부 스크립트·CSS를 필요할 때만 불러옴 (버전 고정)
   const LIB = {
     maplibre: 'https://cdn.jsdelivr.net/npm/maplibre-gl@5.24.0/dist/maplibre-gl.js',
     mlLeaflet: 'https://cdn.jsdelivr.net/npm/@maplibre/maplibre-gl-leaflet@0.1.4/leaflet-maplibre-gl.js',
-    globe: 'https://cdn.jsdelivr.net/npm/globe.gl@2.46.2/dist/globe.gl.min.js',
-    earth: 'https://cdn.jsdelivr.net/npm/three-globe@2.45.6/example/img/earth-night.jpg',   // 텍스처는 three-globe 패키지에 있음
     pswp: 'https://cdn.jsdelivr.net/npm/photoswipe@5.4.4/dist/photoswipe.esm.min.js',
     pswpCss: 'https://cdn.jsdelivr.net/npm/photoswipe@5.4.4/dist/photoswipe.css',
   };
@@ -758,7 +756,6 @@
   setView = function (v) {
     setView_vec(v);
     if (v === 'plan' && !vecAsked) { vecAsked = true; useVectorMap(); }
-    if (v !== 'home') pauseGlobe(); else resumeGlobe();
   };
   darkMQ.addEventListener && darkMQ.addEventListener('change', () => {
     if (!glLayer) return;
@@ -778,88 +775,6 @@
       if (glLayer && glLayer.getMaplibreMap()) applyLabels(glLayer.getMaplibreMap());
     });
   });
-
-  /* ── 홈 지구본 (여행 전): 도시 순서대로 호가 날아감 ── */
-  let globe = null, globeHost = null, globeBusy = false;
-  function tripCities() {
-    // 날짜·순서대로 도시가 바뀌는 지점, 도시마다 장소 좌표 평균
-    const seq = [], acc = {};
-    sortedPoints().forEach(p => {
-      const pl = placeOf(p);
-      const c = pl && pl.city;
-      if (!c || p.lat == null) return;
-      (acc[c] = acc[c] || []).push([p.lat, p.lng]);
-      if (seq[seq.length - 1] !== c) seq.push(c);
-    });
-    const pos = c => { const a = acc[c]; return { lat: a.reduce((s, x) => s + x[0], 0) / a.length, lng: a.reduce((s, x) => s + x[1], 0) / a.length }; };
-    const uniq = Array.from(new Set(seq));
-    return { seq: seq.map(c => Object.assign({ name: c, color: cityColor(c) || '#ffd166' }, pos(c))), uniq: uniq.map(c => Object.assign({ name: c, color: cityColor(c) || '#ffd166' }, pos(c))) };
-  }
-  const curGlobeCard = () => document.querySelector('#homeBody .globe-card');
-  async function mountGlobe(card) {
-    if (!hasWebGL || globeBusy) return;
-    if (navigator.connection && navigator.connection.saveData) { card.remove(); return; }
-    if (globeHost) { card.appendChild(globeHost); resumeGlobe(); fitGlobe(); return; }
-    globeBusy = true;
-    try {
-      await loadScript(LIB.globe);
-      if (!window.Globe) return;
-      globeHost = document.createElement('div');
-      globeHost.className = 'globe-host';
-      (curGlobeCard() || card).appendChild(globeHost);   // 받는 동안 홈을 다시 그렸으면 새 카드에
-      const t = tripCities();
-      const arcs = [];
-      for (let i = 1; i < t.seq.length; i++) arcs.push({ a: t.seq[i - 1], b: t.seq[i] });
-      const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
-      globe = Globe()(globeHost)
-        .backgroundColor('rgba(0,0,0,0)')
-        .globeImageUrl(LIB.earth)
-        .showAtmosphere(true).atmosphereColor('#7fb2ff').atmosphereAltitude(0.18)
-        .arcsData(arcs)
-        .arcStartLat(d => d.a.lat).arcStartLng(d => d.a.lng).arcEndLat(d => d.b.lat).arcEndLng(d => d.b.lng)
-        .arcColor(d => [d.a.color, d.b.color]).arcStroke(0.6).arcAltitudeAutoScale(0.45)
-        .arcDashLength(0.45).arcDashGap(0.25).arcDashInitialGap((d, i) => i * 0.6).arcDashAnimateTime(still ? 0 : 2600)
-        .pointsData(t.uniq).pointLat('lat').pointLng('lng').pointColor('color').pointAltitude(0.01).pointRadius(0.35)
-        .htmlElementsData(t.uniq).htmlLat('lat').htmlLng('lng').htmlAltitude(0.02)
-        .htmlElement(d => { const el = document.createElement('div'); el.className = 'globe-label'; el.style.setProperty('--cc', d.color); el.textContent = d.name; return el; });
-      const ctl = globe.controls();
-      ctl.enableZoom = false; ctl.autoRotate = false;
-      // 한국에서 시작해서 일본 쪽으로 천천히 이동
-      globe.pointOfView({ lat: 37, lng: 128, altitude: 2.6 }, 0);
-      const j = t.uniq.filter(c => c.lng > 129);
-      const tgt = j.length ? { lat: j.reduce((s, c) => s + c.lat, 0) / j.length - 2, lng: j.reduce((s, c) => s + c.lng, 0) / j.length } : { lat: 35, lng: 136 };
-      setTimeout(() => globe.pointOfView({ lat: tgt.lat, lng: tgt.lng, altitude: 1.25 }, still ? 0 : 3200), 400);
-      requestAnimationFrame(fitGlobe);
-      // 화면에서 안 보이면 멈춤
-      if (window.IntersectionObserver) new IntersectionObserver(es => es.forEach(e => e.isIntersecting ? resumeGlobe() : pauseGlobe())).observe(globeHost);
-    } catch (e) {
-      console.warn('지구본 실패', e);
-      card.remove();
-    } finally { globeBusy = false; }
-  }
-  function fitGlobe() {
-    if (!globe || !globeHost) return;
-    const c = curGlobeCard();
-    if (c && globeHost.parentNode !== c) c.appendChild(globeHost);
-    const w = (globeHost.parentNode && globeHost.parentNode.clientWidth) || 320;
-    globe.width(w).height(Math.min(320, Math.max(220, Math.round(w * 0.62))));
-  }
-  function pauseGlobe() { try { if (globe) globe.pauseAnimation(); } catch (e) { /* 무시 */ } }
-  function resumeGlobe() { try { if (globe && currentView === 'home') globe.resumeAnimation(); } catch (e) { /* 무시 */ } }
-  addEventListener('resize', fitGlobe);
-  const renderHomeBody_globe = renderHomeBody;
-  renderHomeBody = function () {
-    renderHomeBody_globe();
-    const range = tripRange();
-    if (!range || new Date() >= range.start || !hasWebGL) return;
-    const body = document.getElementById('homeBody');
-    const bp = body.querySelector('.bpass');
-    const card = document.createElement('div');
-    card.className = 'globe-card';
-    card.innerHTML = '<div class="gc-cap"><span>ROUTE · 여정</span><b>' + esc(tripCities().seq.map(c => c.name).join(' → ')) + '</b></div>';
-    body.insertBefore(card, bp || body.firstChild);
-    mountGlobe(card);
-  };
 
   /* ── 사진 크게 보기: PhotoSwipe (핀치 확대·넘기기) ── */
   //  타임라인 카드 사진·도감/가이드 갤러리. 불러오기 실패하면 예전 보기
