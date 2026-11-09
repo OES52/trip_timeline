@@ -389,4 +389,262 @@
     requestAnimationFrame(evenPassPages);
   };
   addEventListener('resize', () => { if (currentView === 'pass') evenPassPages(); });
+
+  /* ───────── 보는 맛 ───────── */
+
+  /* ── 하루 끝 영수증 (오잇트립) ── */
+  const RC_SHOP = '오잇트립', RC_SHOP_EN = 'TRAVEL RECEIPT';
+  function receiptData(date, pts) {
+    pts = pts || DATA.points.filter(p => p.date === date).sort((a, b) => a.order - b.order);
+    const nt = tokyoNow();
+    const items = pts.map(p => {
+      const vk = p.date + '#' + p.order;
+      const sp = DATA.spend && DATA.spend[vk];
+      return { time: arrivedAt(p) || p.arrive || '', name: pname(p), done: isVisited(p), amount: sp ? Number(sp.amount) || 0 : null,
+        memo: sp && sp.memo ? sp.memo : '', budget: p.per != null && !isNaN(p.per) ? p.per : null };
+    });
+    let fare = 0;
+    pts.forEach(p => {
+      const s2 = DATA.segments.find(x => x.date === p.date && x.fromOrder === p.order);
+      if (s2 && p.fare != null && !isNaN(p.fare)) fare += Number(p.fare);
+    });
+    const spent = items.reduce((a, x) => a + (x.amount || 0), 0);
+    const budget = items.reduce((a, x) => a + (x.budget || 0), 0);
+    const w = DATA.walk && DATA.walk[date];
+    return {
+      date: date, no: DATA.dates.indexOf(date) + 1, user: USER ? USER.id : '-', city: dayRoute(date).join(' → '),
+      items: items, stamps: items.filter(x => x.done).length, total: items.length,
+      walkKm: w && w.m ? w.m / 1000 : null, walkMin: w && w.min ? w.min : null,
+      fare: fare, spent: spent, budget: budget, sum: spent + fare,
+      planned: date > nt.date || (date === nt.date && !items.some(x => x.done || x.amount)),
+    };
+  }
+  function receiptHtml(date, pts) {
+    const r = receiptData(date, pts);
+    const row = (a, b, cls) => '<div class="rc-row' + (cls ? ' ' + cls : '') + '"><span>' + a + '</span><b>' + b + '</b></div>';
+    return '<section class="receipt" aria-label="' + esc(dayLabel(date)) + ' 영수증">' +
+      '<div class="rc-paper">' +
+        '<div class="rc-shop">' + RC_SHOP + '</div><div class="rc-shop-en">' + RC_SHOP_EN + (r.planned ? ' (예정)' : '') + '</div>' +
+        '<div class="rc-sep"></div>' +
+        row(esc(dayLabel(date)) + ' · ' + r.no + '일차', 'No.' + String(r.no).padStart(4, '0')) +
+        row('여행자', esc(r.user)) + (r.city ? row('구간', esc(r.city)) : '') +
+        '<div class="rc-sep"></div>' +
+        r.items.map(x => '<div class="rc-item' + (x.done ? ' done' : '') + '"><span class="t">' + esc(x.time) + '</span><span class="n">' + esc(x.name) +
+          (x.memo ? ' <i>' + esc(x.memo) + '</i>' : '') + '</span><b>' + (x.amount != null ? YEN(x.amount) : x.done ? '✓' : '') + '</b></div>').join('') +
+        '<div class="rc-sep"></div>' +
+        row('방문 도장', r.stamps + ' / ' + r.total) +
+        (r.walkKm != null ? row('걸은 거리', r.walkKm.toFixed(1) + ' km' + (r.walkMin ? ' · ' + r.walkMin + '분' : '')) : '') +
+        row('교통비 (1인)', YEN(r.fare)) +
+        row('쓴 돈 (기록)', YEN(r.spent)) +
+        (r.budget ? row('예산 (1인)', YEN(r.budget), 'muted') : '') +
+        '<div class="rc-sep dbl"></div>' +
+        row('합계', YEN(r.sum), 'total') +
+        '<div class="rc-bar" aria-hidden="true"></div>' +
+        '<div class="rc-thanks">またお越しくださいませ · 또 와요</div>' +
+      '</div>' +
+      '<button type="button" class="rc-save" data-date="' + date + '">' +
+        '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5"/><path d="M5 20h14"/></svg>영수증 저장</button>' +
+      '</section>';
+  }
+  document.addEventListener('click', e => {
+    const b = e.target.closest && e.target.closest('.rc-save');
+    if (b) saveReceipt(b.dataset.date);
+  });
+  // 영수증을 그림(PNG)으로: 캔버스에 직접 그림 → 폰은 공유 창(사진에 저장), 안 되면 다운로드
+  async function saveReceipt(date) {
+    const r = receiptData(date);
+    try { if (document.fonts && document.fonts.ready) await document.fonts.ready; } catch (e) { /* 무시 */ }
+    const W = 420, S = 3, P = 26;
+    const sans = '"IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif';
+    const mono = '"DotGothic16", "Galmuri11", ui-monospace, monospace';
+    const lines = [];   // 높이 계산 먼저
+    const L2 = (h, fn) => lines.push({ h: h, fn: fn });
+    const c = document.createElement('canvas');
+    const g = c.getContext('2d');
+    const text = (t, x, y, font, color, align) => { g.font = font; g.fillStyle = color || '#1f1a14'; g.textAlign = align || 'left'; g.fillText(t, x, y); };
+    const fit = (t, max, font) => { g.font = font; if (g.measureText(t).width <= max) return t; while (t.length > 1 && g.measureText(t + '…').width > max) t = t.slice(0, -1); return t + '…'; };
+    const sep = (dbl) => L2(18, y => {
+      g.strokeStyle = '#8a7f6e'; g.lineWidth = 1; g.setLineDash(dbl ? [] : [4, 4]);
+      g.beginPath(); g.moveTo(P, y + 9); g.lineTo(W - P, y + 9); g.stroke();
+      if (dbl) { g.beginPath(); g.moveTo(P, y + 12); g.lineTo(W - P, y + 12); g.stroke(); }
+      g.setLineDash([]);
+    });
+    const row = (a, b, opt) => L2(opt && opt.total ? 30 : 22, y => {
+      const f = (opt && opt.total ? '700 18px ' : '14px ') + sans;
+      text(a, P, y + 16, f, opt && opt.muted ? '#8a7f6e' : null);
+      text(b, W - P, y + 16, (opt && opt.total ? '700 20px ' : '700 14px ') + sans, opt && opt.muted ? '#8a7f6e' : null, 'right');
+    });
+    L2(40, y => text(RC_SHOP, W / 2, y + 32, '700 30px ' + sans, null, 'center'));
+    L2(22, y => text(RC_SHOP_EN + (r.planned ? ' (예정)' : ''), W / 2, y + 16, '12px ' + sans, '#6b6152', 'center'));
+    sep();
+    row(dayLabel(date) + ' · ' + r.no + '일차', 'No.' + String(r.no).padStart(4, '0'));
+    row('여행자', r.user);
+    if (r.city) row('구간', r.city);
+    sep();
+    r.items.forEach(x => L2(22, y => {
+      text(x.time, P, y + 16, '15px ' + mono, '#4a4033');
+      const amt = x.amount != null ? YEN(x.amount) : x.done ? '✓' : '';
+      text(fit(x.name + (x.memo ? ' (' + x.memo + ')' : ''), W - P * 2 - 130, '14px ' + sans), P + 56, y + 16, '14px ' + sans, x.done || x.amount != null ? null : '#6b6152');
+      text(amt, W - P, y + 16, '700 14px ' + sans, null, 'right');
+    }));
+    sep();
+    row('방문 도장', r.stamps + ' / ' + r.total);
+    if (r.walkKm != null) row('걸은 거리', r.walkKm.toFixed(1) + ' km' + (r.walkMin ? ' · ' + r.walkMin + '분' : ''));
+    row('교통비 (1인)', YEN(r.fare));
+    row('쓴 돈 (기록)', YEN(r.spent));
+    if (r.budget) row('예산 (1인)', YEN(r.budget), { muted: true });
+    sep(true);
+    row('합계', YEN(r.sum), { total: true });
+    L2(58, y => {   // 바코드 (날짜·사용자로 고정된 무늬)
+      let seed = 0; String(date + r.user).split('').forEach(ch => { seed = (seed * 31 + ch.charCodeAt(0)) >>> 0; });
+      let x = P + 30;
+      g.fillStyle = '#1f1a14';
+      while (x < W - P - 30) { seed = (seed * 1103515245 + 12345) >>> 0; const w = 1 + (seed >>> 28) % 3; g.fillRect(x, y + 12, w, 38); x += w + 1 + ((seed >>> 24) % 3); }
+    });
+    L2(24, y => text('またお越しくださいませ · 또 와요', W / 2, y + 16, '12px ' + sans, '#6b6152', 'center'));
+    const H = P + lines.reduce((a, l) => a + l.h, 0) + P;
+    c.width = W * S; c.height = H * S;
+    g.scale(S, S);
+    // 종이 + 위아래 톱니
+    g.fillStyle = '#fbf8f1';
+    g.beginPath(); g.moveTo(0, 8);
+    for (let x = 0; x <= W; x += 12) { g.lineTo(x + 6, 0); g.lineTo(Math.min(W, x + 12), 8); }
+    g.lineTo(W, H - 8);
+    for (let x = W; x >= 0; x -= 12) { g.lineTo(x - 6, H); g.lineTo(Math.max(0, x - 12), H - 8); }
+    g.closePath(); g.fill();
+    let y = P;
+    lines.forEach(l => { l.fn(y); y += l.h; });
+    const name = RC_SHOP + '_영수증_' + date + '.png';
+    c.toBlob(async blob => {
+      if (!blob) return showToast('영수증을 못 만듦');
+      const file = typeof File === 'function' ? new File([blob], name, { type: 'image/png' }) : null;
+      try {
+        if (file && navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: RC_SHOP + ' 영수증' }); return; }
+      } catch (e) { if (e && e.name === 'AbortError') return; }
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob); a.download = name;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+      showToast('영수증 저장함');
+    }, 'image/png');
+  }
+  window.saveReceipt = saveReceipt;
+
+  /* ── 지도: 지나온 구간은 진하게, 남은 구간은 옅게 · 날짜 바꾸면 경로가 순서대로 그려짐 ── */
+  function segPassed(s) {
+    const nt = tokyoNow();
+    if (s.date < nt.date) return true;
+    const to = DATA.points.find(p => p.date === s.date && p.order === s.toOrder);
+    if (to && arrivedAt(to)) return true;
+    return s.date === nt.date && toMin(s.arr) != null && toMin(s.arr) <= nt.min;
+  }
+  function segLayers(s) { return groups['L:' + s.date + '#' + s.fromOrder + '#' + s.toOrder] || []; }
+  function paintProgress() {
+    if (!DATA || selected === 'all') return;
+    const segs = DATA.segments.filter(s => s.date === selected);
+    if (!segs.some(segPassed)) return;   // 아직 출발 전이면 그대로
+    segs.filter(s => !segPassed(s)).forEach(s => segLayers(s).forEach(l => {
+      if (!(l instanceof L.Path)) return;
+      const base = l._fop != null ? l._fop : l.options.opacity;
+      if (base == null || base < 0.05) return;
+      l._fop = base * 0.35;
+      l.setStyle({ opacity: l._fop });
+    }));
+  }
+  let drawnDay = null;
+  function animateRoute() {
+    if (!DATA || selected === 'all' || currentView !== 'plan' || drawnDay === selected) return;
+    drawnDay = selected;
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const segs = DATA.segments.filter(s => s.date === selected).sort((a, b) => a.fromOrder - b.fromOrder);
+    segs.forEach((s, i) => segLayers(s).forEach(l => {
+      const el = l._path;
+      if (!el || !(l instanceof L.Polyline)) return;
+      const delay = i * 280;
+      const dashed = el.getAttribute('stroke-dasharray');
+      if (dashed) {
+        el.style.opacity = '0';
+        el.style.transition = 'opacity .45s ease ' + delay + 'ms';
+        requestAnimationFrame(() => { el.style.opacity = ''; });
+        setTimeout(() => { el.style.transition = ''; }, delay + 600);
+        return;
+      }
+      let len = 0;
+      try { len = el.getTotalLength(); } catch (e) { len = 0; }
+      if (!len) return;
+      el.style.strokeDasharray = len + ' ' + len;
+      el.style.strokeDashoffset = String(len);
+      el.style.transition = 'stroke-dashoffset .6s cubic-bezier(.4, 0, .2, 1) ' + delay + 'ms';
+      requestAnimationFrame(() => requestAnimationFrame(() => { el.style.strokeDashoffset = '0'; }));
+      setTimeout(() => { el.style.strokeDasharray = ''; el.style.strokeDashoffset = ''; el.style.transition = ''; }, delay + 700);
+    }));
+  }
+  const renderMap_theme = renderMap_;
+  renderMap_ = function () {
+    renderMap_theme.apply(this, arguments);
+    try { paintProgress(); } catch (e) { console.warn(e); }
+    setTimeout(animateRoute, 60);
+  };
+  const setView_theme2 = setView;
+  setView = function (v) { setView_theme2(v); if (v === 'plan') setTimeout(animateRoute, 380); };
+
+  /* ── 지도(폰): 아래 목록을 좌우로 밀면 다음 날·전날 ── */
+  (() => {
+    const list = document.getElementById('list');
+    let x0 = null, y0 = null;
+    list.addEventListener('touchstart', e => { const t = e.touches[0]; x0 = t.clientX; y0 = t.clientY; }, { passive: true });
+    list.addEventListener('touchend', e => {
+      if (x0 == null) return;
+      const t = e.changedTouches[0], dx = t.clientX - x0, dy = t.clientY - y0;
+      x0 = null;
+      if (Math.abs(dx) > 70 && Math.abs(dx) > Math.abs(dy) * 1.8) shiftDay(dx < 0 ? 1 : -1);
+    }, { passive: true });
+  })();
+
+  /* ── 타임라인: 지난 구간 레일을 도시 색으로 채움 (역 줄까지) ── */
+  const renderTimeline_theme2 = renderTimeline;
+  renderTimeline = function () {
+    renderTimeline_theme2();
+    document.querySelectorAll('#tlInner .tmove.past').forEach(m => {
+      let n = m.nextElementSibling;
+      while (n && (n.classList.contains('tst') || n.classList.contains('tstep'))) { n.classList.add('past'); n = n.nextElementSibling; }
+    });
+  };
+
+  /* ── 도장: 쾅 찍힐 때 화면 살짝 흔들림 + 진동 ── */
+  const showStamp_theme = showStamp;
+  showStamp = function (p) {
+    showStamp_theme(p);
+    if (navigator.vibrate) navigator.vibrate([14, 40, 26]);
+    if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      document.body.classList.remove('stamp-hit'); void document.body.offsetWidth;
+      setTimeout(() => document.body.classList.add('stamp-hit'), 250);
+      setTimeout(() => document.body.classList.remove('stamp-hit'), 700);
+    }
+  };
+
+  /* ── 도감·가이드 사진: 위아래 빈 곳을 같은 사진 흐리게 깔아서 채움 ── */
+  document.addEventListener('load', e => {
+    const img = e.target;
+    if (!(img instanceof HTMLImageElement)) return;
+    const box = img.closest('.pp-media');
+    if (!box || box.classList.contains('has-bg')) return;
+    box.style.setProperty('--ppbg', 'url("' + String(img.currentSrc || img.src).replace(/"/g, '%22') + '")');
+    box.classList.add('has-bg');
+  }, true);
+
+  /* ── 불러오는 중: 빈 화면 대신 카드 모양 자리표시 ── */
+  const skel = document.createElement('div');
+  skel.className = 'skel';
+  skel.setAttribute('aria-hidden', 'true');
+  skel.innerHTML = '<div class="sk-col"><i class="sk b"></i><i class="sk"></i><i class="sk"></i><i class="sk s"></i></div>';
+  document.body.appendChild(skel);
+  document.body.classList.add('booting');
+  setTimeout(() => document.body.classList.remove('booting'), 20000);   // 연결 실패로 끝내 못 받아도 영원히 남지 않게
+  const applyData_theme = applyData;
+  applyData = function () {
+    const r = applyData_theme.apply(this, arguments);
+    document.body.classList.remove('booting');
+    return r;
+  };
 </script>

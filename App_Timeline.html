@@ -261,6 +261,8 @@
       });
       // 오늘 일정이 다 끝났으면 맨 아래에
       if (!nowDone && pts.length) html += nowLineHtml(nt.min);
+      // 하루 끝: 영수증 (App_Theme)
+      if (pts.length) html += receiptHtml(date, pts);
       parts.push(html);
     });
     if (useSwipe) {

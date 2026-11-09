@@ -299,6 +299,22 @@
     const c = pos.coords;
     lastPos = { lat: c.latitude, lng: c.longitude, acc: c.accuracy, t: Date.now() };
     myPos = [c.latitude, c.longitude];
+    // 지도에 내 위치 점 (지도 위치 버튼 안 눌러도) + 걷는 방향
+    try {
+      if (!meMarker) {
+        meMarker = L.marker(myPos, { icon: L.divIcon({ className: '', html: '<div class="me-dot"></div>', iconSize: [16, 16], iconAnchor: [8, 8] }), zIndexOffset: 1000 }).addTo(map);
+        meCircle = L.circle(myPos, { radius: c.accuracy, color: '#2b7bff', weight: 1, fillOpacity: .08 }).addTo(map);
+      } else if (watchId == null) {
+        meMarker.setLatLng(myPos);
+        meCircle.setLatLng(myPos).setRadius(c.accuracy);
+      }
+      const dot = meMarker.getElement() && meMarker.getElement().querySelector('.me-dot');
+      if (dot) {
+        const moving = c.heading != null && !isNaN(c.heading) && (c.speed == null || c.speed > 0.6);
+        dot.classList.toggle('hd', moving);
+        if (moving) dot.style.setProperty('--hd', c.heading + 'deg');
+      }
+    } catch (e) { /* 지도 없음 */ }
     const now = Date.now();
     const moved = lastHomePos ? haversine(lastHomePos, myPos) : Infinity;
     if (currentView === 'home' && DATA && (moved > 20 || now - lastHomeRender > 30000)) {
