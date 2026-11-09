@@ -409,7 +409,16 @@
       if (s2 && p.fare != null && !isNaN(p.fare)) fare += Number(p.fare);
     });
     const spent = items.reduce((a, x) => a + (x.amount || 0), 0);
-    const budget = items.reduce((a, x) => a + (x.budget || 0), 0);
+    // 예산: 일정 시트 '예산 번호'로 연결된 예산 시트 '1인당 비용'. 같은 예산 번호는 한 번만
+    const seenB = {};
+    let budget = 0;
+    pts.forEach(p => {
+      if (p.per == null || isNaN(p.per)) return;
+      const k = p.budgetId || (p.date + '#' + p.order);
+      if (seenB[k]) return;
+      seenB[k] = 1;
+      budget += Number(p.per) || 0;
+    });
     const w = DATA.walk && DATA.walk[date];
     return {
       date: date, no: DATA.dates.indexOf(date) + 1, user: USER ? USER.id : '-', city: dayRoute(date).join(' → '),
