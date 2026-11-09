@@ -279,7 +279,7 @@
   }
 
   /* ── 5. 위치 ── */
-  const GEO_KEY = 'trip-geo-ask';    // 도착 제안 켬/끔 ('0'이면 끔)
+  const GEO_KEY = 'trip-geo-ask';    // 도착 제안 켬/끔 ('1'이면 켬, 기본 꺼짐)
   let lastPos = null, lastHomeRender = 0, lastHomePos = null, geoWatch = null;
 
   function startWatch() {
@@ -387,7 +387,7 @@
   function askedKey() { return 'trip-geo-asked-' + (USER ? USER.id : ''); }
   function asked() { try { return JSON.parse(LS.get(askedKey(), '{}')); } catch (e) { return {}; } }
   function geofence() {
-    if (LS.get(GEO_KEY, '1') === '0' || !DATA || !USER || !canStamp() || !lastPos || lastPos.acc > 60) return;
+    if (LS.get(GEO_KEY, '0') !== '1' || !DATA || !USER || !canStamp() || !lastPos || lastPos.acc > 60) return;
     const nt = tokyoNow();
     const done = asked();
     let best = null;
@@ -417,7 +417,7 @@
   function paintGeo() {
     const el = document.getElementById('devGeo');
     if (!el) return;
-    const on = LS.get(GEO_KEY, '1') !== '0';
+    const on = LS.get(GEO_KEY, '0') === '1';
     el.innerHTML = '<h3>위치</h3>' +
       '<p>' + (geoWatch != null ? '<b class="ok">위치 켜짐</b>' : '위치 꺼짐') + ' · 다음 장소 거리, 걸어서 도착 예상, 근처 도착 제안에 사용. 앱이 열려 있을 때만 동작</p>' +
       '<div class="row"><label class="sw"><input type="checkbox" id="geoOn"' + (on ? ' checked' : '') + '> 근처 오면 도착 찍을지 묻기</label>' +
@@ -625,7 +625,7 @@
 
   /* ── 11·12. 하단 탭바 · 헤더 접기 · 화면 전환 ── */
   // 탭 4개 (묶음은 App_Theme의 VIEW_GROUP·goGroup): 홈 / 일정(타임라인·지도) / 장소(가이드·도감) / 여권
-  const TAB_ORDER = ['home', 'tl', 'plan', 'area', 'guide', 'pass'];
+  const TAB_ORDER = ['home', 'plan', 'tl', 'area', 'guide', 'pass'];
   const TABS = [
     ['home', '홈', '<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20h14V9.5"/>'],
     ['sched', '일정', '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>'],

@@ -189,9 +189,10 @@
   /* ── 탭 묶음: 홈 / 일정(타임라인·지도) / 장소(추천 가이드·도감) / 여권 ── */
   const VIEW_GROUP = { home: 'home', wrap: 'home', plan: 'sched', tl: 'sched', area: 'place', guide: 'place', pass: 'pass' };
   const GROUP_LS = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
-  let lastSched = GROUP_LS('trip-last-sched') || 'tl', lastPlace = GROUP_LS('trip-last-place') || 'area';
+  let lastPlace = GROUP_LS('trip-last-place') || 'area';
+  // 일정 탭은 항상 지도부터
   function goGroup(g) {
-    setView(g === 'sched' ? lastSched : g === 'place' ? lastPlace : g);
+    setView(g === 'sched' ? 'plan' : g === 'place' ? lastPlace : g);
   }
   window.goGroup = goGroup;
   window.VIEW_GROUP = VIEW_GROUP;
@@ -208,14 +209,13 @@
   const subnav = document.createElement('div');
   subnav.className = 'subnav';
   subnav.innerHTML =
-    '<div class="sn-group" data-g="sched" role="group" aria-label="일정 보기"><button type="button" data-v="tl">타임라인</button><button type="button" data-v="plan">지도</button></div>' +
+    '<div class="sn-group" data-g="sched" role="group" aria-label="일정 보기"><button type="button" data-v="plan">지도</button><button type="button" data-v="tl">타임라인</button></div>' +
     '<div class="sn-group" data-g="place" role="group" aria-label="장소 보기"><button type="button" data-v="area">추천 가이드</button><button type="button" data-v="guide">도감</button></div>';
   subnav.querySelectorAll('[data-v]').forEach(b => b.addEventListener('click', () => setView(b.dataset.v)));
   document.querySelector('header').appendChild(subnav);
   const setView_theme = setView;
   setView = function (v) {
     setView_theme(v);
-    if (v === 'plan' || v === 'tl') { lastSched = v; try { localStorage.setItem('trip-last-sched', v); } catch (e) { /* 무시 */ } }
     if (v === 'area' || v === 'guide') { lastPlace = v; try { localStorage.setItem('trip-last-place', v); } catch (e) { /* 무시 */ } }
     paintGroups();
   };
