@@ -37,8 +37,7 @@
   .dev .bar i { display: block; height: 100%; width: 0; background: var(--ink); transition: width .2s; }
   .dev .ok { color: #13945f !important; }
   .dev .warn-t { color: #c2410c !important; }
-  .dev label.sw { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; cursor: pointer; }
-  .dev label.sw input { width: 18px; height: 18px; accent-color: var(--ink); }
+
   .float-bar { position: fixed; left: 50%; transform: translateX(-50%); z-index: 2500; display: flex; gap: 8px; align-items: center;
     max-width: calc(100vw - 24px); padding: 10px 12px 10px 14px; border-radius: 14px; font-size: 14px; line-height: 1.4;
     background: var(--ink); color: var(--panel); box-shadow: 0 8px 26px rgba(0,0,0,.28); }
@@ -420,7 +419,7 @@
     const on = LS.get(GEO_KEY, '0') === '1';
     el.innerHTML = '<h3>위치</h3>' +
       '<p>' + (geoWatch != null ? '<b class="ok">위치 켜짐</b>' : '위치 꺼짐') + ' · 다음 장소 거리, 걸어서 도착 예상, 근처 도착 제안에 사용. 앱이 열려 있을 때만 동작</p>' +
-      '<div class="row"><label class="sw"><input type="checkbox" id="geoOn"' + (on ? ' checked' : '') + '> 근처 오면 도착 찍을지 묻기</label>' +
+      '<div class="row"><label class="chk"><input type="checkbox" id="geoOn"' + (on ? ' checked' : '') + '><span>근처 오면 도착 찍을지 묻기</span></label>' +
       (geoWatch == null ? '<button class="btn" type="button" id="geoStart">위치 켜기</button>' : '') + '</div>';
     document.getElementById('geoOn').onchange = e => LS.set(GEO_KEY, e.target.checked ? '1' : '0');
     const b = document.getElementById('geoStart');

@@ -9,7 +9,7 @@
   .ttime .a { font-size: 20px; }
 
   /* 날짜 탭: 선택된 날은 그날 도시 색 밑줄 */
-  .day[aria-selected="true"] { border-bottom-color: var(--city, var(--ink)); }
+  .day[aria-selected="true"]::after { background: var(--city, var(--ink)); }
   .tabbar button[aria-current="page"] { color: var(--city, var(--ink)) !important; }
 
   /* ── 1. 카드 사진: 위쪽 넓은 띠 / 없거나 실패하면 종류 그림 ── */
@@ -162,8 +162,11 @@
 
   /* 카드 버튼: 큰 버튼 하나 + 길찾기 + ⋯ (최소 40px) */
   .tcard .actions { gap: 8px; align-items: stretch; }
-  .tcard .actions .pri { flex: 1 1 auto; min-height: 40px; font: inherit; font-size: var(--fs-m); font-weight: 700; border-radius: 10px; cursor: pointer;
-    color: #fff; background: var(--city, var(--ink)); border: 1px solid transparent; padding: 0 14px; }
+  /* 도착 버튼: 지금·다음 카드만 채움, 나머지는 테두리만 (빨간 덩어리가 줄줄이 보이지 않게) */
+  .tcard .actions .pri { min-width: 96px; min-height: 40px; font: inherit; font-size: var(--fs-m); font-weight: 700; border-radius: 10px; cursor: pointer;
+    color: var(--city, var(--ink)); background: var(--panel); border: 1.5px solid color-mix(in srgb, var(--city, var(--ink)) 55%, transparent); padding: 0 16px; }
+  .titem.is-now .tcard .actions .pri:not(.has) { color: #fff; background: var(--city, var(--ink)); border-color: transparent; }
+  .tcard .actions .more-btn { margin-left: auto; }
   .tcard .actions .pri.has { color: var(--ok); background: color-mix(in srgb, var(--ok) 10%, var(--panel)); border-color: color-mix(in srgb, var(--ok) 35%, transparent); }
   .tcard .actions .nav-btn.sm { min-height: 40px; display: inline-flex; align-items: center; font-size: var(--fs-m); padding: 0 12px; margin: 0; border-radius: 10px; }
   .tcard .actions .more-btn { min-width: 44px; min-height: 40px; font: inherit; font-size: 18px; font-weight: 700; line-height: 1; border-radius: 10px; cursor: pointer;
@@ -205,4 +208,8 @@
     body.outdoor { --muted: #d0d7e0; --rule: #5b6775; }
     body.outdoor .tcard h3, body.outdoor .ttime .a { color: #fff; }
   }
+
+  /* 체크 칸 + 글자 */
+  .chk { display: inline-flex; align-items: center; gap: 8px; font-size: var(--fs-m); cursor: pointer; }
+  .chk input { flex: none; width: 18px; height: 18px; margin: 0; accent-color: var(--ink); }
 </style>

@@ -279,7 +279,12 @@
   renderTimeline = function () {
     renderTimeline_theme();
     document.querySelectorAll('#tlInner .titem[data-key]').forEach(it => {
-      if (TL_OPEN.has(it.dataset.key)) { const c = it.querySelector('.tcard'); if (c) c.classList.add('open'); }
+      const c = it.querySelector('.tcard');
+      if (!c) return;
+      // 펼칠 게 없는 카드는 요약 줄·화살표 없앰
+      const ts = c.querySelector('.tsum');
+      if (ts && !ts.textContent.trim() && !c.querySelector('.facts, .chips, .note:not(.memo), .slack.ok')) ts.remove();
+      if (TL_OPEN.has(it.dataset.key)) c.classList.add('open');
     });
   };
 
@@ -345,7 +350,7 @@
     const on = document.body.classList.contains('outdoor');
     box.insertAdjacentHTML('beforeend', '<div class="hcard outdoor-card"><h3 style="font-size:15px;margin:0 0 2px">야외 모드</h3>' +
       '<p style="margin:2px 0 8px;font-size:14px;color:var(--muted)">햇빛 아래에서 잘 보이게 흐린 글씨·선을 진하게</p>' +
-      '<label class="sw" style="display:inline-flex;align-items:center;gap:6px;font-size:14px;cursor:pointer"><input type="checkbox" id="outdoorOn"' + (on ? ' checked' : '') + ' style="width:18px;height:18px;accent-color:var(--ink)"> 켜기</label></div>');
+      '<label class="chk"><input type="checkbox" id="outdoorOn"' + (on ? ' checked' : '') + '><span>켜기</span></label></div>');
     document.getElementById('outdoorOn').onchange = e => setOutdoor(e.target.checked);
   };
 </script>
