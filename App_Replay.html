@@ -26,9 +26,16 @@
       for (let k = 1; k < coords.length; k++) cum.push(cum[k - 1] + haversine(coords[k - 1], coords[k]));
       ev.push({ type: 'move', s: s, from: p, to: nx, a: dep, d: arr, coords: coords, cum: cum, total: cum[cum.length - 1] || 1 });
     });
-    // 재생 길이: 이동은 그대로, 머무는 시간은 1/4로 압축
+    // 재생 길이 배분 (시계는 실제 시각 그대로):
+    //  이동은 제곱근으로 눌러서 짧은 이동(도보 5분)도 충분히 보이고 긴 이동(전철 40분)은 덜 길게
+    //  머무는 시간은 1/4로 압축, 최대 30분 몫
     let u = 0;
-    ev.forEach(e => { e.u0 = u; e.len = Math.max(0.5, (e.d - e.a) * (e.type === 'stay' ? 0.25 : 1)); u += e.len; });
+    ev.forEach(e => {
+      const m = Math.max(1, e.d - e.a);
+      e.u0 = u;
+      e.len = e.type === 'move' ? 6 * Math.sqrt(m) : Math.max(0.5, Math.min(30, m * 0.25));
+      u += e.len;
+    });
     return { ev: ev, total: u };
   }
 
@@ -44,14 +51,17 @@
     if (!R.ev.length) { setStatus('리플레이할 좌표·시각이 없음', true); return; }
     const first = R.ev[0].type === 'stay' ? [R.ev[0].p.lat, R.ev[0].p.lng] : R.ev[0].coords[0];
     // 구간 길이에 맞춘 확대 단계: 머무는 곳은 가깝게(16), 이동은 그 구간이 한 화면에 들어오게 (10~16)
+    // 재생 중엔 확대 단계를 소수로 (부드럽게 바뀌게). 끝나면 되돌림
+    R.snap = map.options.zoomSnap;
+    map.options.zoomSnap = 0;
     R.ev.forEach(e => {
       if (e.type === 'stay') { e.zoom = 16; return; }
       e.bounds = L.latLngBounds(e.coords);
-      e.zoom = Math.max(10, Math.min(16, map.getBoundsZoom(e.bounds, false, L.point(80, 140))));
+      e.zoom = Math.max(10, Math.min(16, map.getBoundsZoom(e.bounds, false, L.point(80, 160))));
     });
     RP = Object.assign(R, {
-      date: date, u: 0, speed: 1, playing: true, last: null, stopKey: null, evIdx: -1, camLock: 0,
-      perSec: R.total / 28,   // 1배속 기준 약 28초에 하루
+      date: date, u: 0, speed: 1, playing: true, last: null, stopKey: null, dt: 0, camZ: null,
+      perSec: R.total / 45,   // 1배속 기준 약 45초에 하루
       marker: L.marker(first, { icon: L.divIcon({ className: '', html: '<div class="rp-dot"></div>', iconSize: [18, 18], iconAnchor: [9, 9] }), zIndexOffset: 2000 }).addTo(replayLayer),
       trail: L.polyline([first], { color: '#ff3b30', weight: 5, opacity: .85 }).addTo(replayLayer),
     });
@@ -67,6 +77,7 @@
     document.getElementById('rpPlay').onclick = () => {
       if (RP.u >= RP.total) RP.u = 0;
       RP.playing = !RP.playing; RP.last = null;
+      map.options.zoomSnap = 0;
       document.getElementById('rpPlay').textContent = RP.playing ? '❚❚' : '▶';
       if (RP.playing) RP.raf = requestAnimationFrame(rpFrame);
     };
@@ -75,16 +86,18 @@
       document.getElementById('rpSpeed').textContent = RP.speed + 'x';
     };
     document.getElementById('rpClose').onclick = stopReplay;
-    document.getElementById('rpRange').oninput = e => { RP.u = e.target.value / 1000 * RP.total; rpDraw(true); };
+    document.getElementById('rpRange').oninput = e => { map.options.zoomSnap = 0; RP.u = e.target.value / 1000 * RP.total; rpDraw(true); };
     RP.raf = requestAnimationFrame(rpFrame);
   }
 
   function rpFrame(ts) {
     if (!RP || !RP.playing) return;
-    if (RP.last != null) RP.u += (ts - RP.last) / 1000 * RP.perSec * RP.speed;
+    RP.dt = RP.last != null ? Math.min(0.1, (ts - RP.last) / 1000) : 0;
+    if (RP.last != null) RP.u += RP.dt * RP.perSec * RP.speed;
     RP.last = ts;
     if (RP.u >= RP.total) {
       RP.u = RP.total; rpDraw(false); RP.playing = false;
+      map.options.zoomSnap = RP.snap != null ? RP.snap : 1;
       document.getElementById('rpPlay').textContent = '▶';
       const b = RP.trail.getBounds(); if (b.isValid()) map.fitBounds(b, { padding: [40, 40] });
       return;
@@ -93,25 +106,39 @@
     RP.raf = requestAnimationFrame(rpFrame);
   }
 
-  // 카메라가 점을 매 프레임 부드럽게 따라감 (예전: 화면 밖으로 나가면 0.6초 애니메이션으로 따라가서 빠를 때 놓침)
+  // 카메라: 매 프레임 위치와 확대 단계를 같이 부드럽게 맞춤 (fitBounds 애니메이션 없음 → 끊김·지연 없음)
+  //  확대 단계는 지금 구간과 "조금 뒤(재생 1초)" 구간 중 더 넓은 쪽을 미리 따라감 → 긴 이동 전에 먼저 빠지고, 짧은 이동 전에 먼저 들어감
   //  폰에서 아래 목록 시트가 지도를 덮으면 보이는 부분의 가운데 기준
+  function camTarget() {
+    const look = RP.perSec * Math.max(1, RP.speed) * 1.0;
+    let z = 99;
+    RP.ev.forEach(x => { if (x.u0 < RP.u + look && x.u0 + x.len > RP.u) z = Math.min(z, x.zoom); });
+    return z === 99 ? map.getZoom() : z;
+  }
   function followCam(pos, snap) {
-    if (!snap && RP && performance.now() < RP.camLock) return;   // 확대·축소 이동 중
-    // 이동 구간을 통째로 보여주는 중이면 점이 화면 가장자리에 닿을 때만 따라감
-    if (!snap && RP && RP.fitMode) { if (!map.getBounds().pad(-0.12).contains(pos)) map.panTo(pos, { animate: false }); return; }
     const size = map.getSize();
     let visH = size.y;
     const list = document.getElementById('list');
     if (list && matchMedia('(max-width: 800px)').matches) visH = Math.max(120, size.y - list.getBoundingClientRect().height);
-    const c = L.point(size.x / 2, visH / 2);
-    const d = map.latLngToContainerPoint(pos).subtract(c);
-    const dist = Math.hypot(d.x, d.y);
-    if (snap) { if (dist > 1) map.panBy(d, { animate: false }); return; }
-    if (dist < 20) return;
-    const limit = Math.min(size.x, visH) * 0.28;   // 가운데에서 이만큼 넘게 벗어나면 그 자리에 붙잡아 둠
-    const k = 0.12;                                // 나머지는 조금씩 따라감
-    const move = dist > limit ? d.multiplyBy((dist - limit) / dist + k * limit / dist) : d.multiplyBy(k);
-    map.panBy(move, { animate: false });
+    const tz = camTarget();
+    if (RP.camZ == null || snap) RP.camZ = tz;
+    else RP.camZ += (tz - RP.camZ) * (1 - Math.exp(-RP.dt / 0.45));   // 약 0.5초에 걸쳐 따라감
+    const z = RP.camZ;
+    // 점이 보이는 영역 가운데에 오게 하는 지도 중심
+    const offY = (size.y - visH) / 2;
+    const want = map.unproject(map.project(pos, z).add([0, offY]), z);
+    const cur = map.getCenter();
+    let c = want;
+    if (!snap) {
+      const k = 1 - Math.exp(-RP.dt / 0.3);
+      c = L.latLng(cur.lat + (want.lat - cur.lat) * k, cur.lng + (want.lng - cur.lng) * k);
+      // 그래도 점이 가운데에서 너무 멀어지면(빠른 배속) 그 거리에 붙잡음
+      const limit = Math.min(size.x, visH) * 0.25;
+      const pc = map.project(c, z), pw = map.project(want, z);
+      const d = pw.subtract(pc), dist = Math.hypot(d.x, d.y);
+      if (dist > limit) c = map.unproject(pc.add(d.multiplyBy((dist - limit) / dist)), z);
+    }
+    map.setView(c, z, { animate: false });
   }
 
   function rpDraw(seek) {
@@ -138,16 +165,6 @@
       label = (e.s ? e.s.mode : '이동') + ' → ' + pname(e.to);
     }
     RP.marker.setLatLng(pos);
-    // 새 구간에 들어가면 그 구간 길이에 맞게 확대·축소
-    const idx = RP.ev.indexOf(e);
-    if (idx !== RP.evIdx) {
-      RP.evIdx = idx;
-      RP.fitMode = e.type === 'move' && e.zoom < 15;
-      const anim = !seek && !matchMedia('(prefers-reduced-motion: reduce)').matches;
-      if (e.type === 'move') map.fitBounds(e.bounds, { paddingTopLeft: [60, 60], paddingBottomRight: [60, 160], maxZoom: 16, animate: anim, duration: 0.8 });
-      else if (Math.abs(map.getZoom() - e.zoom) >= 1) map.setView(pos, e.zoom, { animate: anim, duration: 0.8 });
-      RP.camLock = anim ? performance.now() + 900 : 0;
-    }
     if (seek) {
       // 탐색했을 땐 그 시점까지 지나온 경로를 다시 그림
       const pts = [];
@@ -176,6 +193,7 @@
   function stopReplay() {
     if (!RP) return;
     cancelAnimationFrame(RP.raf);
+    if (RP.snap != null) map.options.zoomSnap = RP.snap;
     replayLayer.clearLayers();
     const panel = document.getElementById('rpPanel');
     if (panel) panel.remove();
