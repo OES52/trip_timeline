@@ -382,6 +382,7 @@ function syncTransportBudget_(ss) {
     if (b) {
       budget.getRange(b.row, B.TOTAL).setFormula(formula(b.row));  // 직접 고친 경우 함수로 되돌림
       budget.getRange(b.row, B.CUR).setValue(CUR_YEN);
+      budget.getRange(b.row, B.MEMO).setValue(TRANSPORT_MARK + ' 일정 시트 교통비(¥) 합계 × 인원수. 직접 수정하지 말 것');
       setBudgetRowFormat_(budget, b.row, CUR_YEN);
       return;
     }
