@@ -253,4 +253,17 @@
   .set-h { font-size: 15px; margin: 0 0 2px; }
   .set-sub { font-size: var(--fs-l); margin: 0; }
   .set-p { margin: 2px 0 8px; font-size: var(--fs-m); color: var(--muted); }
+
+  /* ───────── 검수 3차 (폰) ───────── */
+  /* 한국어는 단어 단위로 줄바꿈 ("간사이 공/항" 같은 끊김 방지), 긴 영문은 넘치면 끊음 */
+  body { word-break: keep-all; overflow-wrap: break-word; }
+  /* 여권 칸: 글자가 길어도 정사각형 유지, 이름 3줄 + 안내 1줄까지 */
+  .slot { min-height: 0; overflow: hidden; }
+  .slot.empty button { padding: 6px; line-height: 1.3; }
+  .slot.empty button > span, .slot.empty > span { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+  /* 지도(폰): 출처 표시가 목록 시트 위에 겹치지 않게 시트 위로 */
+  @media (max-width: 800px) {
+    main .leaflet-bottom { bottom: var(--sheet-h, 50%); transition: bottom .25s var(--ease); }
+    main.sheet-drag .leaflet-bottom { transition: none; }
+  }
 </style>
