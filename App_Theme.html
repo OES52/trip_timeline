@@ -353,4 +353,20 @@
       '<label class="chk"><input type="checkbox" id="outdoorOn"' + (on ? ' checked' : '') + '><span>켜기</span></label></div>');
     document.getElementById('outdoorOn').onchange = e => setOutdoor(e.target.checked);
   };
+
+  /* ── 여권: 표지·쪽 높이를 가장 긴 쪽에 맞춤 (짧은 표지 뒤로 다음 쪽 모서리가 보이던 것) ── */
+  function evenPassPages() {
+    const slides = document.querySelectorAll('.pass-swiper .swiper-slide > .pass-cover, .pass-swiper .swiper-slide > .pass-page');
+    if (!slides.length) return;
+    slides.forEach(el => { el.style.minHeight = ''; });
+    const max = Math.max.apply(null, Array.from(slides).map(el => el.offsetHeight));
+    if (max > 0) slides.forEach(el => { el.style.minHeight = max + 'px'; });
+    try { if (passSwiper) passSwiper.updateAutoHeight(0); } catch (e) { /* 무시 */ }
+  }
+  const renderPass_theme = renderPass;
+  renderPass = function () {
+    renderPass_theme();
+    requestAnimationFrame(evenPassPages);
+  };
+  addEventListener('resize', () => { if (currentView === 'pass') evenPassPages(); });
 </script>
