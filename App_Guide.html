@@ -258,13 +258,20 @@
     return DATA && DATA.rate ? YEN(won / DATA.rate) : WON.format(won);
   }
 
+  // 1인당 예산 표시: 한국에서 미리 낸 원화 항목은 ₩ 그대로, 나머지는 엔화
+  function perText(p) {
+    if (p.perCur === '₩' && p.perOrig != null && !isNaN(p.perOrig)) return WON.format(p.perOrig);
+    if (p.perCur === '¥' && p.perOrig != null && !isNaN(p.perOrig)) return YEN(p.perOrig);
+    return money(p.per);
+  }
+
   function costLine(p) {
     const hasYen = p.yen != null && !isNaN(p.yen);
     const hasWon = p.won != null && !isNaN(p.won);
     if (!hasYen && !hasWon) return '';
     return '<div class="cost">' +
       '<span class="amt">' + (hasYen ? YEN(p.yen) : WON.format(p.won)) + '</span>' +
-      (p.per ? '<span class="per">1인 ' + money(p.per) + '</span>' : '') +
+      (p.per ? '<span class="per">1인 ' + perText(p) + '</span>' : '') +
       (p.budgetId ? '<span class="' + (p.paid ? 'paid' : 'unpaid') + '">' + (p.paid ? '결제함' : '결제 전') + '</span>' : '') +
       '</div>';
   }

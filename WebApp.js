@@ -157,7 +157,7 @@ function buildMapBase_() {
   try { rate = getRate_(ss); } catch (e) { rate = null; }
   const budget = {};
   if (budgetSh) readBudget_(budgetSh).forEach(b => {
-    if (b.id) budget[b.id] = { name: b.name, total: Number(b.total) || 0, per: Number(b.per) || 0, paid: b.paid };
+    if (b.id) budget[b.id] = { name: b.name, total: Number(b.total) || 0, per: Number(b.per) || 0, paid: b.paid, cur: b.cur };
   });
 
   const placeSh = ss.getSheetByName(CONFIG.PLACE_SHEET);
@@ -186,8 +186,12 @@ function buildMapBase_() {
       memo: r.memo,
       budgetId: r.budgetId,
       yen: r.amount,
-      won: b ? b.total : (r.amount != null && rate ? yenToWon_(r.amount, rate) : null),
-      per: b ? b.per : null,
+      // per·won: 원화 환산 (엔화 예산은 환율 곱함). 화면은 money()로 엔화 표시
+      // perCur·perOrig: 예산 시트의 원래 통화·1인당 금액 (한국에서 미리 낸 건 ₩로 보여주려고)
+      won: b ? (b.cur === CUR_YEN && rate ? yenToWon_(b.total, rate) : b.total) : (r.amount != null && rate ? yenToWon_(r.amount, rate) : null),
+      per: b ? (b.cur === CUR_YEN && rate ? b.per * rate : b.per) : null,
+      perCur: b ? b.cur : null,
+      perOrig: b ? b.per : null,
       paid: b ? b.paid : false,
       fare: r.fare,
     };

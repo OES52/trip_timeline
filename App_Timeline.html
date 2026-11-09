@@ -157,7 +157,7 @@
         const facts = [];
         if (p.stay) facts.push('<span>체류 <b>' + p.stay + '분</b></span>');
         if (p.fixed) facts.push('<span>고정 <b>' + esc(p.fixed) + '</b></span>');
-        if (p.yen != null && !isNaN(p.yen)) facts.push('<span>예산 <b>' + YEN(p.yen) + '</b>' + (p.per ? ' (1인 ' + money(p.per) + ')' : '') + '</span>');
+        if (p.yen != null && !isNaN(p.yen)) facts.push('<span>예산 <b>' + YEN(p.yen) + '</b>' + (p.per ? ' (1인 ' + perText(p) + ')' : '') + '</span>');
         else if (cost) facts.push('<span>예상 <b>' + esc(cost) + '</b></span>');
         // 그날 요일·날짜에 맞는 영업시간만 (예외 시간표면 어느 요일·날짜 기준인지 같이)
         const hf = pl ? hoursFor(pl.hours, date) : null;

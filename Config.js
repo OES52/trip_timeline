@@ -50,6 +50,7 @@ const CONFIG = {
   DEFAULT_PEOPLE: 2,            // 일정에서 금액 입력해 예산을 새로 만들 때 인원수. 나눠 낼 건 예산 시트에서 직접 수정
   CURRENCY_FORMAT: '₩#,##0',
   YEN_FORMAT: '¥#,##0',
+  YEN_FORMAT: '¥#,##0',
   GEOCODE_LANG: 'ja',
   GEOCODE_REGION: 'jp',         // 장소명 검색 시 우선 지역. 다른 나라 여행이면 바꾸기 (예: 'kr')
   SLEEP_MS: 300,                // 경로 API 호출 간격
@@ -132,8 +133,11 @@ const ROUTE_HEADERS = [
 const TRANSPORT_MARK = '[교통비 자동]';
 
 // 예산 시트 열 번호 (1부터)
-const B = { ID: 1, DATE: 2, NAME: 3, TOTAL: 4, PAID: 5, PEOPLE: 6, PER: 7, MEMO: 8 };
-const BUDGET_HEADERS = ['번호', '날짜', '비용', '총 비용', '결제', '인원수', '1인당 비용', '메모'];
+const B = { ID: 1, DATE: 2, NAME: 3, TOTAL: 4, PAID: 5, PEOPLE: 6, PER: 7, MEMO: 8, CUR: 9 };
+const BUDGET_HEADERS = ['번호', '날짜', '비용', '총 비용', '결제', '인원수', '1인당 비용', '메모', '통화'];
+// 예산 통화: 일본에서 쓰는 돈은 엔화(¥), 한국에서 미리 결제한 것은 원화(₩). 통화 칸이 비어 있으면 원화(예전 시트 호환)
+const CUR_YEN = '¥', CUR_WON = '₩';
+const curOf_ = v => String(v || '').trim() === CUR_YEN ? CUR_YEN : CUR_WON;
 
 // 장소 시트 열 번호 (1부터). 읽을 땐 열 이름으로 찾으므로 시트 열 순서가 달라도 됨
 // 도시·구역: 웹앱 가이드 탭에서 도시 → 구역(동네)으로 묶어 보여줌. 예전 "지역" 열은 시트 구조 업데이트 때 "구역"으로 바뀜

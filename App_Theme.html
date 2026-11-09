@@ -409,7 +409,7 @@
       if (s2 && p.fare != null && !isNaN(p.fare)) fare += Number(p.fare);
     });
     const spent = items.reduce((a, x) => a + (x.amount || 0), 0);
-    // 예산: 일정 시트 '예산 번호'로 연결된 예산 시트 '1인당 비용'. 같은 예산 번호는 한 번만
+    // 예산: 일정 시트 '예산 번호'로 연결된 예산 시트 '1인당 비용' (원화 환산값 p.per → money()로 엔화). 같은 예산 번호는 한 번만
     const seenB = {};
     let budget = 0;
     pts.forEach(p => {
@@ -445,7 +445,7 @@
         (r.walkKm != null ? row('걸은 거리', r.walkKm.toFixed(1) + ' km' + (r.walkMin ? ' · ' + r.walkMin + '분' : '')) : '') +
         row('교통비 (1인)', YEN(r.fare)) +
         row('쓴 돈 (기록)', YEN(r.spent)) +
-        (r.budget ? row('예산 (1인)', YEN(r.budget), 'muted') : '') +
+        (r.budget ? row('예산 (1인, 엔 환산)', money(r.budget), 'muted') : '') +
         '<div class="rc-sep dbl"></div>' +
         row('합계', YEN(r.sum), 'total') +
         '<div class="rc-bar" aria-hidden="true"></div>' +
@@ -501,7 +501,7 @@
     if (r.walkKm != null) row('걸은 거리', r.walkKm.toFixed(1) + ' km' + (r.walkMin ? ' · ' + r.walkMin + '분' : ''));
     row('교통비 (1인)', YEN(r.fare));
     row('쓴 돈 (기록)', YEN(r.spent));
-    if (r.budget) row('예산 (1인)', YEN(r.budget), { muted: true });
+    if (r.budget) row('예산 (1인, 엔 환산)', money(r.budget), { muted: true });
     sep(true);
     row('합계', YEN(r.sum), { total: true });
     L2(58, y => {   // 바코드 (날짜·사용자로 고정된 무늬)

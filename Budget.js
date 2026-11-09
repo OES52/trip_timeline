@@ -8,7 +8,7 @@ function onEdit(e) {
   const name = sh.getName();
   try {
     if (name === CONFIG.PLAN_SHEET) onPlanEdit_(sh, e.range);
-    else if (name === CONFIG.BUDGET_SHEET) onBudgetEdit_(sh, e.range);
+    else if (name === CONFIG.BUDGET_SHEET) onBudgetEdit_(sh, e.range, e);
   } catch (err) {
     e.source.toast(String(err.message || err), '예산 연동 오류', 8);
   }
@@ -43,7 +43,7 @@ function onPlanEdit_(plan, range) {
       if (id) {
         const b = findBudget_(budget, id);
         if (b) {
-          budget.getRange(b.row, B.TOTAL).setValue(yenToWon_(amount, rate));
+          budget.getRange(b.row, B.TOTAL).setValue(b.cur === CUR_YEN ? Math.round(Number(amount)) : yenToWon_(amount, rate));
           syncPlanAmounts_(plan, id, amount, row);
         }
       } else {
@@ -53,7 +53,7 @@ function onPlanEdit_(plan, range) {
       }
     } else if (editedId && id) {
       const b = findBudget_(budget, id);
-      if (b && b.total !== '') plan.getRange(row, P.AMOUNT).setValue(wonToYen_(b.total, rate));
+      if (b && b.total !== '') plan.getRange(row, P.AMOUNT).setValue(budgetYen_(b, rate));
     }
   });
 
@@ -92,12 +92,14 @@ function onPlaceRenamed_(plan, range) {
   if (msg.length) plan.getParent().toast(msg.join('\n'), '장소 이름 바뀜', 8);
 }
 
-function onBudgetEdit_(budget, range) {
+function onBudgetEdit_(budget, range, e) {
   if (range.getLastRow() < 2) return;
-  const c1 = range.getColumn();
-  if (c1 > B.TOTAL) return;  // 번호·날짜·비용·총 비용 열만 감시
+  const c1 = range.getColumn(), c2 = range.getLastColumn();
+  const curEdit = c1 <= B.CUR && B.CUR <= c2;
+  if (c1 > B.TOTAL && !curEdit) return;  // 번호·날짜·비용·총 비용·통화 열만 감시
 
   const ss = budget.getParent();
+  if (curEdit) onBudgetCurEdit_(budget, range, e, getRate_(ss));
   const plan = ss.getSheetByName(CONFIG.PLAN_SHEET);
   assignMissingBudgetIds_(budget);
 
@@ -109,8 +111,45 @@ function onBudgetEdit_(budget, range) {
   vals.forEach(v => {
     const id = String(v[B.ID - 1]).trim();
     const total = v[B.TOTAL - 1];
-    if (id && total !== '' && total !== null) syncPlanAmounts_(plan, id, wonToYen_(total, rate), null);
+    if (id && total !== '' && total !== null) syncPlanAmounts_(plan, id, budgetYen_({ total: total, cur: curOf_(v[B.CUR - 1]) }, rate), null);
   });
+}
+
+// 예산 행 총 비용 → 일정 시트용 엔화
+function budgetYen_(b, rate) {
+  return b.cur === CUR_YEN ? Math.round(Number(b.total)) : wonToYen_(b.total, rate);
+}
+
+// 통화 칸을 바꾸면: 금액 서식 맞추고, 한 칸만 바꾼 경우 총 비용을 환율로 바꿈 (함수 칸은 그대로)
+function onBudgetCurEdit_(budget, range, e, rate) {
+  const r1 = Math.max(range.getRow(), 2), r2 = Math.min(range.getLastRow(), r1 + 49);
+  if (r2 < r1) return;
+  const single = r1 === r2 && range.getNumColumns() === 1 && range.getColumn() === B.CUR;
+  const msgs = [];
+  for (let r = r1; r <= r2; r++) {
+    const cell = budget.getRange(r, B.CUR);
+    const raw = String(cell.getValue()).trim();
+    const cur = raw === '' ? '' : (raw === '¥' || /^(엔|jpy|yen|円)$/i.test(raw)) ? CUR_YEN : CUR_WON;
+    if (raw !== '' && raw !== cur) cell.setValue(cur);   // "엔", "jpy" 등을 기호로
+    setBudgetRowFormat_(budget, r, cur || CUR_WON);
+    if (!single || !e) continue;
+    const before = curOf_(e.oldValue), after = cur || CUR_WON;   // 빈 칸 = 원화
+    if (before === after) continue;
+    const tCell = budget.getRange(r, B.TOTAL);
+    if (tCell.getFormula()) continue;
+    const t = tCell.getValue();
+    if (t === '' || t === null || isNaN(t)) continue;
+    const v = after === CUR_YEN ? wonToYen_(t, rate) : yenToWon_(t, rate);
+    tCell.setValue(v);
+    msgs.push(r + '행 ' + (after === CUR_YEN ? '₩' + Number(t).toLocaleString('en-US') + ' → ¥' : '¥' + Number(t).toLocaleString('en-US') + ' → ₩') + v.toLocaleString('en-US'));
+  }
+  if (msgs.length) budget.getParent().toast(msgs.join('\n') + '\n설정 시트 환율로 바꿈. 실제 결제 금액이 다르면 고치기', '통화 바뀜', 8);
+}
+
+function setBudgetRowFormat_(budget, row, cur) {
+  const f = cur === CUR_YEN ? CONFIG.YEN_FORMAT : CONFIG.CURRENCY_FORMAT;
+  budget.getRange(row, B.TOTAL).setNumberFormat(f);
+  budget.getRange(row, B.PER).setNumberFormat(f);
 }
 
 // 메뉴: 전체 동기화 (예산 시트 금액 기준)
@@ -141,7 +180,7 @@ function syncBudget() {
         const b = map[id];
         if (!b) { missing.push(row + '행 ' + id); return; }
         if (b.total === '' || b.total === null) return;
-        const yen = wonToYen_(b.total, rate);
+        const yen = budgetYen_(b, rate);
         if (yen !== amount) {
           plan.getRange(row, P.AMOUNT).setValue(yen);
           updated.push(row + '행');
@@ -276,9 +315,12 @@ function cleanupBudget() {
   const rows = bLast - 1;
   budget.getRange(2, B.ID, rows, B.PEOPLE).clearContent();
   budget.getRange(2, B.MEMO, rows, 1).clearContent();
+  budget.getRange(2, B.CUR, rows, 1).clearContent();
   if (out.length) {
     budget.getRange(2, B.ID, out.length, B.PEOPLE).setValues(out.map(v => v.slice(0, B.PEOPLE)));
     budget.getRange(2, B.MEMO, out.length, 1).setValues(out.map(v => [v[B.MEMO - 1]]));
+    budget.getRange(2, B.CUR, out.length, 1).setValues(out.map(v => [v[B.CUR - 1] || '']));
+    out.forEach((v, i) => setBudgetRowFormat_(budget, i + 2, curOf_(v[B.CUR - 1])));
   }
 
   // 6. 일정 시트 예산 번호 바꾸기
@@ -333,12 +375,14 @@ function syncTransportBudget_(ss) {
   const fareCol = planName + '$' + colL_(P.FARE) + ':$' + colL_(P.FARE);
   const dateCol = planName + '$' + colL_(P.DATE) + ':$' + colL_(P.DATE);
   const formula = row =>
-    '=ROUND(SUMIFS(' + fareCol + ',' + dateCol + ',$' + colL_(B.DATE) + row + ')*N($' + colL_(B.PEOPLE) + row + ')*' + CONFIG.RATE_NAME + ')';
+    '=ROUND(SUMIFS(' + fareCol + ',' + dateCol + ',$' + colL_(B.DATE) + row + ')*N($' + colL_(B.PEOPLE) + row + '))';
 
   Object.keys(dates).sort().forEach(key => {
     const b = existing[key];
     if (b) {
       budget.getRange(b.row, B.TOTAL).setFormula(formula(b.row));  // 직접 고친 경우 함수로 되돌림
+      budget.getRange(b.row, B.CUR).setValue(CUR_YEN);
+      setBudgetRowFormat_(budget, b.row, CUR_YEN);
       return;
     }
     const list = readBudget_(budget);
@@ -350,20 +394,23 @@ function syncTransportBudget_(ss) {
     budget.getRange(row, B.TOTAL).setFormula(formula(row));
     budget.getRange(row, B.PEOPLE).setValue(readSettings_().travelers);
     budget.getRange(row, B.PER).setFormula(budgetPerFormula_(row));
-    budget.getRange(row, B.MEMO).setValue(TRANSPORT_MARK + ' 일정 시트 교통비(¥) 합계 × 인원수 × 환율. 직접 수정하지 말 것');
+    budget.getRange(row, B.MEMO).setValue(TRANSPORT_MARK + ' 일정 시트 교통비(¥) 합계 × 인원수. 직접 수정하지 말 것');
+    budget.getRange(row, B.CUR).setValue(CUR_YEN);
+    setBudgetRowFormat_(budget, row, CUR_YEN);
     created.push(id);
   });
   return { created: created };
 }
 
-// 일정 행 → 새 예산 항목 (엔화를 원화로 바꾸고, 원래 엔화 금액은 메모에 남김)
+// 일정 행 → 새 예산 항목 (일본에서 쓰는 돈이라 엔화 그대로. 메모 끝 "(¥1,500)"은 예산 정리에서 자동 항목 표시)
 function budgetFromPlan_(v, row, yen, rate) {
   const place = String(v[P.PLACE - 1]).trim();
   const yenText = '¥' + Number(yen).toLocaleString('en-US');
   return {
     date: v[P.DATE - 1],
     name: String(v[P.ACTIVITY - 1]).trim() || place || '일정 ' + row + '행',
-    total: yenToWon_(yen, rate),
+    total: Math.round(Number(yen)),
+    cur: CUR_YEN,
     people: readSettings_().defaultPeople,
     memo: place ? place + ' (' + yenText + ')' : yenText,
   };
@@ -382,6 +429,7 @@ function readBudget_(budget) {
     people: v[B.PEOPLE - 1],
     per: v[B.PER - 1],
     memo: String(v[B.MEMO - 1]),
+    cur: curOf_(v[B.CUR - 1]),
   }));
 }
 
@@ -418,6 +466,8 @@ function createBudgetRow_(budget, data) {
   budget.getRange(row, B.PEOPLE).setValue(data.people || '');
   budget.getRange(row, B.PER).setFormula(budgetPerFormula_(row));
   if (data.memo) budget.getRange(row, B.MEMO).setValue(data.memo);
+  budget.getRange(row, B.CUR).setValue(data.cur || CUR_WON);
+  setBudgetRowFormat_(budget, row, data.cur || CUR_WON);
   return id;
 }
 
@@ -455,4 +505,70 @@ function lastBudgetRow_(sh) {
     if (v[i][B.ID - 1] !== '' || v[i][B.NAME - 1] !== '' || v[i][B.TOTAL - 1] !== '') return i + 2;
   }
   return 1;
+}
+
+/* ── 메뉴: 예산 통화 정리 (한 번만) ──
+ *  예전엔 예산 시트가 전부 원화였음 → 통화 칸(¥/₩)을 만들고
+ *  - 일정에서 금액 입력해 생긴 항목(메모 끝 "(¥1,500)") → 엔화, 총 비용은 메모의 원래 엔화 금액 그대로
+ *  - 교통비 행 → 엔화 (일정 교통비 합계 × 인원수)
+ *  - 직접 입력한 항목(항공·숙소 등 한국에서 미리 결제) → 원화 그대로
+ *  - 일정 시트 1인당 칸 함수를 통화에 맞게 다시 씀
+ *  다르게 분류된 행은 통화 칸만 바꾸면 금액도 환율로 바뀜 */
+function migrateBudgetCurrency() {
+  requireSheetUi_();
+  const ss = SpreadsheetApp.getActive();
+  const ui = SpreadsheetApp.getUi();
+  const plan = ss.getSheetByName(CONFIG.PLAN_SHEET);
+  const budget = ss.getSheetByName(CONFIG.BUDGET_SHEET);
+  if (!plan || !budget) { alert_('먼저 "시트 생성" 실행'); return; }
+  ensureColumns_(budget, BUDGET_HEADERS.length);
+  budget.getRange(1, B.CUR).setValue('통화').setFontWeight('bold').setFontColor('#ffffff').setBackground(CONFIG.COLOR_HEADER_INPUT)
+    .setNote('¥ = 일본에서 쓰는 돈(엔화), ₩ = 한국에서 미리 결제(원화). 바꾸면 총 비용도 환율로 바뀜');
+  budget.setColumnWidth(B.CUR, 50);
+
+  const list = readBudget_(budget);
+  const raw = list.length ? budget.getRange(2, B.CUR, list.length, 1).getValues() : [];
+  const forms = list.length ? budget.getRange(2, B.TOTAL, list.length, 1).getFormulas() : [];
+  const toYen = [], toWon = [];
+  list.forEach((b, i) => {
+    if (String(raw[i][0]).trim()) return;                       // 이미 정함
+    if (!b.id && !b.name && (b.total === '' || b.total === null)) return;
+    if (b.memo.indexOf(TRANSPORT_MARK) !== -1) return;          // 교통비는 아래에서
+    const m = b.memo.match(/\(¥([\d,]+)\)\s*$/);
+    if (m && !forms[i][0]) toYen.push({ b: b, yen: Number(m[1].replace(/,/g, '')) });
+    else toWon.push(b);
+  });
+  const name = b => (b.id || '') + ' ' + b.name;
+  const ok = ui.alert('예산 통화 정리',
+    '엔화(¥)로 바꿈 ' + toYen.length + '건 (일정에서 입력한 금액, 원래 엔화 금액으로):\n- ' + (toYen.map(x => name(x.b) + ' ¥' + x.yen.toLocaleString('en-US')).join('\n- ') || '없음') +
+    '\n\n원화(₩) 그대로 ' + toWon.length + '건 (직접 입력, 한국에서 미리 결제로 봄):\n- ' + (toWon.map(name).join('\n- ') || '없음') +
+    '\n\n교통비 행은 엔화로 다시 계산.\n잘못 분류된 건 나중에 통화 칸만 바꾸면 금액도 환율로 바뀜.\n\n계속할까? (되돌리려면 파일 → 버전 기록)', ui.ButtonSet.YES_NO);
+  if (ok !== ui.Button.YES) return;
+
+  toYen.forEach(x => {
+    budget.getRange(x.b.row, B.TOTAL).setValue(x.yen);
+    budget.getRange(x.b.row, B.CUR).setValue(CUR_YEN);
+    setBudgetRowFormat_(budget, x.b.row, CUR_YEN);
+  });
+  toWon.forEach(b => {
+    budget.getRange(b.row, B.CUR).setValue(CUR_WON);
+    setBudgetRowFormat_(budget, b.row, CUR_WON);
+  });
+  // 통화 칸 고르기 목록
+  const rows = budget.getMaxRows() - 1;
+  budget.getRange(2, B.CUR, rows, 1).setDataValidation(
+    SpreadsheetApp.newDataValidation().requireValueInList([CUR_YEN, CUR_WON], true).setAllowInvalid(true).build()).setHorizontalAlignment('center');
+  syncTransportBudget_(ss);
+  rewritePlanPerFormulas_(plan);
+  invalidateCache_();
+  alert_('예산 통화 정리 완료\n엔화 ' + toYen.length + '건, 원화 ' + toWon.length + '건, 교통비 행은 엔화');
+}
+
+// 일정 시트 "1인당" 칸: 예산이 엔화면 그대로, 원화면 환율로 나눔
+function rewritePlanPerFormulas_(plan) {
+  const rows = plan.getMaxRows() - 1;
+  const out = [];
+  for (let r = 2; r <= rows + 1; r++) out.push([planPerFormula_(r)]);
+  plan.getRange(2, P.PER, rows, 1).setFormulas(out);
+  plan.getRange(1, P.PER).setNote('예산 시트 1인당 비용을 엔화로 (원화 항목은 설정 시트 환율로 나눔)');
 }

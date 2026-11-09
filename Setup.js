@@ -23,6 +23,7 @@ function onOpen() {
     .addItem('지도 열기', 'showMapLink')
     .addItem('웹앱 캐시 비우기', 'clearWebCache')
     .addItem('홈랩 프록시 알림 트리거 설치', 'installProxyTrigger')
+    .addItem('예산 통화 정리 (엔화·원화 나누기)', 'migrateBudgetCurrency')
     .addToUi();
 }
 
@@ -240,7 +241,7 @@ function applyPlanFormat_(sh, fresh) {
   sh.getRange(1, P.MOVE).setNote('다음 장소까지 이동 시간 (구글 경로 원래 값). "경로 계산" 실행 때 채워짐\n수동 구간은 비어 있고 수동 소요(분)가 대신 쓰임\n도착 시각 계산에는 수단별 단위로 올린 값이 쓰임 (Config.gs ROUND_MOVE)\n' + Object.keys(CONFIG.ROUND_MOVE).map(k => k + ' ' + CONFIG.ROUND_MOVE[k] + '분').join(', '));
   sh.getRange(1, P.BUFFER).setNote('올림으로 생긴 여유 (분)\n= 이 장소로 오는 이동 올림분 + 이 장소 출발 시각 올림분\n예) 이동 13→15분(+2), 출발 14:36→14:40(+4) → +6\n올림 단위는 Config.gs ROUND_MIN');
   sh.getRange(1, P.FARE).setNote('최종 1인 교통비 = 수동 교통비 있으면 그 값, 없으면 API 요금\n예산 시트 "교통비 MM/DD" 행이 이 열을 일자별로 합산');
-  sh.getRange(1, P.PER).setNote('예산 시트 1인당 비용(₩)을 환율로 나눈 엔화');
+  sh.getRange(1, P.PER).setNote('예산 시트 1인당 비용을 엔화로 (원화 항목은 설정 시트 환율로 나눔)');
   sh.getRange(1, P.BUDGET_ID).setNote('예산 시트의 번호 선택 → 금액 자동으로 불러옴');
   sh.getRange(1, P.FARE_API).setNote('"경로 계산" 때 구글 경로 결과에 요금이 있으면 채워짐. 일본은 비는 구간이 있을 수 있음');
 }
@@ -261,8 +262,7 @@ function writePlanFormulas_(sh) {
   for (let r = 2; r <= rows + 1; r++) {
     const q = r - 1;
     const match = 'MATCH(' + c('BUDGET_ID') + r + ',' + bId + ',0)';
-    const per =
-      '=IF(' + c('BUDGET_ID') + r + '="","",IFERROR(ROUND(INDEX(' + bPer + ',' + match + ')/' + CONFIG.RATE_NAME + '),""))';
+    const per = planPerFormula_(r);
     const paid =
       '=IF(' + c('BUDGET_ID') + r + '="","",IFERROR(IF(INDEX(' + bPaid + ',' + match + ')=TRUE,"결제","미결제"),"없는 번호"))';
     // 윗행에서 이 행까지 이동(분) 원래 값 / 올린 값
@@ -415,10 +415,23 @@ function buildBudgetSheet_(sh) {
   for (let r = 2; r <= rows + 1; r++) per.push([budgetPerFormula_(r)]);
   sh.getRange(2, B.PER, rows, 1).setFormulas(per);
 
-  [70, 100, 220, 120, 55, 65, 120, 240].forEach((w, i) => sh.setColumnWidth(i + 1, w));
+  [70, 100, 220, 120, 55, 65, 120, 240, 50].forEach((w, i) => sh.setColumnWidth(i + 1, w));
+  sh.getRange(2, B.CUR, rows, 1).setDataValidation(
+    SpreadsheetApp.newDataValidation().requireValueInList([CUR_YEN, CUR_WON], true).setAllowInvalid(true).build()).setHorizontalAlignment('center');
+  sh.getRange(1, B.CUR).setNote('¥ = 일본에서 쓰는 돈(엔화), ₩ = 한국에서 미리 결제(원화). 비우면 원화. 바꾸면 총 비용도 환율로 바뀜');
   sh.getRange(1, B.ID).setNote('스크립트가 자동 부여. 비워두고 비용·총 비용만 입력해도 번호가 생김');
   sh.getRange(1, B.PAID).setNote('체크 = 이미 결제함');
   sh.getRange(1, B.PEOPLE).setNote('비우면 1인당 비용 = 총 비용');
+}
+
+// 일정 시트 "1인당"(엔화): 예산 행 통화가 ¥면 그대로, 아니면(₩·빈칸) 환율로 나눔
+function planPerFormula_(r) {
+  const bName = "'" + CONFIG.BUDGET_SHEET + "'!";
+  const col = k => bName + '$' + colL_(B[k]) + ':$' + colL_(B[k]);
+  const idCell = '$' + colL_(P.BUDGET_ID) + r;
+  const match = 'MATCH(' + idCell + ',' + col('ID') + ',0)';
+  return '=IF(' + idCell + '="","",IFERROR(IF(INDEX(' + col('CUR') + ',' + match + ')="' + CUR_YEN + '",ROUND(INDEX(' + col('PER') + ',' + match + ')),' +
+    'ROUND(INDEX(' + col('PER') + ',' + match + ')/' + CONFIG.RATE_NAME + ')),""))';
 }
 
 function budgetPerFormula_(r) {
