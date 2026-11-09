@@ -898,14 +898,16 @@
     const src = Object.keys(st.sources || {}).map(id => m.getSource(id)).find(s => s && s.type === 'vector' && Array.isArray(s.tiles) && s.tiles.length);
     if (!src) return [];
     const tpl = src.tiles[0], maxz = src.maxzoom || 14;
-    const z = Math.min(maxz, Math.max(0, Math.round(map.getZoom()) - 1));   // Leaflet 확대 단계 - 1 = 벡터 타일 단계
     const set = new Set();
+    let z = 14;
     const add = (lat, lng) => {
       const n = 2 ** z, x = Math.floor((lng + 180) / 360 * n);
       const r = lat * Math.PI / 180, y = Math.floor((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * n);
       for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) set.add(z + '/' + (x + dx) + '/' + (y + dy));
     };
     RP.ev.forEach(ev => {
+      // 구간마다 정해진 확대 단계 - 1 = 벡터 타일 단계
+      z = Math.min(maxz, Math.max(0, Math.round(ev.zoom || map.getZoom()) - 1));
       if (ev.type === 'stay' && ev.p && ev.p.lat != null) add(ev.p.lat, ev.p.lng);
       (ev.coords || []).forEach((c, i) => { if (i % 3 === 0) add(c[0], c[1]); });
     });
@@ -939,4 +941,108 @@
     Promise.all([1, 2, 3, 4, 5, 6].map(worker)).then(start);
     setTimeout(start, 8000);
   };
+
+  /* ── 3D 보기: MapLibre 지도를 따로 띄워서 기울이기·돌리기·3D 건물 ──
+   *  평소 지도(Leaflet)는 기울일 수 없어서, 지도 화면 오른쪽 위 [3D] 버튼으로 엶
+   *  폰: 두 손가락을 위아래로 밀면 기울기, 비틀면 회전 / PC: 오른쪽 버튼 끌기 또는 Ctrl+끌기 */
+  let map3d = null;
+  function routeGeo(date) {
+    const dates = date && date !== 'all' ? [date] : DATA.dates;
+    const feats = [], pts = [];
+    DATA.segments.filter(s => dates.indexOf(s.date) >= 0).forEach(s => {
+      let line = [];
+      try {
+        if (s.polyline) line = decodePolyline(s.polyline);
+        else (s.steps || []).forEach(st => { if (st.poly) line = line.concat(decodePolyline(st.poly)); });
+      } catch (e) { line = []; }
+      if (line.length < 2) return;
+      const ride = (s.steps || []).find(x => x.t === 'transit');
+      const color = ride ? (ride.color || lineColor(ride.line + ' ' + (ride.full || ''))) : ({ 도보: '#2f9e44', 차량: '#f08c3a' }[s.mode] || '#5b8cff');
+      feats.push({ type: 'Feature', properties: { color: color, walk: s.mode === '도보' ? 1 : 0 }, geometry: { type: 'LineString', coordinates: line.map(ll => [ll[1], ll[0]]) } });
+    });
+    DATA.points.filter(p => dates.indexOf(p.date) >= 0 && p.lat != null).forEach(p => {
+      pts.push({ type: 'Feature', properties: { n: String(p.order), name: pname(p), color: dayCity(p.date).color.indexOf('var(') === 0 ? '#1d2633' : dayCity(p.date).color },
+        geometry: { type: 'Point', coordinates: [p.lng, p.lat] } });
+    });
+    return { lines: { type: 'FeatureCollection', features: feats }, points: { type: 'FeatureCollection', features: pts } };
+  }
+  async function open3D() {
+    if (!hasWebGL) { showToast('이 기기는 3D 지도를 못 씀 (WebGL 없음)'); return; }
+    let wrap = document.getElementById('map3dWrap');
+    if (wrap) return;
+    wrap = document.createElement('div');
+    wrap.id = 'map3dWrap';
+    wrap.className = 'map3d-wrap';
+    wrap.innerHTML = '<div id="map3d"></div><div class="m3-top"><button type="button" class="btn m3-close">닫기</button>' +
+      '<span class="m3-hint">두 손가락 위아래로 밀기 = 기울이기 · 비틀기 = 회전</span></div>';
+    document.querySelector('main').appendChild(wrap);
+    wrap.querySelector('.m3-close').onclick = close3D;
+    try {
+      await loadScript(LIB.maplibre);
+      const st = await styleFor(darkMQ.matches);
+      const c = map.getCenter();
+      map3d = new maplibregl.Map({
+        container: 'map3d', style: st.style, center: [c.lng, c.lat], zoom: Math.max(13, map.getZoom() - 1),
+        pitch: 60, bearing: -20, maxPitch: 80, attributionControl: { compact: true }, localIdeographFontFamily: 'sans-serif',
+        transformRequest: url => (viaProxy && url.indexOf(OFM_HOST) === 0 ? { url: mapUrl(url) } : undefined),
+      });
+      map3d.addControl(new maplibregl.NavigationControl({ visualizePitch: true, showZoom: true }), 'bottom-right');
+      map3d.on('load', () => {
+        applyLabels(map3d);
+        const layers = map3d.getStyle().layers;
+        // 3D 건물: 스타일에 없으면 추가 (OpenMapTiles building 층의 높이 사용)
+        if (!layers.some(l => l.type === 'fill-extrusion')) {
+          const srcId = Object.keys(map3d.getStyle().sources).find(id => map3d.getStyle().sources[id].type === 'vector');
+          const firstSym = (layers.find(l => l.type === 'symbol') || {}).id;
+          if (srcId) map3d.addLayer({ id: 'trip-3d-buildings', type: 'fill-extrusion', source: srcId, 'source-layer': 'building', minzoom: 14,
+            paint: { 'fill-extrusion-color': darkMQ.matches ? '#2a3240' : '#d9dde3',
+              'fill-extrusion-height': ['coalesce', ['get', 'render_height'], ['get', 'height'], 8],
+              'fill-extrusion-base': ['coalesce', ['get', 'render_min_height'], 0], 'fill-extrusion-opacity': 0.85 } }, firstSym);
+        }
+        const g = routeGeo(selected);
+        map3d.addSource('trip-lines', { type: 'geojson', data: g.lines });
+        map3d.addSource('trip-points', { type: 'geojson', data: g.points });
+        map3d.addLayer({ id: 'trip-lines-casing', type: 'line', source: 'trip-lines', layout: { 'line-join': 'round', 'line-cap': 'round' },
+          paint: { 'line-color': '#ffffff', 'line-width': 8, 'line-opacity': 0.85 } });
+        map3d.addLayer({ id: 'trip-lines', type: 'line', source: 'trip-lines', layout: { 'line-join': 'round', 'line-cap': 'round' },
+          paint: { 'line-color': ['get', 'color'], 'line-width': 5, 'line-dasharray': ['case', ['==', ['get', 'walk'], 1], ['literal', [0.6, 1.6]], ['literal', [1, 0]]] } });
+        map3d.addLayer({ id: 'trip-points', type: 'circle', source: 'trip-points',
+          paint: { 'circle-radius': 11, 'circle-color': ['get', 'color'], 'circle-stroke-color': '#fff', 'circle-stroke-width': 2.5, 'circle-pitch-alignment': 'map' } });
+        map3d.addLayer({ id: 'trip-points-n', type: 'symbol', source: 'trip-points',
+          layout: { 'text-field': ['get', 'n'], 'text-size': 12, 'text-allow-overlap': true, 'text-font': ['Noto Sans Bold'] }, paint: { 'text-color': '#fff' } });
+        map3d.addLayer({ id: 'trip-points-name', type: 'symbol', source: 'trip-points',
+          layout: { 'text-field': ['get', 'name'], 'text-size': 12, 'text-offset': [0, 1.6], 'text-anchor': 'top', 'text-font': ['Noto Sans Bold'] },
+          paint: { 'text-color': darkMQ.matches ? '#fff' : '#1d2633', 'text-halo-color': darkMQ.matches ? '#000' : '#fff', 'text-halo-width': 1.6 } });
+        // 경로가 다 보이게, 기울인 채로
+        const b = new maplibregl.LngLatBounds();
+        g.lines.features.forEach(f => f.geometry.coordinates.forEach(c => b.extend(c)));
+        g.points.features.forEach(f => b.extend(f.geometry.coordinates));
+        if (!b.isEmpty()) map3d.fitBounds(b, { padding: 60, pitch: 55, bearing: -20, duration: 1600, maxZoom: 16 });
+      });
+    } catch (e) {
+      console.warn('3D 지도 실패', e);
+      showToast('3D 지도를 못 불러옴');
+      close3D();
+    }
+  }
+  function close3D() {
+    try { if (map3d) map3d.remove(); } catch (e) { /* 무시 */ }
+    map3d = null;
+    const w = document.getElementById('map3dWrap');
+    if (w) w.remove();
+  }
+  // 지도 화면 오른쪽 위 [3D] 버튼
+  const Btn3D = L.Control.extend({
+    options: { position: 'topright' },
+    onAdd() {
+      const b = L.DomUtil.create('button', 'leaflet-bar btn3d');
+      b.type = 'button'; b.textContent = '3D'; b.title = '3D로 보기 (기울이기·회전·건물)';
+      L.DomEvent.disableClickPropagation(b);
+      b.onclick = open3D;
+      return b;
+    },
+  });
+  new Btn3D().addTo(map);
+  const setView_3d = setView;
+  setView = function (v) { if (v !== 'plan') close3D(); setView_3d(v); };
 </script>

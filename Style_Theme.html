@@ -369,4 +369,13 @@
 
   /* PhotoSwipe 위에 다른 고정 요소가 안 올라오게 */
   .pswp { z-index: 5000; }
+
+  /* 3D 보기 */
+  .btn3d { font: inherit; font-weight: 800; font-size: 13px; width: 40px; height: 40px; background: var(--panel); color: var(--ink); cursor: pointer; border-radius: 8px; }
+  .map3d-wrap { position: absolute; inset: 0; z-index: 1200; background: var(--paper); }
+  #map3d { position: absolute; inset: 0; }
+  .map3d-wrap .m3-top { position: absolute; left: 12px; top: 12px; right: 12px; display: flex; align-items: center; gap: 10px; pointer-events: none; z-index: 2; }
+  .map3d-wrap .m3-top > * { pointer-events: auto; }
+  .map3d-wrap .m3-hint { font-size: var(--fs-s); color: var(--ink); background: color-mix(in srgb, var(--panel) 85%, transparent); padding: 4px 9px; border-radius: 8px; }
+  @media (max-width: 800px) { .map3d-wrap { z-index: 470; } }
 </style>
