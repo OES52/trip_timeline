@@ -212,4 +212,45 @@
   /* 체크 칸 + 글자 */
   .chk { display: inline-flex; align-items: center; gap: 8px; font-size: var(--fs-m); cursor: pointer; }
   .chk input { flex: none; width: 18px; height: 18px; margin: 0; accent-color: var(--ink); }
+
+  /* ───────── 검수 2차 ───────── */
+  /* 택시: 한 줄 요약, 누르면 펼침 */
+  details.taxi-box { padding: 0; margin-top: 8px; }
+  details.taxi-box > summary { list-style: none; cursor: pointer; padding: 6px 10px; font-size: var(--fs-s); color: var(--muted); display: flex; align-items: center; gap: 4px; }
+  details.taxi-box > summary::-webkit-details-marker { display: none; }
+  details.taxi-box > summary::after { content: ""; margin-left: auto; width: 6px; height: 6px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg); transition: transform .18s var(--ease); }
+  details.taxi-box[open] > summary::after { transform: rotate(-135deg); }
+  details.taxi-box > summary b { color: var(--ink); }
+  details.taxi-box.on > summary b:first-child { color: var(--car); }
+  details.taxi-box .taxi-more { padding: 0 10px 8px; font-size: var(--fs-s); }
+
+  /* 구간 경로 링크: 작은 아이콘 */
+  .tmove a.seg-map { display: inline-flex; align-items: center; gap: 3px; margin-top: 6px; font-size: var(--fs-s); color: var(--muted); text-decoration: none;
+    border: 1px solid var(--rule); border-radius: 6px; padding: 1px 7px; }
+  .tmove a.seg-map:hover { color: var(--ink); }
+
+  /* 승차권 안 지출 요약: 상자 대신 표 줄 */
+  .kippu .spend { background: none !important; border: 0 !important; box-shadow: none !important; border-radius: 0; padding: 8px 0 0 !important; margin: 6px 0 0 !important;
+    border-top: 1px dashed color-mix(in srgb, var(--kp-ink) 30%, transparent) !important; }
+
+  /* 지도 오른쪽 목록: 보기 전용으로 가볍게 (도장·지출은 타임라인에서) */
+  #list .visit { display: none !important; }
+
+  /* 본문 폭 2단계: 읽기 760px / 격자(가이드·도감)는 넓게 */
+  .home-inner, .pass-inner, .tl-inner, .who-inner, .tl-box > .tl-tools { max-width: 760px; }
+
+  /* 설정 창 */
+  .reload.gear { display: inline-grid; place-items: center; }
+  .set-wrap { position: fixed; inset: 0; z-index: 3000; display: none; align-items: flex-end; justify-content: center;
+    background: rgba(15, 20, 28, .45); padding: 0; }
+  .set-wrap.open { display: flex; }
+  .set-panel { width: 100%; max-width: 560px; max-height: 88vh; overflow-y: auto; background: var(--paper); border-radius: 16px 16px 0 0;
+    padding: 16px 16px calc(20px + env(safe-area-inset-bottom, 0px)); box-shadow: 0 -10px 30px rgba(0, 0, 0, .2); }
+  @media (min-width: 801px) { .set-wrap { align-items: center; } .set-panel { border-radius: 16px; } }
+  .set-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+  .set-head h2 { font-size: var(--fs-xl); margin: 0; }
+  .set-panel .hcard { margin-top: 12px; }
+  .set-h { font-size: 15px; margin: 0 0 2px; }
+  .set-sub { font-size: var(--fs-l); margin: 0; }
+  .set-p { margin: 2px 0 8px; font-size: var(--fs-m); color: var(--muted); }
 </style>

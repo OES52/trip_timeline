@@ -342,17 +342,37 @@
     try { localStorage.setItem(OUT_KEY, on ? '1' : '0'); } catch (e) { /* 무시 */ }
   }
   setOutdoor(GROUP_LS(OUT_KEY) === '1');
-  const renderWho_theme = renderWho;
-  renderWho = function () {
-    renderWho_theme();
-    const box = document.getElementById('whoInner');
-    if (!box) return;
+  /* ── 설정 창 (헤더 톱니바퀴): 각 기능이 TRIP_SETTINGS에 칸을 등록 ── */
+  window.TRIP_SETTINGS = window.TRIP_SETTINGS || [];
+  const gear = document.createElement('button');
+  gear.type = 'button'; gear.id = 'gearBtn'; gear.className = 'reload gear'; gear.title = '설정'; gear.setAttribute('aria-label', '설정');
+  gear.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>';
+  const reloadBtn = document.getElementById('reload');
+  reloadBtn.parentNode.insertBefore(gear, reloadBtn);
+  const setWrap = document.createElement('div');
+  setWrap.className = 'set-wrap'; setWrap.id = 'setWrap';
+  setWrap.innerHTML = '<div class="set-panel" role="dialog" aria-modal="true" aria-labelledby="setTitle">' +
+    '<div class="set-head"><h2 id="setTitle">설정</h2><button type="button" class="btn set-close">닫기</button></div><div id="setBody"></div></div>';
+  document.body.appendChild(setWrap);
+  function openSettings() {
+    const body = document.getElementById('setBody');
+    body.innerHTML = '';
+    window.TRIP_SETTINGS.forEach(fn => { try { fn(body); } catch (e) { console.warn('설정 칸 오류', e); } });
+    setWrap.classList.add('open');
+    setWrap.querySelector('.set-close').focus();
+  }
+  function closeSettings() { setWrap.classList.remove('open'); gear.focus(); }
+  gear.addEventListener('click', openSettings);
+  setWrap.querySelector('.set-close').addEventListener('click', closeSettings);
+  setWrap.addEventListener('click', e => { if (e.target === setWrap) closeSettings(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && setWrap.classList.contains('open')) closeSettings(); });
+  window.TRIP_SETTINGS.push(box => {
     const on = document.body.classList.contains('outdoor');
-    box.insertAdjacentHTML('beforeend', '<div class="hcard outdoor-card"><h3 style="font-size:15px;margin:0 0 2px">야외 모드</h3>' +
-      '<p style="margin:2px 0 8px;font-size:14px;color:var(--muted)">햇빛 아래에서 잘 보이게 흐린 글씨·선을 진하게</p>' +
-      '<label class="chk"><input type="checkbox" id="outdoorOn"' + (on ? ' checked' : '') + '><span>켜기</span></label></div>');
+    box.insertAdjacentHTML('beforeend', '<div class="hcard"><h3 class="set-h">화면</h3>' +
+      '<p class="set-p">야외 모드: 햇빛 아래에서 잘 보이게 흐린 글씨·선을 진하게</p>' +
+      '<label class="chk"><input type="checkbox" id="outdoorOn"' + (on ? ' checked' : '') + '><span>야외 모드 켜기</span></label></div>');
     document.getElementById('outdoorOn').onchange = e => setOutdoor(e.target.checked);
-  };
+  });
 
   /* ── 여권: 표지·쪽 높이를 가장 긴 쪽에 맞춤 (짧은 표지 뒤로 다음 쪽 모서리가 보이던 것) ── */
   function evenPassPages() {

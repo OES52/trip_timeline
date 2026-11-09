@@ -135,11 +135,15 @@
     const ctl = canEdit()
       ? '<label class="taxi-pick"><input type="checkbox" data-taxi="' + vk + '"' + (t.on ? ' checked' : '') + '> 택시로 가기</label>'
       : (t.on ? '<div><b>택시로 가기로 함</b></div>' : '');
-    return '<div class="taxi-box' + (t.on ? ' on' : '') + '">' +
+    // 한 줄 요약(접힘) → 누르면 비교·요금·"택시로 가기"
+    const short = t.saved != null && t.saved > 0 ? ' · ' + t.saved + '분 ' + (t.on ? '단축' : '빠름') : '';
+    return '<details class="taxi-box' + (t.on ? ' on' : '') + '"><summary>' +
+      '🚕 ' + (t.on ? '<b>택시로 감</b> · ' : '택시 ') + '<b>' + t.min + '분</b> · ' + (t.people > 1 ? '1인 ' + range(t.perLow, t.perHigh) : range(t.low, t.high)) + short +
+      '</summary><div class="taxi-more">' +
       '🚕 택시 <b>' + t.min + '분</b>' + diff +
       '<br>' + range(t.low, t.high) + (t.people > 1 ? ' · 1인 <b>' + range(t.perLow, t.perHigh) + '</b>' : '') +
       ' <span class="muted">[' + esc(t.area) + ' 요금' + (t.night ? '·심야' : '') + ', 어림]</span>' +
-      (ctl ? '<br>' + ctl : '') + '</div>';
+      (ctl ? '<br>' + ctl : '') + '</div></details>';
   }
 
   // "택시로 가기" 체크 → 시트 일정 바꾸고 경로 다시 계산 (되돌리기 가능)

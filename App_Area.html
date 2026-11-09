@@ -181,7 +181,7 @@
   }
 
   function dayChip(d) {
-    return '<span class="day-chip" style="background:' + dayColor(d) + '">' + Number(d.slice(5, 7)) + '/' + Number(d.slice(8, 10)) + '</span>';
+    return '<span class="day-chip" style="background:' + dayCity(d).color + '">' + Number(d.slice(5, 7)) + '/' + Number(d.slice(8, 10)) + '</span>';
   }
 
   // 사진 모자이크 (사진 있는 장소 앞에서부터 최대 3장). 사진이 없으면 첫 장소 종류 색 그라데이션 + 구역 첫 글자
@@ -232,7 +232,7 @@
     const photo = p.photos && p.photos.length ? '<img class="ph" src="' + esc(p.photos[0]) + '" alt="" loading="lazy">'
       : '<span class="ph">' + esc(Array.from(dn(p))[0] || '') + '</span>';
     const tag = ap.length
-      ? '<span class="tag-plan" style="background:' + dayColor(ap[0].date) + '">' + esc(dayLabel(ap[0].date) + ' ' + (ap[0].arrive || '')) + '</span>'
+      ? '<span class="tag-plan" style="background:' + dayCity(ap[0].date).color + '">' + esc(dayLabel(ap[0].date) + ' ' + (ap[0].arrive || '')) + '</span>'
       : '<span class="tag-rec">추천</span>';
     const meta = [costText(p), p.hours, p.closed ? '휴무 ' + p.closed : ''].filter(Boolean).join(' · ');
     // 추천 장소: 이 구역에 들르는 날 휴무면 경고

@@ -27,7 +27,7 @@
   /* ── 스타일 ── */
   const css = document.createElement('style');
   css.textContent = `
-  .dev { margin-top: 28px; }
+  .dev { margin-top: 18px; }
   .dev h3 { font-size: 15px; margin: 0 0 2px; }
   .dev .hcard p { margin: 4px 0; font-size: 13px; color: var(--muted); line-height: 1.55; }
   .dev .hcard p b { color: var(--ink); }
@@ -110,21 +110,18 @@
   }
 
   /* ── 4. "이 기기" 패널 (사용자 선택 화면 아래) ── */
-  const renderWho0 = renderWho;
-  renderWho = function () {
-    renderWho0();
-    const box = document.getElementById('whoInner');
-    if (!box) return;
+  //  헤더 톱니바퀴 설정 창에 칸으로 들어감 (App_Theme의 TRIP_SETTINGS)
+  (window.TRIP_SETTINGS = window.TRIP_SETTINGS || []).push(box => {
     const sec = document.createElement('div');
     sec.className = 'dev';
-    sec.innerHTML = '<h2 style="font-size:20px;margin:0 0 4px">이 기기</h2><p class="lead">이 폰에만 적용되는 설정</p>' +
+    sec.innerHTML = '<h2 class="set-sub">이 기기</h2><p class="set-p">이 폰에만 적용되는 설정</p>' +
       '<div class="hcard" id="devInstall"></div>' +
       '<div class="hcard" id="devOffline"></div>' +
       '<div class="hcard" id="devPush"></div>' +
       '<div class="hcard" id="devGeo"></div>';
     box.appendChild(sec);
     paintInstall(); paintOffline(); paintPush(); paintGeo();
-  };
+  });
 
   function paintInstall() {
     const el = document.getElementById('devInstall');
@@ -224,7 +221,7 @@
     const can = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
     let why = '';
     if (!can) why = isIOS && !standalone() ? '아이폰은 홈 화면에 추가한 아이콘으로 열어야 알림 가능 (iOS 16.4 이상)' : '이 브라우저는 푸시 알림 미지원';
-    else if (!USER) why = '먼저 위에서 사용자 고르기';
+    else if (!USER) why = '먼저 사용자 고르기';
     else if (Notification.permission === 'denied') why = '알림 권한이 막혀 있음. 설정에서 이 사이트 알림 허용 필요';
     const lead = st ? st.lead : 15;
     el.innerHTML = '<h3>출발 알림</h3>' +

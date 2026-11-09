@@ -253,7 +253,8 @@
               : cls === 'transit'
                 ? (Array.isArray(s.steps) && s.steps.length ? stepsDetail(s.steps, s.summary) : stepsHtml(s.summary))
                 : (s.summary && cls !== 'walk' ? '<div class="mv-time">' + esc(s.summary) + '</div>' : '')) +
-            (s.link ? '<a href="' + s.link + '" target="_blank" rel="noopener">구글 지도 길찾기</a>' : '') +
+            (s.link ? '<a class="seg-map" href="' + s.link + '" target="_blank" rel="noopener" title="구글 지도에서 이 구간 경로 보기" aria-label="구글 지도에서 이 구간 경로 보기">' +
+               '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/></svg>경로</a>' : '') +
             '</div></div>';
           if (split) html += tlSplitHtml(s, pname(p), toPt ? pname(toPt) : '');
         }
