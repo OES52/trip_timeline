@@ -656,4 +656,227 @@
     document.body.classList.remove('booting');
     return r;
   };
+
+  /* ───────── 오버홀: 벡터 지도 · 홈 지구본 · 사진 보기 ───────── */
+  // 외부 스크립트·CSS를 필요할 때만 불러옴 (버전 고정)
+  const LIB = {
+    maplibre: 'https://cdn.jsdelivr.net/npm/maplibre-gl@5.24.0/dist/maplibre-gl.js',
+    mlLeaflet: 'https://cdn.jsdelivr.net/npm/@maplibre/maplibre-gl-leaflet@0.1.4/leaflet-maplibre-gl.js',
+    globe: 'https://cdn.jsdelivr.net/npm/globe.gl@2.46.2/dist/globe.gl.min.js',
+    earth: 'https://cdn.jsdelivr.net/npm/globe.gl@2.46.2/example/img/earth-night.jpg',
+    pswp: 'https://cdn.jsdelivr.net/npm/photoswipe@5.4.4/dist/photoswipe.esm.min.js',
+    pswpCss: 'https://cdn.jsdelivr.net/npm/photoswipe@5.4.4/dist/photoswipe.css',
+  };
+  const loaded = {};
+  function loadScript(src) {
+    if (!loaded[src]) loaded[src] = new Promise((res, rej) => {
+      const s = document.createElement('script');
+      s.src = src; s.async = true; s.onload = res; s.onerror = () => { delete loaded[src]; rej(new Error('불러오기 실패: ' + src)); };
+      document.head.appendChild(s);
+    });
+    return loaded[src];
+  }
+  function loadCss(href) {
+    if (document.querySelector('link[href="' + href + '"]')) return;
+    const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = href; document.head.appendChild(l);
+  }
+  const hasWebGL = (() => {
+    try { const c = document.createElement('canvas'); return !!(c.getContext('webgl2') || c.getContext('webgl')); } catch (e) { return false; }
+  })();
+  const darkMQ = matchMedia('(prefers-color-scheme: dark)');
+
+  /* ── 벡터 지도 (MapLibre + OpenFreeMap, 키 없음) ──
+   *  Leaflet은 그대로 두고 배경만 바꿈 (핀·경로·리플레이 코드 변경 없음)
+   *  실패하면(웹GL 없음·서버 안 됨) 지금 OSM 지도 유지 */
+  const OFM = 'https://tiles.openfreemap.org/styles/';
+  const LABEL_KEY = 'trip-map-label';   // 'ko' 한국어 우선 / 'local' 현지어
+  let glLayer = null, osmLayer = null;
+  function labelMode() { return GROUP_LS(LABEL_KEY) || 'ko'; }
+  function applyLabels(m) {
+    const want = labelMode();
+    m.getStyle().layers.forEach(l => {
+      if (l.type !== 'symbol' || !l.layout || !l.layout['text-field']) return;
+      if (!l.__orig) l.__orig = l.layout['text-field'];
+      const tf = want === 'ko' ? ['coalesce', ['get', 'name:ko'], ['get', 'name:latin'], ['get', 'name']] : ['get', 'name'];
+      // 도로 번호 같은 숫자 라벨은 손대지 않음
+      if (JSON.stringify(l.__orig).indexOf('name') === -1) return;
+      try { m.setLayoutProperty(l.id, 'text-field', tf); } catch (e) { /* 무시 */ }
+    });
+  }
+  async function styleFor(dark) {
+    // 다크 스타일이 없으면 밝은 스타일에 기존 반전 필터를 씀
+    if (dark) {
+      try { const r = await fetch(OFM + 'dark'); if (r.ok) return { style: await r.json(), native: true }; } catch (e) { /* 다음 */ }
+    }
+    const r = await fetch(OFM + 'liberty');
+    if (!r.ok) throw new Error('스타일 ' + r.status);
+    return { style: await r.json(), native: !dark };
+  }
+  async function useVectorMap() {
+    if (!hasWebGL || glLayer) return;
+    try {
+      await loadScript(LIB.maplibre);
+      await loadScript(LIB.mlLeaflet);
+      if (!window.maplibregl || !L.maplibreGL) return;
+      const st = await styleFor(darkMQ.matches);
+      map.eachLayer(l => { if (l instanceof L.TileLayer) osmLayer = l; });
+      const gl = L.maplibreGL({ style: st.style, attributionControl: false, localIdeographFontFamily: 'sans-serif' });
+      let ok = false, errs = 0;
+      gl.once('add', () => {
+        const m = gl.getMaplibreMap();
+        m.once('load', () => applyLabels(m));
+        m.on('data', e => { if (e.dataType === 'source' && e.tile) ok = true; });
+        m.on('error', () => { if (!ok && ++errs >= 3) back(); });
+      });
+      const back = () => {
+        if (!glLayer) return;
+        try { map.removeLayer(glLayer); } catch (e) { /* 무시 */ }
+        glLayer = null;
+        document.body.classList.remove('gl-map', 'gl-native-dark');
+        if (osmLayer && !map.hasLayer(osmLayer)) osmLayer.addTo(map);
+      };
+      gl.addTo(map);
+      glLayer = gl;
+      document.body.classList.add('gl-map');
+      document.body.classList.toggle('gl-native-dark', darkMQ.matches && st.native);
+      if (osmLayer) map.removeLayer(osmLayer);
+      map.attributionControl.addAttribution('<a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a> © <a href="https://www.openmaptiles.org/" target="_blank" rel="noopener">OpenMapTiles</a> · <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OSM</a>');
+      setTimeout(() => { if (!ok) back(); }, 12000);   // 12초 안에 타일 하나도 못 받으면 OSM
+    } catch (e) {
+      console.warn('벡터 지도 실패, OSM 유지', e);
+    }
+  }
+  // 지도 화면을 처음 열 때 불러옴 (홈만 보고 닫는 경우 안 받게)
+  let vecAsked = false;
+  const setView_vec = setView;
+  setView = function (v) {
+    setView_vec(v);
+    if (v === 'plan' && !vecAsked) { vecAsked = true; useVectorMap(); }
+    if (v !== 'home') pauseGlobe(); else resumeGlobe();
+  };
+  darkMQ.addEventListener && darkMQ.addEventListener('change', () => {
+    if (!glLayer) return;
+    const old = glLayer;
+    try { map.removeLayer(old); } catch (e) { /* 무시 */ }
+    glLayer = null;
+    useVectorMap();
+  });
+  window.TRIP_SETTINGS.push(box => {
+    const k = labelMode();
+    box.insertAdjacentHTML('beforeend', '<div class="hcard"><h3 class="set-h">지도</h3>' +
+      '<p class="set-p">지명 글자 (벡터 지도일 때)</p>' +
+      '<label class="chk"><input type="radio" name="mapLabel" value="ko"' + (k === 'ko' ? ' checked' : '') + '><span>한국어 우선 (없으면 영문·현지어)</span></label><br>' +
+      '<label class="chk" style="margin-top:6px"><input type="radio" name="mapLabel" value="local"' + (k === 'local' ? ' checked' : '') + '><span>현지어 (간판과 같은 일본어)</span></label></div>');
+    box.querySelectorAll('input[name="mapLabel"]').forEach(r => r.onchange = () => {
+      try { localStorage.setItem(LABEL_KEY, r.value); } catch (e) { /* 무시 */ }
+      if (glLayer && glLayer.getMaplibreMap()) applyLabels(glLayer.getMaplibreMap());
+    });
+  });
+
+  /* ── 홈 지구본 (여행 전): 도시 순서대로 호가 날아감 ── */
+  let globe = null, globeHost = null, globeBusy = false;
+  function tripCities() {
+    // 날짜·순서대로 도시가 바뀌는 지점, 도시마다 장소 좌표 평균
+    const seq = [], acc = {};
+    sortedPoints().forEach(p => {
+      const pl = placeOf(p);
+      const c = pl && pl.city;
+      if (!c || p.lat == null) return;
+      (acc[c] = acc[c] || []).push([p.lat, p.lng]);
+      if (seq[seq.length - 1] !== c) seq.push(c);
+    });
+    const pos = c => { const a = acc[c]; return { lat: a.reduce((s, x) => s + x[0], 0) / a.length, lng: a.reduce((s, x) => s + x[1], 0) / a.length }; };
+    const uniq = Array.from(new Set(seq));
+    return { seq: seq.map(c => Object.assign({ name: c, color: cityColor(c) || '#ffd166' }, pos(c))), uniq: uniq.map(c => Object.assign({ name: c, color: cityColor(c) || '#ffd166' }, pos(c))) };
+  }
+  async function mountGlobe(card) {
+    if (!hasWebGL || globeBusy) return;
+    if (navigator.connection && navigator.connection.saveData) return;
+    if (globeHost) { card.appendChild(globeHost); resumeGlobe(); fitGlobe(); return; }
+    globeBusy = true;
+    try {
+      await loadScript(LIB.globe);
+      if (!window.Globe) return;
+      globeHost = document.createElement('div');
+      globeHost.className = 'globe-host';
+      card.appendChild(globeHost);
+      const t = tripCities();
+      const arcs = [];
+      for (let i = 1; i < t.seq.length; i++) arcs.push({ a: t.seq[i - 1], b: t.seq[i] });
+      const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+      globe = Globe()(globeHost)
+        .backgroundColor('rgba(0,0,0,0)')
+        .globeImageUrl(LIB.earth)
+        .showAtmosphere(true).atmosphereColor('#7fb2ff').atmosphereAltitude(0.18)
+        .arcsData(arcs)
+        .arcStartLat(d => d.a.lat).arcStartLng(d => d.a.lng).arcEndLat(d => d.b.lat).arcEndLng(d => d.b.lng)
+        .arcColor(d => [d.a.color, d.b.color]).arcStroke(0.6).arcAltitudeAutoScale(0.45)
+        .arcDashLength(0.45).arcDashGap(0.25).arcDashInitialGap((d, i) => i * 0.6).arcDashAnimateTime(still ? 0 : 2600)
+        .pointsData(t.uniq).pointLat('lat').pointLng('lng').pointColor('color').pointAltitude(0.01).pointRadius(0.35)
+        .htmlElementsData(t.uniq).htmlLat('lat').htmlLng('lng').htmlAltitude(0.02)
+        .htmlElement(d => { const el = document.createElement('div'); el.className = 'globe-label'; el.style.setProperty('--cc', d.color); el.textContent = d.name; return el; });
+      const ctl = globe.controls();
+      ctl.enableZoom = false; ctl.autoRotate = false;
+      // 한국에서 시작해서 일본 쪽으로 천천히 이동
+      globe.pointOfView({ lat: 37, lng: 128, altitude: 2.6 }, 0);
+      const j = t.uniq.filter(c => c.lng > 129);
+      const tgt = j.length ? { lat: j.reduce((s, c) => s + c.lat, 0) / j.length - 2, lng: j.reduce((s, c) => s + c.lng, 0) / j.length } : { lat: 35, lng: 136 };
+      setTimeout(() => globe.pointOfView({ lat: tgt.lat, lng: tgt.lng, altitude: 1.25 }, still ? 0 : 3200), 400);
+      fitGlobe();
+      // 화면에서 안 보이면 멈춤
+      if (window.IntersectionObserver) new IntersectionObserver(es => es.forEach(e => e.isIntersecting ? resumeGlobe() : pauseGlobe())).observe(globeHost);
+    } catch (e) {
+      console.warn('지구본 실패', e);
+      card.remove();
+    } finally { globeBusy = false; }
+  }
+  function fitGlobe() {
+    if (!globe || !globeHost) return;
+    const w = globeHost.clientWidth || 320;
+    globe.width(w).height(Math.min(320, Math.max(220, Math.round(w * 0.62))));
+  }
+  function pauseGlobe() { try { if (globe) globe.pauseAnimation(); } catch (e) { /* 무시 */ } }
+  function resumeGlobe() { try { if (globe && currentView === 'home') globe.resumeAnimation(); } catch (e) { /* 무시 */ } }
+  addEventListener('resize', fitGlobe);
+  const renderHomeBody_globe = renderHomeBody;
+  renderHomeBody = function () {
+    renderHomeBody_globe();
+    const range = tripRange();
+    if (!range || new Date() >= range.start || !hasWebGL) return;
+    const body = document.getElementById('homeBody');
+    const bp = body.querySelector('.bpass');
+    const card = document.createElement('div');
+    card.className = 'globe-card';
+    card.innerHTML = '<div class="gc-cap"><span>ROUTE · 여정</span><b>' + esc(tripCities().seq.map(c => c.name).join(' → ')) + '</b></div>';
+    body.insertBefore(card, bp || body.firstChild);
+    mountGlobe(card);
+  };
+
+  /* ── 사진 크게 보기: PhotoSwipe (핀치 확대·넘기기) ── */
+  //  타임라인 카드 사진·도감/가이드 갤러리. 불러오기 실패하면 예전 보기
+  async function openPswp(img) {
+    const box = img.closest('.gallery, .mosaic, .tcard') || img.parentNode;
+    const imgs = Array.from(box.querySelectorAll('img')).filter(x => !x.dataset.fb);
+    const idx = Math.max(0, imgs.indexOf(img));
+    loadCss(LIB.pswpCss);
+    const mod = await import(LIB.pswp);
+    const sizes = await Promise.all(imgs.map(x => x.naturalWidth ? Promise.resolve([x.naturalWidth, x.naturalHeight]) : new Promise(res => {
+      const t = new Image(); t.onload = () => res([t.naturalWidth || 1200, t.naturalHeight || 900]); t.onerror = () => res([1200, 900]); t.src = x.currentSrc || x.src;
+    })));
+    const pswp = new mod.default({
+      dataSource: imgs.map((x, i) => ({ src: x.currentSrc || x.src, width: sizes[i][0], height: sizes[i][1], alt: '' })),
+      index: idx, bgOpacity: 0.92, showHideAnimationType: 'zoom', wheelToZoom: true,
+    });
+    pswp.init();
+  }
+  document.addEventListener('click', e => {
+    const img = e.target.closest && e.target.closest('.gallery img, .tcard img.photo');
+    if (!img || img.dataset.fb) return;
+    e.stopPropagation();
+    e.preventDefault();
+    openPswp(img).catch(err => {
+      console.warn('PhotoSwipe 실패', err);
+      if (img.closest('.gallery') && typeof openPhoto === 'function') openPhoto(img);
+    });
+  }, true);
 </script>

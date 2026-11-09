@@ -246,7 +246,7 @@
             '<div class="mv-head">' + modeIcon(cls) + head.join(', ') + ' ' + passChip(s) + '</div>' +
             '<div class="mv-time">' + esc(s.dep) + ' 출발 → ' + esc(s.arr) + ' 도착</div>' +
             (s.warn ? '<div class="warn"><span>' + esc(s.warn) + '</span></div>' : '') +
-            (s.walkHint ? '<div class="callout good">🚶 도보 추천: ' + esc(s.walkHint) + '</div>' : '') +
+            (s.walkHint ? '<div class="callout good">' + modeIcon('walk') + ' 도보 추천: ' + esc(s.walkHint) + '</div>' : '') +
             taxiBox(s) +
             (split
               ? (String(s.summary || '').indexOf('[같은 요일 시간표 기준]') === 0 ? '<div class="approx">시간표는 같은 요일 기준 근사값</div>' : '')
