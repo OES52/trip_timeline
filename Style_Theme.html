@@ -367,4 +367,32 @@
   .map3d-wrap .m3-top > * { pointer-events: auto; }
   .map3d-wrap .m3-hint { font-size: var(--fs-s); color: var(--ink); background: color-mix(in srgb, var(--panel) 85%, transparent); padding: 4px 9px; border-radius: 8px; }
   @media (max-width: 800px) { .map3d-wrap { z-index: 470; } }
+
+  /* 하루 돌아보기 범례 (각자 색) */
+  .rp-legend { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 6px; font-size: var(--fs-s); }
+  .rp-legend span { display: inline-flex; align-items: center; gap: 4px; }
+  .rp-legend span::before { content: ""; width: 14px; height: 4px; border-radius: 2px; background: var(--uc); box-shadow: 0 0 6px var(--uc); }
+
+  /* MapLibre 엔진: Leaflet 조작 칸·말풍선 모양 맞춤 */
+  .gl-map .leaflet-control-container .leaflet-top, .gl-map .leaflet-control-container .leaflet-bottom { z-index: 5; }
+  .gl-map .gl-nav { margin: 10px 0 0 10px; }
+  .gl-map .gl-marker { display: block; }
+  .gl-map .gl-marker > * { pointer-events: auto; }
+  .trip-popup .maplibregl-popup-content { padding: 0; border-radius: 12px; background: var(--panel); color: var(--ink); box-shadow: 0 6px 22px rgba(0, 0, 0, .25); }
+  .trip-popup .leaflet-popup-content { margin: 12px 14px; font-size: var(--fs-m); line-height: 1.45; }
+  .trip-popup .maplibregl-popup-close-button { font-size: 18px; color: var(--muted); right: 4px; top: 2px; }
+  .trip-popup.maplibregl-popup-anchor-bottom .maplibregl-popup-tip { border-top-color: var(--panel); }
+  .trip-popup.maplibregl-popup-anchor-top .maplibregl-popup-tip { border-bottom-color: var(--panel); }
+  .btn3d.on { background: var(--ink); color: var(--panel); }
+
+  /* 타임라인 작은 날짜 띠 (승차권이 위로 지나가면) */
+  .kp-mini { position: sticky; top: 0; z-index: 30; display: flex; align-items: baseline; gap: 8px; margin: 0 -2px; padding: 6px 12px;
+    background: color-mix(in srgb, var(--kp-paper) 94%, transparent); color: var(--kp-ink); border-bottom: 2px solid var(--city);
+    font-size: var(--fs-s); backdrop-filter: blur(6px); transform: translateY(-110%); opacity: 0; height: 0; overflow: visible;
+    transition: transform .25s var(--ease), opacity .2s var(--ease); pointer-events: none; }
+  .kp-mini.show { transform: none; opacity: 1; height: auto; pointer-events: auto; }
+  .kp-mini b { font-size: var(--fs-m); }
+  .kp-mini span { display: inline-flex; gap: 3px; }
+  .kp-mini span span { color: var(--cc); font-weight: 700; }
+  .kp-mini i { font-style: normal; opacity: .45; }
 </style>

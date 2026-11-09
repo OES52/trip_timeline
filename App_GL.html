@@ -1,0 +1,538 @@
+<!--App_GL.html-->
+<script>
+  /* ───────── 지도 엔진: MapLibre (벡터·기울이기·회전) ─────────
+   *  화면 코드(App_Core·App_Replay)는 Leaflet 문법(L.map, L.marker, L.polyline …) 그대로 두고,
+   *  여기서 그 문법을 MapLibre로 구현한 L을 끼움. 쓰는 기능만 흉내냄
+   *  - 핀(divIcon)은 DOM 마커, 선·원은 GeoJSON 층
+   *  - 확대 단계는 Leaflet 기준(256px 타일)으로 맞춤: MapLibre 단계 + 1
+   *  - 웹GL 없음·설정에서 "예전 지도" 고르면 진짜 Leaflet 그대로 (window.TRIP_GL = false)
+   *  지도: OpenFreeMap (홈랩 페이지는 /api/map/ofm 프록시 경유), 안 되면 OSM 래스터 */
+  (function () {
+    'use strict';
+    const LL = window.L, ML = window.maplibregl;
+    window.LEAFLET = LL;
+    window.TRIP_GL = false;
+    let want = true;
+    try { want = localStorage.getItem('trip-map-engine') !== 'leaflet'; } catch (e) { want = true; }
+    const webgl = (() => { try { const c = document.createElement('canvas'); return !!(c.getContext('webgl2') || c.getContext('webgl')); } catch (e) { return false; } })();
+    if (!LL || !ML || !webgl || !want) return;
+    window.TRIP_GL = true;
+
+    const OFM = 'https://tiles.openfreemap.org/';
+    const API = window.TRIP_API_URL || '';
+    const viaProxy = API.charAt(0) === '/';
+    const mapUrl = u => viaProxy && u.indexOf(OFM) === 0 ? location.origin + API + '/map/ofm/' + u.slice(OFM.length) : u;
+    window.TRIP_MAP_URL = mapUrl;
+    const dark = matchMedia('(prefers-color-scheme: dark)').matches;
+    const OSM_STYLE = {
+      version: 8,
+      sources: { osm: { type: 'raster', tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'], tileSize: 256, maxzoom: 19,
+        attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' } },
+      layers: [{ id: 'osm', type: 'raster', source: 'osm' }],
+    };
+
+    /* ── 좌표·범위·점 ── */
+    class LatLng {
+      constructor(lat, lng) { this.lat = +lat; this.lng = +lng; }
+      toGL() { return [this.lng, this.lat]; }
+      equals(o) { o = toLL(o); return Math.abs(o.lat - this.lat) < 1e-9 && Math.abs(o.lng - this.lng) < 1e-9; }
+      distanceTo(o) { o = toLL(o); const R = 6371000, r = Math.PI / 180;
+        const a = Math.sin((o.lat - this.lat) * r / 2) ** 2 + Math.cos(this.lat * r) * Math.cos(o.lat * r) * Math.sin((o.lng - this.lng) * r / 2) ** 2;
+        return 2 * R * Math.asin(Math.sqrt(a)); }
+    }
+    function toLL(a, b) {
+      if (a instanceof LatLng) return a;
+      if (Array.isArray(a)) return new LatLng(a[0], a[1]);
+      if (a && typeof a === 'object' && a.lat != null) return new LatLng(a.lat, a.lng != null ? a.lng : a.lon);
+      return new LatLng(a, b);
+    }
+    const isLLArray = a => Array.isArray(a) && a.length === 2 && typeof a[0] === 'number' && typeof a[1] === 'number';
+    class Bounds {
+      constructor(a, b) {
+        this._sw = null; this._ne = null;
+        if (b) { this.extend(a); this.extend(b); }
+        else if (a instanceof Bounds) this.extend(a);
+        else if (Array.isArray(a) && !isLLArray(a)) a.forEach(x => this.extend(x));
+        else if (a) this.extend(a);
+      }
+      extend(x) {
+        if (!x) return this;
+        if (x instanceof Bounds) { if (x.isValid()) { this.extend(x._sw); this.extend(x._ne); } return this; }
+        if (Array.isArray(x) && !isLLArray(x)) { x.forEach(y => this.extend(y)); return this; }
+        const p = toLL(x);
+        if (isNaN(p.lat) || isNaN(p.lng)) return this;
+        if (!this._sw) { this._sw = new LatLng(p.lat, p.lng); this._ne = new LatLng(p.lat, p.lng); }
+        else {
+          this._sw.lat = Math.min(this._sw.lat, p.lat); this._sw.lng = Math.min(this._sw.lng, p.lng);
+          this._ne.lat = Math.max(this._ne.lat, p.lat); this._ne.lng = Math.max(this._ne.lng, p.lng);
+        }
+        return this;
+      }
+      isValid() { return !!this._sw; }
+      getCenter() { return new LatLng((this._sw.lat + this._ne.lat) / 2, (this._sw.lng + this._ne.lng) / 2); }
+      getSouthWest() { return this._sw; } getNorthEast() { return this._ne; }
+      getNorth() { return this._ne.lat; } getSouth() { return this._sw.lat; } getEast() { return this._ne.lng; } getWest() { return this._sw.lng; }
+      contains(x) {
+        if (x instanceof Bounds) return this.contains(x._sw) && this.contains(x._ne);
+        const p = toLL(x);
+        return p.lat >= this._sw.lat && p.lat <= this._ne.lat && p.lng >= this._sw.lng && p.lng <= this._ne.lng;
+      }
+      pad(r) {
+        const h = (this._ne.lat - this._sw.lat) * r, w = (this._ne.lng - this._sw.lng) * r;
+        return new Bounds([this._sw.lat - h, this._sw.lng - w], [this._ne.lat + h, this._ne.lng + w]);
+      }
+      toGL() { return [[this._sw.lng, this._sw.lat], [this._ne.lng, this._ne.lat]]; }
+    }
+    const toBounds = (a, b) => a instanceof Bounds ? a : new Bounds(a, b);
+    class Point {
+      constructor(x, y) { this.x = +x; this.y = +y; }
+      add(p) { p = toPt(p); return new Point(this.x + p.x, this.y + p.y); }
+      subtract(p) { p = toPt(p); return new Point(this.x - p.x, this.y - p.y); }
+      multiplyBy(n) { return new Point(this.x * n, this.y * n); }
+      divideBy(n) { return new Point(this.x / n, this.y / n); }
+      round() { return new Point(Math.round(this.x), Math.round(this.y)); }
+      distanceTo(p) { p = toPt(p); return Math.hypot(p.x - this.x, p.y - this.y); }
+    }
+    const toPt = (a, b) => a instanceof Point ? a : Array.isArray(a) ? new Point(a[0], a[1]) : (a && a.x != null) ? new Point(a.x, a.y) : new Point(a, b);
+    // Leaflet 방식 웹 메르카토르 (256px 타일 기준 확대 단계)
+    function project(ll, z) {
+      const s = 256 * Math.pow(2, z), sin = Math.max(-0.9999, Math.min(0.9999, Math.sin(ll.lat * Math.PI / 180)));
+      return new Point((ll.lng + 180) / 360 * s, (0.5 - Math.log((1 + sin) / (1 - sin)) / (4 * Math.PI)) * s);
+    }
+    function unproject(p, z) {
+      const s = 256 * Math.pow(2, z);
+      const lng = p.x / s * 360 - 180;
+      const n = Math.PI - 2 * Math.PI * p.y / s;
+      return new LatLng(180 / Math.PI * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n))), lng);
+    }
+
+    /* ── 이벤트 ── */
+    class Evented {
+      on(t, f) { if (typeof t === 'object') { Object.keys(t).forEach(k => this.on(k, t[k])); return this; }
+        String(t).split(' ').forEach(k => { (this._ev = this._ev || {})[k] = (this._ev[k] || []).concat(f); }); return this; }
+      off(t, f) { if (this._ev && this._ev[t]) this._ev[t] = f ? this._ev[t].filter(x => x !== f) : []; return this; }
+      once(t, f) { const g = e => { this.off(t, g); f(e); }; return this.on(t, g); }
+      fire(t, e) { (this._ev && this._ev[t] || []).slice().forEach(f => { try { f.call(this, Object.assign({ type: t, target: this }, e)); } catch (err) { console.warn(err); } }); return this; }
+    }
+
+    /* ── 층 ── */
+    let seq = 0;
+    class Layer extends Evented {
+      constructor(o) { super(); this.options = Object.assign({}, o); this._map = null; }
+      addTo(m) { m.addLayer(this); return this; }
+      remove() { if (this._map) this._map.removeLayer(this); return this; }
+      bindPopup(c, o) { this._popup = { content: c, opts: o || {} }; return this; }
+      bindTooltip() { return this; }
+      openPopup(ll) { if (this._map && this._popup) this._map._openPopup(this, ll || this._popAt()); return this; }
+      closePopup() { if (this._map) this._map.closePopup(); return this; }
+      getPopup() { return this._popup; }
+      _popAt() { return this.getLatLng ? this.getLatLng() : this.getCenter(); }
+    }
+    class LayerGroup extends Layer {
+      constructor(list) { super(); this._layers = new Set(); (list || []).forEach(l => this.addLayer(l)); }
+      addLayer(l) { this._layers.add(l); l._group = this; if (this._map) this._map.addLayer(l); return this; }
+      removeLayer(l) { this._layers.delete(l); if (this._map) this._map.removeLayer(l); return this; }
+      clearLayers() { this._layers.forEach(l => { if (this._map) this._map.removeLayer(l); }); this._layers.clear(); return this; }
+      hasLayer(l) { return this._layers.has(l); }
+      eachLayer(f) { this._layers.forEach(f); return this; }
+      getLayers() { return Array.from(this._layers); }
+      _onAdd(m) { this._map = m; this._layers.forEach(l => m.addLayer(l)); }
+      _onRemove(m) { this._layers.forEach(l => m.removeLayer(l)); this._map = null; }
+    }
+
+    // divIcon 핀 → DOM 마커
+    class Marker extends Layer {
+      constructor(ll, o) { super(Object.assign({ interactive: true, zIndexOffset: 0, opacity: 1 }, o)); this._ll = toLL(ll); }
+      _build() {
+        const ic = this.options.icon || { html: '<div class="gl-pin"></div>', iconSize: [14, 14] };
+        const el = document.createElement('div');
+        el.className = 'gl-marker ' + (ic.className || '');
+        if (ic.html instanceof HTMLElement) el.appendChild(ic.html); else el.innerHTML = ic.html || '';
+        const sz = ic.iconSize;
+        if (Array.isArray(sz)) { el.style.width = sz[0] + 'px'; el.style.height = sz[1] + 'px'; }
+        let offset = [0, 0];
+        if (Array.isArray(sz) && Array.isArray(ic.iconAnchor)) offset = [sz[0] / 2 - ic.iconAnchor[0], sz[1] / 2 - ic.iconAnchor[1]];
+        if (this.options.title) el.title = this.options.title;
+        el.style.zIndex = String(10 + (this.options.zIndexOffset || 0));
+        el.style.opacity = String(this.options.opacity);
+        if (!this.options.interactive) el.style.pointerEvents = 'none';
+        else el.addEventListener('click', e => {
+          e.stopPropagation();
+          this.fire('click', { latlng: this._ll, originalEvent: e });
+          if (this._popup) this.openPopup();
+        });
+        this._el = el;
+        this._gl = new ML.Marker({ element: el, anchor: 'center', offset: offset });
+      }
+      _onAdd(m) { this._map = m; if (!this._gl) this._build(); this._gl.setLngLat(this._ll.toGL()).addTo(m.gl); }
+      _onRemove() { if (this._gl) this._gl.remove(); this._map = null; }
+      getLatLng() { return this._ll; }
+      setLatLng(ll) { this._ll = toLL(ll); if (this._gl) this._gl.setLngLat(this._ll.toGL()); return this; }
+      setOpacity(o) { this.options.opacity = o; if (this._el) this._el.style.opacity = String(o); return this; }
+      setZIndexOffset(z) { this.options.zIndexOffset = z; if (this._el) this._el.style.zIndex = String(10 + z); return this; }
+      setIcon(ic) { this.options.icon = ic; if (this._gl) { const m = this._map; this._gl.remove(); this._gl = null; this._build(); if (m) this._gl.setLngLat(this._ll.toGL()).addTo(m.gl); } return this; }
+      getElement() { return this._el; }
+    }
+
+    // 선·원: GeoJSON 원본 + 층 하나
+    class Path extends Layer {
+      constructor(o) { super(Object.assign({ color: '#3388ff', weight: 3, opacity: 1, interactive: true }, o)); this._id = 'tp' + (++seq); }
+      _onAdd(m) { this._map = m; m._paths.add(this); m._whenStyle(() => this._addGL()); }
+      _onRemove(m) { m._paths.delete(this); this._rmGL(); this._map = null; }
+      _rmGL() { const gl = this._map && this._map.gl; if (!gl || !gl.getStyle()) return;
+        this._ids().forEach(id => { if (gl.getLayer(id)) gl.removeLayer(id); }); if (gl.getSource(this._id)) gl.removeSource(this._id); }
+      _ids() { return [this._id]; }
+      _src() { const gl = this._map && this._map.gl; return gl && gl.getSource(this._id); }
+      _push() { const s = this._src(); if (s) s.setData(this._geo()); }
+      setStyle(st) { Object.assign(this.options, st); const gl = this._map && this._map.gl;
+        if (gl && gl.getLayer(this._id)) { const p = this._paint(); Object.keys(p).forEach(k => { try { gl.setPaintProperty(this._id, k, p[k]); } catch (e) { /* 무시 */ } }); }
+        return this; }
+      bringToFront() { const gl = this._map && this._map.gl; if (gl) this._ids().forEach(id => { if (gl.getLayer(id)) gl.moveLayer(id); }); return this; }
+      bringToBack() { return this; }
+    }
+    function dashOf(o) {
+      if (!o.dashArray) return null;
+      const a = String(o.dashArray).split(/[ ,]+/).map(Number).filter(n => n > 0);
+      return a.length ? a.map(v => Math.max(0.05, v / Math.max(1, o.weight || 1))) : null;
+    }
+    class Polyline extends Path {
+      constructor(lls, o) { super(o); this._ll = (lls || []).map(x => toLL(x)); this._draw = 1; }
+      _geo() {
+        let c = this._ll.map(p => p.toGL());
+        if (this._draw < 1 && c.length > 1) c = c.slice(0, Math.max(2, Math.ceil(c.length * this._draw)));
+        return { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: c.length > 1 ? c : c.concat(c) } };
+      }
+      _paint() {
+        const o = this.options, p = { 'line-color': o.color, 'line-width': o.weight, 'line-opacity': o.opacity == null ? 1 : o.opacity };
+        const d = dashOf(o);
+        if (d) p['line-dasharray'] = d;
+        return p;
+      }
+      _addGL() {
+        const m = this._map, gl = m && m.gl;
+        if (!gl || gl.getSource(this._id)) return;
+        gl.addSource(this._id, { type: 'geojson', data: this._geo() });
+        const casing = this.options.pane === 'casing';
+        gl.addLayer({ id: this._id, type: 'line', source: this._id,
+          layout: { 'line-cap': this.options.lineCap || 'round', 'line-join': this.options.lineJoin || 'round' }, paint: this._paint() },
+          casing ? m._firstTripLayer() : undefined);
+        if (this.options.interactive !== false) m._hit.set(this._id, this);
+      }
+      _rmGL() { if (this._map) this._map._hit.delete(this._id); super._rmGL(); }
+      getLatLngs() { return this._ll; }
+      setLatLngs(lls) { this._ll = lls.map(x => toLL(x)); this._push(); return this; }
+      addLatLng(ll) { this._ll.push(toLL(ll)); this._push(); return this; }
+      getBounds() { return new Bounds(this._ll); }
+      getCenter() {
+        // 길이 기준 가운데
+        let tot = 0; const seg = [];
+        for (let i = 1; i < this._ll.length; i++) { const d = this._ll[i - 1].distanceTo(this._ll[i]); seg.push(d); tot += d; }
+        let h = tot / 2;
+        for (let i = 0; i < seg.length; i++) {
+          if (h <= seg[i]) { const f = seg[i] ? h / seg[i] : 0, a = this._ll[i], b = this._ll[i + 1];
+            return new LatLng(a.lat + (b.lat - a.lat) * f, a.lng + (b.lng - a.lng) * f); }
+          h -= seg[i];
+        }
+        return this._ll[0] || new LatLng(0, 0);
+      }
+      // 선이 앞에서부터 그려지는 효과
+      animateDraw(delay, dur) {
+        dur = dur || 600;
+        this._draw = 0.0001; this._push();
+        const t0 = performance.now() + (delay || 0);
+        const step = now => {
+          if (!this._map) return;
+          const f = Math.max(0, Math.min(1, (now - t0) / dur));
+          this._draw = f <= 0 ? 0.0001 : 1 - Math.pow(1 - f, 3);
+          this._push();
+          if (f < 1) requestAnimationFrame(step); else { this._draw = 1; this._push(); }
+        };
+        requestAnimationFrame(step);
+      }
+    }
+    class CircleMarker extends Path {
+      constructor(ll, o) { super(Object.assign({ radius: 10, fillOpacity: 0.2, fill: true }, o)); this._ll = toLL(ll); }
+      _geo() { return { type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: this._ll.toGL() } }; }
+      _paint() {
+        const o = this.options;
+        return { 'circle-radius': o.radius, 'circle-color': o.fillColor || o.color, 'circle-opacity': o.fill === false ? 0 : (o.fillOpacity == null ? 0.2 : o.fillOpacity),
+          'circle-stroke-color': o.color, 'circle-stroke-width': o.stroke === false ? 0 : (o.weight == null ? 3 : o.weight), 'circle-stroke-opacity': o.opacity == null ? 1 : o.opacity };
+      }
+      _addGL() { const m = this._map, gl = m && m.gl; if (!gl || gl.getSource(this._id)) return;
+        gl.addSource(this._id, { type: 'geojson', data: this._geo() });
+        gl.addLayer({ id: this._id, type: 'circle', source: this._id, paint: this._paint() });
+        if (this.options.interactive !== false) m._hit.set(this._id, this); }
+      _rmGL() { if (this._map) this._map._hit.delete(this._id); super._rmGL(); }
+      getLatLng() { return this._ll; }
+      setLatLng(ll) { this._ll = toLL(ll); this._push(); return this; }
+      setRadius(r) { this.options.radius = r; return this.setStyle({}); }
+      getBounds() { return new Bounds([this._ll, this._ll]); }
+    }
+    // 미터 반지름 원 (내 위치 정확도)
+    class Circle extends Path {
+      constructor(ll, o) { super(Object.assign({ radius: 10, fillOpacity: 0.2 }, o)); this._ll = toLL(ll); }
+      _ring() { const r = this.options.radius || 1, c = this._ll, out = [];
+        for (let i = 0; i <= 48; i++) { const a = i / 48 * 2 * Math.PI;
+          out.push([c.lng + r * Math.sin(a) / (111320 * Math.cos(c.lat * Math.PI / 180)), c.lat + r * Math.cos(a) / 110540]); }
+        return out; }
+      _geo() { return { type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [this._ring()] } }; }
+      _ids() { return [this._id, this._id + 'o']; }
+      _paint() { const o = this.options; return { 'fill-color': o.fillColor || o.color, 'fill-opacity': o.fillOpacity == null ? 0.2 : o.fillOpacity }; }
+      _addGL() { const gl = this._map && this._map.gl; if (!gl || gl.getSource(this._id)) return;
+        gl.addSource(this._id, { type: 'geojson', data: this._geo() });
+        gl.addLayer({ id: this._id, type: 'fill', source: this._id, paint: this._paint() });
+        gl.addLayer({ id: this._id + 'o', type: 'line', source: this._id, paint: { 'line-color': this.options.color, 'line-width': this.options.weight || 1 } }); }
+      getLatLng() { return this._ll; }
+      setLatLng(ll) { this._ll = toLL(ll); this._push(); return this; }
+      setRadius(r) { this.options.radius = r; this._push(); return this; }
+      getBounds() { return new Bounds(this._ring().map(c => [c[1], c[0]])); }
+    }
+    class TileLayer extends Layer { _onAdd(m) { this._map = m; } _onRemove() { this._map = null; } }
+
+    /* ── 조작 버튼 (Leaflet 방식 위치 칸) ── */
+    class Control {
+      constructor(o) { this.options = Object.assign({ position: 'topright' }, this.options, o); }
+      addTo(m) { m.addControl(this); return this; }
+      remove() { if (this._map) this._map.removeControl(this); return this; }
+      getContainer() { return this._container; }
+    }
+    Control.extend = function (props) {
+      class C extends Control {}
+      Object.keys(props).forEach(k => { if (k === 'options') C.prototype.options = Object.assign({}, props.options); else C.prototype[k] = props[k]; });
+      return C;
+    };
+
+    /* ── 지도 ── */
+    class GLMap extends Evented {
+      constructor(id, o) {
+        super();
+        this.options = Object.assign({ zoomSnap: 1 }, o);
+        this._container = typeof id === 'string' ? document.getElementById(id) : id;
+        this._container.classList.add('leaflet-container', 'gl-map');
+        this._paths = new Set();
+        this._hit = new Map();
+        this._queue = [];
+        this._popup = null;
+        this._labels = null;
+        this._styleTries = 0;
+        this.gl = new ML.Map({
+          container: this._container, style: mapUrl(OFM + 'styles/' + (dark ? 'dark' : 'liberty')),
+          center: [135.5, 34.69], zoom: 10, maxPitch: 70, attributionControl: false, localIdeographFontFamily: 'sans-serif',
+          dragRotate: true, touchPitch: true, pitchWithRotate: true, fadeDuration: 120, maxTileCacheSize: 600,
+          transformRequest: url => (viaProxy && url.indexOf(OFM) === 0 ? { url: mapUrl(url) } : undefined),
+        });
+        this.gl.addControl(new ML.AttributionControl({ compact: true,
+          customAttribution: '<a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a>' }), 'bottom-right');
+        this._loaded = false;
+        // 다크 스타일 없거나 지도 서버 안 되면: liberty → 그래도 안 되면 OSM 래스터
+        const fallback = why => {
+          if (this._loaded) return;
+          this._styleTries++;
+          console.warn('지도 스타일 실패, 다음 것으로', why);
+          this.gl.setStyle(this._styleTries === 1 && dark ? mapUrl(OFM + 'styles/liberty') : OSM_STYLE);
+        };
+        // 스타일을 다 받기 전에 나는 오류는 스타일 문제 (타일은 그 뒤에 받음)
+        this.gl.on('error', e => { if (!this._loaded) fallback(e && e.error && (e.error.message || e.error.status)); });
+        this._fbTimer = setTimeout(() => fallback('시간 초과'), 10000);
+        this.gl.on('style.load', () => {
+          this._loaded = true;
+          clearTimeout(this._fbTimer);
+          this._decorate();
+          // 스타일이 바뀌면 그려둔 선·원이 다 지워지므로 다시 그림
+          this._paths.forEach(p => { try { p._addGL(); } catch (e) { /* 무시 */ } });
+          const q = this._queue; this._queue = [];
+          q.forEach(f => { try { f(); } catch (e) { console.warn(e); } });
+        });
+        // 선·원 누르기: 손가락 오차 ±7px 안 가장 위의 것. 아무것도 없으면 지도 누르기
+        this.gl.on('click', e => {
+          const ids = Array.from(this._hit.keys()).filter(id => this.gl.getLayer(id));
+          let hit = null;
+          if (ids.length) {
+            const p = e.point;
+            const fs = this.gl.queryRenderedFeatures([[p.x - 7, p.y - 7], [p.x + 7, p.y + 7]], { layers: ids });
+            if (fs.length) hit = this._hit.get(fs[0].layer.id);
+          }
+          const ll = new LatLng(e.lngLat.lat, e.lngLat.lng);
+          if (hit) {
+            hit.fire('click', { latlng: ll, originalEvent: e.originalEvent });
+            if (hit._popup) this._openPopup(hit, ll);
+            return;
+          }
+          this.fire('click', { latlng: ll, originalEvent: e.originalEvent });
+        });
+        this.gl.on('mousemove', e => {
+          const ids = Array.from(this._hit.keys()).filter(id => this.gl.getLayer(id));
+          const p = e.point;
+          const on = ids.length && this.gl.queryRenderedFeatures([[p.x - 5, p.y - 5], [p.x + 5, p.y + 5]], { layers: ids }).length;
+          this.gl.getCanvas().style.cursor = on ? 'pointer' : '';
+        });
+        this.gl.on('zoomend', () => this.fire('zoomend'));
+        this.gl.on('moveend', () => this.fire('moveend'));
+        this.gl.on('movestart', () => this.fire('movestart'));
+        this.gl.on('rotate', () => this.fire('rotate'));
+        this.gl.on('pitch', () => this.fire('pitch'));
+        // Leaflet 위치 칸
+        const cc = document.createElement('div');
+        cc.className = 'leaflet-control-container';
+        this._corners = {};
+        ['top left', 'top right', 'bottom left', 'bottom right'].forEach(k => {
+          const [v, h] = k.split(' ');
+          const d = document.createElement('div');
+          d.className = 'leaflet-' + v + ' leaflet-' + h;
+          cc.appendChild(d);
+          this._corners[v + h] = d;
+        });
+        this._container.appendChild(cc);
+        if (this.options.zoomControl !== false) {
+          const nav = new ML.NavigationControl({ visualizePitch: true, showCompass: true, showZoom: true });
+          const el = nav.onAdd(this.gl);
+          el.classList.add('leaflet-control', 'gl-nav');
+          this._corners.topleft.appendChild(el);
+        }
+        this.attributionControl = { addAttribution() { return this; }, removeAttribution() { return this; } };
+      }
+      _whenStyle(f) { if (this.gl.isStyleLoaded() || this._loaded && this.gl.getStyle()) { try { f(); return; } catch (e) { /* 아직이면 대기 */ } } this._queue.push(f); }
+      _firstTripLayer() {
+        const ids = (this.gl.getStyle().layers || []).map(l => l.id);
+        return ids.find(id => /^tp\d+$/.test(id) && !this._isCasing(id));
+      }
+      _isCasing(id) { for (const p of this._paths) if (p._id === id) return p.options.pane === 'casing'; return false; }
+      // 스타일 꾸미기: 지명 언어, 3D 건물
+      _decorate() {
+        const gl = this.gl, st = gl.getStyle();
+        let mode = 'ko';
+        try { mode = localStorage.getItem('trip-map-label') || 'ko'; } catch (e) { /* 무시 */ }
+        this.applyLabels(mode);
+        if (!st.layers.some(l => l.type === 'fill-extrusion')) {
+          const srcId = Object.keys(st.sources).find(id => st.sources[id].type === 'vector');
+          const firstSym = (st.layers.find(l => l.type === 'symbol') || {}).id;
+          if (srcId) try {
+            gl.addLayer({ id: 'trip-3d-buildings', type: 'fill-extrusion', source: srcId, 'source-layer': 'building', minzoom: 14,
+              paint: { 'fill-extrusion-color': dark ? '#2a3240' : '#dfe3e8',
+                'fill-extrusion-height': ['coalesce', ['get', 'render_height'], ['get', 'height'], 8],
+                'fill-extrusion-base': ['coalesce', ['get', 'render_min_height'], 0],
+                'fill-extrusion-opacity': ['interpolate', ['linear'], ['zoom'], 14, 0, 15, 0.8] } }, firstSym);
+          } catch (e) { /* 건물 층 없음 */ }
+        }
+      }
+      applyLabels(mode) {
+        const gl = this.gl;
+        (gl.getStyle().layers || []).forEach(l => {
+          if (l.type !== 'symbol' || !l.layout || !l.layout['text-field']) return;
+          if (!this._labels) this._labels = {};
+          if (!(l.id in this._labels)) this._labels[l.id] = l.layout['text-field'];
+          const orig = this._labels[l.id];
+          if (JSON.stringify(orig).indexOf('name') === -1) return;
+          const tf = mode === 'ko' ? ['coalesce', ['get', 'name:ko'], ['get', 'name:latin'], ['get', 'name']] : orig;
+          try { gl.setLayoutProperty(l.id, 'text-field', tf); } catch (e) { /* 무시 */ }
+        });
+      }
+
+      // 층
+      addLayer(l) { if (l instanceof LayerGroup) { l._onAdd(this); return this; } if (l._map === this) return this; l._onAdd(this); return this; }
+      removeLayer(l) { if (!l) return this; if (l instanceof LayerGroup) { if (l._map === this) l._onRemove(this); return this; } if (l._map === this) l._onRemove(this); return this; }
+      hasLayer(l) { return !!l && l._map === this; }
+      eachLayer(f) { this._paths.forEach(f); return this; }
+      createPane(n) { return this.getPane(n); }
+      getPane(n) { this._panes = this._panes || {}; return this._panes[n] = this._panes[n] || { style: {}, classList: { add() {}, remove() {} } }; }
+      // 조작 버튼
+      addControl(c) {
+        c._map = this;
+        const el = c.onAdd(this);
+        el.classList.add('leaflet-control');
+        c._container = el;
+        const pos = (c.options && c.options.position || 'topright');
+        const corner = this._corners[pos] || this._corners.topright;
+        if (pos.indexOf('bottom') === 0) corner.insertBefore(el, corner.firstChild); else corner.appendChild(el);
+        return this;
+      }
+      removeControl(c) { if (c && c._container) { c._container.remove(); if (c.onRemove) c.onRemove(this); } return this; }
+      // 화면
+      getContainer() { return this._container; }
+      getSize() { return new Point(this._container.clientWidth, this._container.clientHeight); }
+      getZoom() { return this.gl.getZoom() + 1; }
+      getCenter() { const c = this.gl.getCenter(); return new LatLng(c.lat, c.lng); }
+      getBounds() { const b = this.gl.getBounds(); return new Bounds([b.getSouth(), b.getWest()], [b.getNorth(), b.getEast()]); }
+      setView(ll, z, o) {
+        ll = toLL(ll);
+        const opt = { center: ll.toGL() };
+        if (z != null) opt.zoom = z - 1;
+        if (o && o.animate) this.gl.easeTo(Object.assign(opt, { duration: (o.duration || 0.5) * 1000 }));
+        else this.gl.jumpTo(opt);
+        return this;
+      }
+      panTo(ll, o) { return this.setView(ll, null, Object.assign({ animate: true }, o)); }
+      panBy(p, o) { p = toPt(p); this.gl.panBy([p.x, p.y], { duration: o && o.animate === false ? 0 : 250 }); return this; }
+      setZoom(z, o) { this.gl.easeTo({ zoom: z - 1, duration: o && o.animate === false ? 0 : 300 }); return this; }
+      zoomIn() { this.gl.zoomIn(); return this; } zoomOut() { this.gl.zoomOut(); return this; }
+      _pad(o) {
+        o = o || {};
+        const p = toPt(o.padding || [0, 0]), tl = toPt(o.paddingTopLeft || p), br = toPt(o.paddingBottomRight || p);
+        return { top: tl.y, left: tl.x, bottom: br.y, right: br.x };
+      }
+      fitBounds(b, o) {
+        b = toBounds(b);
+        if (!b.isValid()) return this;
+        o = o || {};
+        const pad = this._pad(o), sz = this.getSize();
+        // 패딩이 화면보다 크면 MapLibre가 거부함 → 줄임
+        if (pad.top + pad.bottom >= sz.y - 20) { pad.top = pad.bottom = Math.max(0, (sz.y - 40) / 2); }
+        if (pad.left + pad.right >= sz.x - 20) { pad.left = pad.right = Math.max(0, (sz.x - 40) / 2); }
+        try {
+          this.gl.fitBounds(b.toGL(), { padding: pad, maxZoom: o.maxZoom != null ? o.maxZoom - 1 : 22, duration: o.animate === false ? 0 : 600,
+            bearing: this.gl.getBearing(), pitch: this.gl.getPitch() });
+        } catch (e) { this.gl.jumpTo({ center: b.getCenter().toGL() }); }
+        return this;
+      }
+      getBoundsZoom(b, inside, padding) {
+        b = toBounds(b);
+        const p = toPt(padding || [0, 0]);
+        try {
+          const cam = this.gl.cameraForBounds(b.toGL(), { padding: { top: p.y / 2, bottom: p.y / 2, left: p.x / 2, right: p.x / 2 } });
+          return cam && cam.zoom != null ? cam.zoom + 1 : this.getZoom();
+        } catch (e) { return this.getZoom(); }
+      }
+      project(ll, z) { return project(toLL(ll), z == null ? this.getZoom() : z); }
+      unproject(p, z) { return unproject(toPt(p), z == null ? this.getZoom() : z); }
+      latLngToContainerPoint(ll) { const p = this.gl.project(toLL(ll).toGL()); return new Point(p.x, p.y); }
+      containerPointToLatLng(p) { p = toPt(p); const l = this.gl.unproject([p.x, p.y]); return new LatLng(l.lat, l.lng); }
+      invalidateSize() { this.gl.resize(); return this; }
+      // 말풍선
+      _openPopup(layer, ll) {
+        this.closePopup();
+        const p = layer._popup;
+        const html = typeof p.content === 'function' ? p.content(layer) : p.content;
+        const isMarker = layer instanceof Marker;
+        this._popup = new ML.Popup({ closeButton: true, maxWidth: (p.opts.maxWidth || 300) + 'px', className: 'trip-popup', offset: isMarker ? 18 : 6, focusAfterOpen: false })
+          .setLngLat(toLL(ll).toGL()).setHTML('<div class="leaflet-popup-content">' + html + '</div>').addTo(this.gl);
+        this.fire('popupopen', { popup: this._popup, layer: layer });
+      }
+      closePopup() { if (this._popup) { this._popup.remove(); this._popup = null; } return this; }
+      // 3D: 기울이기 켜고 끄기
+      toggle3D() {
+        const on = this.gl.getPitch() > 5;
+        this.gl.easeTo({ pitch: on ? 0 : 58, bearing: on ? 0 : -18, duration: 900 });
+        return !on;
+      }
+    }
+
+    /* ── L 바꿔 끼우기 (DomUtil·DomEvent 같은 DOM 도우미는 진짜 Leaflet 것) ── */
+    const G = Object.assign({}, LL, {
+      map: (id, o) => new GLMap(id, o),
+      Map: GLMap,
+      latLng: toLL, LatLng: LatLng,
+      latLngBounds: (a, b) => new Bounds(a, b), LatLngBounds: Bounds,
+      point: (x, y) => toPt(x, y), Point: Point,
+      marker: (ll, o) => new Marker(ll, o), Marker: Marker,
+      divIcon: o => Object.assign({ iconSize: [12, 12] }, o),
+      polyline: (lls, o) => new Polyline(lls, o), Polyline: Polyline,
+      circleMarker: (ll, o) => new CircleMarker(ll, o), CircleMarker: CircleMarker,
+      circle: (ll, o) => new Circle(ll, o), Circle: Circle,
+      Path: Path, Layer: Layer,
+      layerGroup: list => new LayerGroup(list), LayerGroup: LayerGroup,
+      tileLayer: () => new TileLayer(), TileLayer: TileLayer,
+      Control: Control,
+    });
+    window.L = G;
+  })();
+</script>

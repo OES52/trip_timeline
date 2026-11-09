@@ -74,10 +74,12 @@
   <div class="detail-wrap" id="detailWrap"><aside class="detail" id="detail" role="dialog" aria-modal="true"></aside></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/swiper@11.2.10/swiper-bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/lottie-web@5.13.0/build/player/lottie.min.js"></script>
 <!-- 설정 시트 사용자 목록 (서버가 페이지 열 때 넣어줌) -->
 <script>const BOOT_USERS = <?!= bootUsers ?>;</script>
+<?!= include('App_GL'); ?>
 <?!= include('App_Core'); ?>
 <?!= include('App_Timeline'); ?>
 <?!= include('App_Fx'); ?>

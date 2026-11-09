@@ -257,7 +257,7 @@
     const card = t.closest('#tlInner .tcard');
     if (!card || t.closest('button, a, input, select, textarea, label, .spend-form, .arr-form, .edit-row, .taxi-box, img.photo')) return;
     const key = card.closest('.titem') && card.closest('.titem').dataset.key;
-    card.classList.toggle('open');
+    flipToggle(card, () => card.classList.toggle('open'));
     if (key) { if (card.classList.contains('open')) TL_OPEN.add(key); else TL_OPEN.delete(key); }
   });
   function moreSheet(card) {
@@ -567,6 +567,7 @@
     if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     const segs = DATA.segments.filter(s => s.date === selected).sort((a, b) => a.fromOrder - b.fromOrder);
     segs.forEach((s, i) => segLayers(s).forEach(l => {
+      if (l.animateDraw) { l.animateDraw(i * 280, 600); return; }   // MapLibre 엔진
       const el = l._path;
       if (!el || !(l instanceof L.Polyline)) return;
       const delay = i * 280;
@@ -715,7 +716,7 @@
     return { style: await r.json(), native: !dark };
   }
   async function useVectorMap() {
-    if (!hasWebGL || glLayer) return;
+    if (!hasWebGL || glLayer || window.TRIP_GL) return;   // 지도 엔진이 이미 MapLibre면 필요 없음
     try {
       await loadScript(LIB.maplibre);
       await loadScript(LIB.mlLeaflet);
@@ -766,13 +767,23 @@
   });
   window.TRIP_SETTINGS.push(box => {
     const k = labelMode();
+    let eng = 'gl';
+    try { eng = localStorage.getItem('trip-map-engine') || 'gl'; } catch (e) { /* 무시 */ }
     box.insertAdjacentHTML('beforeend', '<div class="hcard"><h3 class="set-h">지도</h3>' +
-      '<p class="set-p">지명 글자 (벡터 지도일 때)</p>' +
+      '<p class="set-p">지명 글자</p>' +
       '<label class="chk"><input type="radio" name="mapLabel" value="ko"' + (k === 'ko' ? ' checked' : '') + '><span>한국어 우선 (없으면 영문·현지어)</span></label><br>' +
-      '<label class="chk" style="margin-top:6px"><input type="radio" name="mapLabel" value="local"' + (k === 'local' ? ' checked' : '') + '><span>현지어 (간판과 같은 일본어)</span></label></div>');
+      '<label class="chk" style="margin-top:6px"><input type="radio" name="mapLabel" value="local"' + (k === 'local' ? ' checked' : '') + '><span>현지어 (간판과 같은 일본어)</span></label>' +
+      '<p class="set-p" style="margin-top:12px">지도 방식 (바꾸면 새로고침)</p>' +
+      '<label class="chk"><input type="radio" name="mapEngine" value="gl"' + (eng !== 'leaflet' ? ' checked' : '') + '><span>벡터 지도 (기울이기·회전·3D 건물)</span></label><br>' +
+      '<label class="chk" style="margin-top:6px"><input type="radio" name="mapEngine" value="leaflet"' + (eng === 'leaflet' ? ' checked' : '') + '><span>예전 지도 (가볍고 단순, 느린 폰·문제 있을 때)</span></label></div>');
+    box.querySelectorAll('input[name="mapEngine"]').forEach(r => r.onchange = () => {
+      try { localStorage.setItem('trip-map-engine', r.value); } catch (e) { /* 무시 */ }
+      if (confirm('지도 방식을 바꾸려면 새로고침해야 함. 지금 할까?')) location.reload();
+    });
     box.querySelectorAll('input[name="mapLabel"]').forEach(r => r.onchange = () => {
       try { localStorage.setItem(LABEL_KEY, r.value); } catch (e) { /* 무시 */ }
-      if (glLayer && glLayer.getMaplibreMap()) applyLabels(glLayer.getMaplibreMap());
+      if (window.TRIP_GL && map.applyLabels) map.applyLabels(r.value);
+      else if (glLayer && glLayer.getMaplibreMap()) applyLabels(glLayer.getMaplibreMap());
     });
   });
 
@@ -807,7 +818,7 @@
   /* ── 하루 돌아보기: 재생 전에 지나갈 길의 지도 타일을 먼저 받음 ── */
   //  벡터 지도가 빨리 움직이는 카메라를 못 따라가서 빈 화면이 되던 것. 최대 8초 기다리고 시작
   function replayTileUrls() {
-    const m = glLayer && glLayer.getMaplibreMap && glLayer.getMaplibreMap();
+    const m = (window.TRIP_GL && map.gl) || (glLayer && glLayer.getMaplibreMap && glLayer.getMaplibreMap());
     if (!m || !RP) return [];
     const st = m.getStyle();
     const src = Object.keys(st.sources || {}).map(id => m.getSource(id)).find(s => s && s.type === 'vector' && Array.isArray(s.tiles) && s.tiles.length);
@@ -831,7 +842,7 @@
   const startReplay_theme = startReplay;
   startReplay = function (date) {
     startReplay_theme(date);
-    if (!RP || !glLayer) return;
+    if (!RP || !(glLayer || window.TRIP_GL)) return;
     const urls = replayTileUrls();
     if (!urls.length) return;
     const lab = document.getElementById('rpLabel'), play = document.getElementById('rpPlay');
@@ -953,11 +964,215 @@
       const b = L.DomUtil.create('button', 'leaflet-bar btn3d');
       b.type = 'button'; b.textContent = '3D'; b.title = '3D로 보기 (기울이기·회전·건물)';
       L.DomEvent.disableClickPropagation(b);
-      b.onclick = open3D;
+      // 지도 엔진이 MapLibre면 이 지도를 바로 기울임, 아니면 3D 창
+      b.onclick = () => {
+        if (window.TRIP_GL && map.toggle3D) { const on = map.toggle3D(); b.classList.toggle('on', on); b.textContent = on ? '2D' : '3D'; }
+        else open3D();
+      };
       return b;
     },
   });
   new Btn3D().addTo(map);
   const setView_3d = setView;
   setView = function (v) { if (v !== 'plan') close3D(); setView_3d(v); };
+
+  /* ── 하루 돌아보기: deck.gl 빛나는 이동선 (벡터 지도 엔진일 때) ──
+   *  그날 함께 있는 사람마다 자기 색 꼬리. 같은 경로라도 각자 도착 기록으로 늦어진 만큼 시간이 밀림
+   *  deck.gl(약 2MB)은 돌아보기를 처음 켤 때만 받음 */
+  const DECK_URL = 'https://cdn.jsdelivr.net/npm/deck.gl@9.4.0/dist.min.js';
+  let deckOv = null, deckTrips = null;
+  const hexRgb = h => { const m = String(h).replace('#', '').match(/^([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i); return m ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)] : [255, 80, 60]; };
+  // 시계(분) → 재생 위치(RP.u)
+  function clockToU(t) {
+    const ev = RP.ev;
+    for (const e of ev) if (t <= e.d) { if (t <= e.a) return e.u0; return e.u0 + (t - e.a) / Math.max(1, e.d - e.a) * e.len; }
+    const l = ev[ev.length - 1];
+    return l ? l.u0 + l.len : 0;
+  }
+  function userDelay(uid, date) {
+    const arr = (RAW && RAW.arrivedBy && RAW.arrivedBy[uid]) || {};
+    let ref = 0;
+    (RAW.points || []).filter(p => p.date === date).sort((a, b) => a.order - b.order).forEach(p => {
+      const a = arr[p.date + '#' + p.order], pm = toMin(p.arrive);
+      if (!a || pm == null) return;
+      let d = toMin(a) - pm;
+      if (d < -720) d += 1440;
+      if (d > 720) d -= 1440;
+      ref = d;
+    });
+    return ref;
+  }
+  function buildTrips() {
+    const date = RP.date;
+    const people = ((RAW && RAW.users) || []).filter(u => u.from <= date && u.to >= date && u.id !== 'Guest');
+    if (!people.length && USER) people.push(USER);
+    const mine = USER ? userDelay(USER.id, date) : 0;
+    return people.map(u => {
+      const shift = userDelay(u.id, date) - mine;
+      const path = [], ts = [];
+      RP.ev.forEach(e => {
+        if (e.type === 'stay') {
+          path.push([e.p.lng, e.p.lat], [e.p.lng, e.p.lat]);
+          ts.push(clockToU(e.a + shift), clockToU(e.d + shift));
+        } else {
+          e.coords.forEach((c, i) => { path.push([c[1], c[0]]); ts.push(clockToU(e.a + (e.d - e.a) * (e.cum[i] / e.total) + shift)); });
+        }
+      });
+      // 시간이 거꾸로 가지 않게
+      for (let i = 1; i < ts.length; i++) if (ts[i] < ts[i - 1]) ts[i] = ts[i - 1];
+      return { id: u.id, me: USER && u.id === USER.id, color: hexRgb(userColor(u.id)), path: path, timestamps: ts };
+    });
+  }
+  function headAt(t, tr) {
+    const ts = tr.timestamps;
+    if (!ts.length || t <= ts[0]) return tr.path[0];
+    for (let i = 1; i < ts.length; i++) if (t <= ts[i]) {
+      const f = ts[i] === ts[i - 1] ? 1 : (t - ts[i - 1]) / (ts[i] - ts[i - 1]);
+      const a = tr.path[i - 1], b = tr.path[i];
+      return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f];
+    }
+    return tr.path[tr.path.length - 1];
+  }
+  function deckLayers() {
+    if (!window.deck || !RP || !deckTrips) return [];
+    const t = RP.u, trail = RP.perSec * 7;   // 꼬리 길이: 재생 7초 분량
+    const D = window.deck;
+    return [
+      new D.TripsLayer({ id: 'trip-glow', data: deckTrips, getPath: d => d.path, getTimestamps: d => d.timestamps,
+        getColor: d => d.color.concat(70), widthUnits: 'pixels', getWidth: 14, widthMinPixels: 14, capRounded: true, jointRounded: true, trailLength: trail, currentTime: t, fadeTrail: true }),
+      new D.TripsLayer({ id: 'trip-core', data: deckTrips, getPath: d => d.path, getTimestamps: d => d.timestamps,
+        getColor: d => d.color.map(c => Math.min(255, c + 60)), widthUnits: 'pixels', widthMinPixels: 3, getWidth: d => d.me ? 5 : 3, capRounded: true, jointRounded: true,
+        trailLength: trail, currentTime: t, fadeTrail: true }),
+      new D.ScatterplotLayer({ id: 'trip-heads', data: deckTrips.filter(d => !d.me), getPosition: d => headAt(t, d),
+        getFillColor: d => d.color, getLineColor: [255, 255, 255], lineWidthMinPixels: 2, stroked: true, radiusMinPixels: 6, radiusMaxPixels: 8,
+        updateTriggers: { getPosition: t } }),
+    ];
+  }
+  async function startDeck() {
+    if (!window.TRIP_GL || !map.gl || !RP) return;
+    try {
+      await loadScript(DECK_URL);
+      if (!window.deck || !RP) return;
+      deckTrips = buildTrips();
+      if (!deckOv) { deckOv = new window.deck.MapboxOverlay({ interleaved: true, layers: [] }); map.gl.addControl(deckOv); }
+      RP.trail.setStyle({ opacity: 0 });   // 예전 빨간 꼬리 대신
+      deckOv.setProps({ layers: deckLayers() });
+      // 범례: 누가 무슨 색
+      const lab = document.getElementById('rpPanel');
+      if (lab && !lab.querySelector('.rp-legend') && deckTrips.length > 1) {
+        lab.insertAdjacentHTML('beforeend', '<div class="rp-legend">' + deckTrips.map(d => '<span style="--uc:' + userColor(d.id) + '">' + esc(d.id) + '</span>').join('') + '</div>');
+      }
+    } catch (e) { console.warn('deck.gl 실패, 예전 꼬리 유지', e); }
+  }
+  const rpDraw_deck = rpDraw;
+  rpDraw = function (seek) {
+    rpDraw_deck(seek);
+    if (deckOv && deckTrips) deckOv.setProps({ layers: deckLayers() });
+  };
+  const startReplay_deck = startReplay;
+  startReplay = function (date) { startReplay_deck(date); startDeck(); };
+  const stopReplay_deck = stopReplay;
+  stopReplay = function () {
+    stopReplay_deck();
+    deckTrips = null;
+    if (deckOv) deckOv.setProps({ layers: [] });
+  };
+
+  /* ───────── 모션 (GSAP: Flip · ScrollTrigger) ─────────
+   *  - 카드 접기·펼치기: 카드와 그 아래 일정이 제자리에서 부드럽게 늘고 줄어듦
+   *  - 가이드 지역 카드 → 지역 상세: 누른 카드가 그대로 커지면서 상세 머리 사진이 됨
+   *  - 타임라인: 승차권이 위로 지나가면 작은 날짜 띠가 위에 붙음, 카드가 화면에 들어올 때 살짝 떠오름
+   *  GSAP(무료, 약 100KB)은 처음 필요할 때 받음. 모션 줄이기 설정이면 전부 끔 */
+  const GS = {
+    core: 'https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js',
+    flip: 'https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/Flip.min.js',
+    st: 'https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/ScrollTrigger.min.js',
+  };
+  const still = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let gsapP = null;
+  function gsapReady() {
+    if (still()) return Promise.reject(new Error('모션 줄이기'));
+    if (!gsapP) gsapP = loadScript(GS.core).then(() => Promise.all([loadScript(GS.flip), loadScript(GS.st)])).then(() => {
+      window.gsap.registerPlugin(window.Flip, window.ScrollTrigger);
+      return window.gsap;
+    });
+    return gsapP;
+  }
+  // 바로 쓸 수 있으면 Flip, 아니면 그냥 바꿈 (처음 한 번은 받는 동안 그냥 바뀜)
+  function flipToggle(card, change) {
+    if (!window.Flip || still()) { change(); gsapReady().catch(() => null); return; }
+    const box = card.closest('.swiper-slide, .tl-scroll, #tlInner') || document;
+    const els = [card].concat(Array.from(box.querySelectorAll('.titem, .tmove, .tst, .tstep, .tnow, .receipt')).filter(x => card.compareDocumentPosition(x) & Node.DOCUMENT_POSITION_FOLLOWING).slice(0, 14));
+    const state = window.Flip.getState(els, { props: 'opacity' });
+    change();
+    window.Flip.from(state, { duration: 0.38, ease: 'power3.out', nested: true, simple: true });
+  }
+
+  // 지역 카드 → 상세: 누른 카드 위치에서 상세 머리가 커져 나옴
+  let areaFrom = null;
+  document.addEventListener('click', e => {
+    const c = e.target.closest && e.target.closest('.acard');
+    if (!c) return;
+    const hero = c.querySelector('.hero');
+    areaFrom = hero ? hero.getBoundingClientRect() : c.getBoundingClientRect();
+    gsapReady().catch(() => null);
+  }, true);
+  const renderArea_motion = typeof renderAreaPage === 'function' ? renderAreaPage : null;
+  if (renderArea_motion) {
+    renderAreaPage = function () {
+      renderArea_motion.apply(this, arguments);
+      const from = areaFrom;
+      areaFrom = null;
+      const hero = document.querySelector('.area-banner .hero');
+      if (!from || !hero || !window.gsap || still()) return;
+      const to = hero.getBoundingClientRect();
+      if (!to.width) return;
+      window.gsap.fromTo(hero, {
+        x: from.left - to.left, y: from.top - to.top, scaleX: from.width / to.width, scaleY: from.height / to.height, transformOrigin: '0 0', borderRadius: 16,
+      }, { x: 0, y: 0, scaleX: 1, scaleY: 1, borderRadius: 0, duration: 0.5, ease: 'power3.inOut', clearProps: 'transform,borderRadius' });
+      const rest = Array.from(document.querySelectorAll('.area-banner ~ *')).slice(0, 8);
+      window.gsap.from(rest, { opacity: 0, y: 18, duration: 0.4, delay: 0.18, stagger: 0.04, ease: 'power2.out', clearProps: 'all' });
+    };
+  }
+
+  // 타임라인 스크롤: 작은 날짜 띠 + 카드 떠오르기
+  let tlTriggers = [];
+  function scrollMotion() {
+    if (!window.ScrollTrigger || still()) return;
+    tlTriggers.forEach(t => t.kill());
+    tlTriggers = [];
+    document.querySelectorAll('#tlInner .kippu').forEach(k => {
+      const scroller = k.closest('.swiper-slide, .tl-scroll');
+      if (!scroller) return;
+      let mini = scroller.querySelector('.kp-mini');
+      if (!mini) {
+        mini = document.createElement('div');
+        mini.className = 'kp-mini';
+        mini.style.setProperty('--city', getComputedStyle(k).getPropertyValue('--city'));
+        const day = k.querySelector('.tl-day'), route = k.querySelector('.kp-route');
+        mini.innerHTML = '<b>' + (day ? day.textContent : '') + '</b>' + (route ? '<span>' + route.innerHTML + '</span>' : '');
+        scroller.insertBefore(mini, scroller.firstChild);
+      }
+      tlTriggers.push(window.ScrollTrigger.create({
+        scroller: scroller, trigger: k, start: 'bottom top+=8', end: 'max',
+        onToggle: self => mini.classList.toggle('show', self.isActive),
+      }));
+      const items = Array.from(scroller.querySelectorAll('.titem'));
+      items.forEach(it => {
+        const r = it.getBoundingClientRect(), sr = scroller.getBoundingClientRect();
+        if (r.top < sr.bottom) return;   // 이미 보이는 건 그대로
+        window.gsap.set(it, { opacity: 0, y: 22 });
+        tlTriggers.push(window.ScrollTrigger.create({
+          scroller: scroller, trigger: it, start: 'top bottom-=24', once: true,
+          onEnter: () => window.gsap.to(it, { opacity: 1, y: 0, duration: 0.45, ease: 'power2.out', clearProps: 'transform,opacity' }),
+        }));
+      });
+    });
+  }
+  const renderTimeline_motion = renderTimeline;
+  renderTimeline = function () {
+    renderTimeline_motion();
+    if (still()) return;
+    gsapReady().then(() => requestAnimationFrame(scrollMotion)).catch(() => null);
+  };
 </script>
