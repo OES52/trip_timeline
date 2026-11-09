@@ -672,10 +672,13 @@
 
   // 헤더 접기: 폰에서 아래로 스크롤하면 제목줄 숨김, 위로 조금만 올려도 다시
   const lastTop = new WeakMap();
-  let hdrMin = false;
+  let hdrMin = false, hdrLock = 0, hdrAcc = 0;
   function setHeaderMin(on) {
     if (on === hdrMin) return;
     hdrMin = on;
+    // 접고 펴는 동안 본문 높이가 바뀌면서 생기는 스크롤은 무시 (안 그러면 접힘↔펼침이 번갈아 파닥거림)
+    hdrLock = Date.now() + 450;
+    hdrAcc = 0;
     document.body.classList.toggle('hdr-min', on);
     if (currentView === 'plan') setTimeout(() => { try { map.invalidateSize(); } catch (e) { /* 무시 */ } }, 260);
   }
@@ -685,10 +688,17 @@
     if (!(t instanceof Element)) return;
     const top = t.scrollTop, prev = lastTop.has(t) ? lastTop.get(t) : top;
     lastTop.set(t, top);
+    if (Date.now() < hdrLock) return;
+    // 접어도 스크롤할 게 별로 없는 화면은 접지 않음 (접으면 내용이 다 들어와서 다시 펴지는 반복)
+    if (t.scrollHeight - t.clientHeight < 200) { if (top < 40) setHeaderMin(false); return; }
+    if (top < 40) { setHeaderMin(false); return; }
+    // 맨 아래에 닿아 튕기는 움직임은 무시
+    if (top + t.clientHeight >= t.scrollHeight - 2) return;
+    // 같은 방향으로 어느 정도 움직였을 때만 (손가락 떨림·관성 끝 반동 무시)
     const d = top - prev;
-    if (top < 40) setHeaderMin(false);
-    else if (d > 6) setHeaderMin(true);
-    else if (d < -10) setHeaderMin(false);
+    hdrAcc = (hdrAcc > 0) === (d > 0) ? hdrAcc + d : d;
+    if (hdrAcc > 24) setHeaderMin(true);
+    else if (hdrAcc < -36) setHeaderMin(false);
   }, { capture: true, passive: true });
 
   function afterView() { syncTabs(); setHeaderMin(false); tabH(); }
