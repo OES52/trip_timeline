@@ -6,7 +6,8 @@
 <meta charset="utf-8">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Gothic+A1:wght@400;500;700;800&family=Barlow+Semi+Condensed:wght@500;700&family=Noto+Sans+JP:wght@400;700&family=DotGothic16&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&family=DotGothic16&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@5.24.0/dist/maplibre-gl.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/galmuri@2.40.3/dist/galmuri.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@11.2.10/swiper-bundle.min.css">
@@ -15,7 +16,6 @@
 <?!= include('Style_Views'); ?>
 <?!= include('Style_Extra'); ?>
 <?!= include('Style_Theme'); ?>
-<?!= include('Style_Rail'); ?>
 </head>
 <body data-view="home">
   <header>
@@ -90,7 +90,6 @@
 <?!= include('App_Guide'); ?>
 <?!= include('App_Area'); ?>
 <?!= include('App_Theme'); ?>
-<?!= include('App_Rail'); ?>
 <script>
   // 모든 선언이 끝난 뒤 시작 (저장된 데이터로 즉시 그릴 때 변수 초기화 순서 문제 방지)
   load();
