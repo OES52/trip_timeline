@@ -49,6 +49,7 @@ self.addEventListener('fetch', e => {
 
   if (req.mode === 'navigate' && same) { e.respondWith(navigate(req)); return; }
   if (same && url.pathname === '/api/photo') { e.respondWith(photo(req)); return; }
+  if (same && url.pathname.indexOf('/api/map/ofm/') === 0) { e.respondWith(mapTile(req)); return; }
   if (same && url.pathname.indexOf('/api/') === 0) return;
 
   const key = same ? url.pathname : req.url;
@@ -100,6 +101,28 @@ async function photo(req) {
   } catch (err) {
     return Response.error();
   }
+}
+
+// 벡터 지도(프록시): 캐시 먼저, 최대 4000개 (오래된 것부터 지움)
+const MAP = 'trip-map-v1', MAP_MAX = 4000;
+async function mapTile(req) {
+  const c = await caches.open(MAP);
+  const hit = await c.match(req);
+  if (hit) return hit;
+  try {
+    const res = await fetch(req);
+    if (res.ok) { await c.put(req, res.clone()); trimMap(c); }
+    return res;
+  } catch (err) {
+    return Response.error();
+  }
+}
+let mapTrimAt = 0;
+async function trimMap(c) {
+  if (Date.now() - mapTrimAt < 30000) return;
+  mapTrimAt = Date.now();
+  const keys = await c.keys();
+  for (let i = 0; i < keys.length - MAP_MAX; i++) await c.delete(keys[i]);
 }
 
 let trimming = false;

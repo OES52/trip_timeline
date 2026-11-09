@@ -4,6 +4,8 @@
 //  POST /api/call   {fn, args}    쓰기·PIN 확인. PIN은 여기서 먼저 확인 (틀리면 Apps Script까지 안 감), 레이트 리밋
 //  POST /api/hook/invalidate      Apps Script가 시트 바뀌면 부름 (X-Trip-Key)
 //  GET  /api/photo?u=URL          장소 사진을 받아 디스크에 캐시 (사설 IP 차단)
+//  GET  /api/map/ofm/<경로>        OpenFreeMap 벡터 지도(스타일·타일·글꼴·아이콘)를 받아 디스크에 캐시
+//                                  일정 경로 주변 타일은 미리 받아둠 (prewarm). 화면은 transformRequest로 이리로 보냄
 //  GET  /api/push/key             VAPID 공개키
 //  POST /api/push/subscribe|unsubscribe|test   출발 알림 구독
 //  GET  /healthz
@@ -28,6 +30,9 @@ const DATA_DIR = ENV.DATA_DIR || '/data';
 const PHOTO_DIR = path.join(DATA_DIR, 'photos');
 const PUSH_FILE = path.join(DATA_DIR, 'push.json');
 const PHOTO_MAX = Number(ENV.PHOTO_CACHE_MB || 500) * 1048576;
+const MAP_DIR = path.join(DATA_DIR, 'map');
+const MAP_MAX = Number(ENV.MAP_CACHE_MB || 700) * 1048576;
+const OFM = 'https://tiles.openfreemap.org/';
 const FRESH_MS = Number(ENV.FRESH_SEC || 30) * 1000;          // 이 안이면 그냥 캐시
 const XFF_HOPS = Number(ENV.XFF_HOPS || 2);                   // X-Forwarded-For 뒤에서 몇 번째가 실제 클라이언트인지
 const PUSH_ON = !!(ENV.VAPID_PUBLIC_KEY && ENV.VAPID_PRIVATE_KEY);
@@ -36,6 +41,7 @@ if (!/^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec$/.test(APPS_SCRIPT_
 if (!PROXY_KEY) { console.error('PROXY_KEY 없음'); process.exit(1); }
 if (PUSH_ON) webpush.setVapidDetails(ENV.VAPID_SUBJECT || 'mailto:admin@example.com', ENV.VAPID_PUBLIC_KEY, ENV.VAPID_PRIVATE_KEY);
 fs.mkdirSync(PHOTO_DIR, { recursive: true });
+fs.mkdirSync(MAP_DIR, { recursive: true });
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 const sha256 = s => crypto.createHash('sha256').update(String(s)).digest('hex');
@@ -101,6 +107,7 @@ function refresh(reason) {
       ]);
       setData(data);
       if (auth) cache.auth = auth;
+      setTimeout(() => prewarm('데이터 갱신'), 5000);
       log('데이터 갱신', reason || '', (Date.now() - t0) + 'ms', Math.round(cache.body.length / 1024) + 'KB → br ' + Math.round(cache.br.length / 1024) + 'KB');
       return data;
     } finally {
@@ -355,6 +362,181 @@ async function apiPhoto(req, res, q) {
   }
 }
 
+
+/* ── 벡터 지도 캐시 (OpenFreeMap) ── */
+//  타일은 주소에 빌드 버전이 들어 있어서(planet/20251105_.../z/x/y.pbf) 내용이 안 바뀜 → 오래 보관
+//  스타일·TileJSON(planet)은 하루마다 다시 받음
+const mapIndex = new Map();   // hash → { size, at }
+let mapTotal = 0;
+const mapInflight = new Map();
+let mapUpstreamFails = 0;
+async function scanMap() {
+  for (const f of await fsp.readdir(MAP_DIR)) {
+    if (!f.endsWith('.bin')) continue;
+    const st = await fsp.stat(path.join(MAP_DIR, f)).catch(() => null);
+    if (st) { mapIndex.set(f.slice(0, -4), { size: st.size, at: st.mtimeMs }); mapTotal += st.size; }
+  }
+  log('지도 캐시', mapIndex.size + '개', Math.round(mapTotal / 1048576) + 'MB');
+}
+async function pruneMap() {
+  if (mapTotal <= MAP_MAX) return;
+  const list = Array.from(mapIndex.entries()).sort((a, b) => a[1].at - b[1].at);
+  for (const [h, v] of list) {
+    if (mapTotal <= MAP_MAX * 0.9) break;
+    await fsp.rm(path.join(MAP_DIR, h + '.bin'), { force: true });
+    await fsp.rm(path.join(MAP_DIR, h + '.json'), { force: true });
+    mapIndex.delete(h); mapTotal -= v.size;
+  }
+}
+const isImmutable = p => /^(planet|monaco)\/\d{8}_[^/]+\/\d+\/\d+\/\d+\.pbf$/.test(p) || /^(fonts|sprites|natural_earth)\//.test(p);
+// 캐시에서 꺼내거나 받아서 저장. 결과: { type, gz(Buffer, gzip), raw(Buffer|null) }
+async function mapGet(p) {
+  const h = sha256(p);
+  const file = path.join(MAP_DIR, h + '.bin'), meta = path.join(MAP_DIR, h + '.json');
+  if (mapIndex.has(h)) {
+    try {
+      const m = JSON.parse(await fsp.readFile(meta, 'utf8'));
+      if (isImmutable(p) || Date.now() - m.at < 86400000) {
+        mapIndex.get(h).at = Date.now();
+        return { type: m.type, body: await fsp.readFile(file), gz: m.gz, status: m.status };
+      }
+    } catch (e) { /* 다시 받음 */ }
+  }
+  if (mapInflight.has(h)) return mapInflight.get(h);
+  const job = (async () => {
+    const res = await fetch(OFM + p, { signal: AbortSignal.timeout(15000), headers: { 'User-Agent': 'trip-api/1 (personal travel map cache)' } });
+    if (res.status === 404) return { type: 'text/plain', body: Buffer.alloc(0), gz: false, status: 404 };
+    if (!res.ok) { mapUpstreamFails++; throw new Error('지도 원본 ' + res.status); }
+    mapUpstreamFails = 0;
+    const type = res.headers.get('content-type') || 'application/octet-stream';
+    let body = Buffer.from(await res.arrayBuffer());   // fetch가 이미 압축 풂
+    const gz = !/^image\//.test(type);
+    if (gz) body = zlib.gzipSync(body, { level: 6 });
+    await fsp.writeFile(file, body);
+    await fsp.writeFile(meta, JSON.stringify({ type, gz, at: Date.now(), status: 200 }));
+    const old = mapIndex.get(h);
+    if (old) mapTotal -= old.size;
+    mapIndex.set(h, { size: body.length, at: Date.now() });
+    mapTotal += body.length;
+    pruneMap().catch(() => null);
+    return { type, body, gz, status: 200 };
+  })().finally(() => mapInflight.delete(h));
+  mapInflight.set(h, job);
+  return job;
+}
+async function apiMap(req, res, sub) {
+  const p = decodeURIComponent(sub || '');
+  if (!/^[a-zA-Z0-9_./,%\- ]+$/.test(p) || p.indexOf('..') !== -1 || p.length > 300) return fail(req, res, 400, '잘못된 지도 경로');
+  if (limited('map|' + clientIp(req), 1200, 60000)) return fail(req, res, 429, '요청이 너무 많음');
+  try {
+    const r = await mapGet(p);
+    if (r.status === 404) return send(res, 404, { 'Cache-Control': 'public, max-age=86400' }, '');
+    const h = { 'Content-Type': r.type, 'Cache-Control': isImmutable(p) ? 'public, max-age=31536000, immutable' : 'public, max-age=3600', 'Access-Control-Allow-Origin': '*' };
+    if (r.gz) {
+      if (/\bgzip\b/.test(String(req.headers['accept-encoding'] || ''))) { h['Content-Encoding'] = 'gzip'; h.Vary = 'Accept-Encoding'; return send(res, 200, h, r.body); }
+      return send(res, 200, h, zlib.gunzipSync(r.body));
+    }
+    send(res, 200, h, r.body);
+  } catch (e) {
+    fail(req, res, 502, '지도 못 받음: ' + e.message, { 'Cache-Control': 'no-store' });
+  }
+}
+
+/* ── 경로 주변 타일 미리 받기 ── */
+//  일정 장소 주변(반경 1.2km)·이동 경로 주변(400m)은 z12~14, 30km 넘는 긴 구간은 z10~12, 날짜별 범위는 z9~11, 전체는 z5~8
+function decodePoly(str) {
+  const out = [];
+  let i = 0, lat = 0, lng = 0;
+  while (i < str.length) {
+    let b, shift = 0, r = 0;
+    do { b = str.charCodeAt(i++) - 63; r |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20 && i < str.length);
+    lat += (r & 1) ? ~(r >> 1) : (r >> 1);
+    shift = 0; r = 0;
+    do { b = str.charCodeAt(i++) - 63; r |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20 && i < str.length);
+    lng += (r & 1) ? ~(r >> 1) : (r >> 1);
+    out.push([lat / 1e5, lng / 1e5]);
+  }
+  return out;
+}
+const lon2x = (lon, z) => Math.floor((lon + 180) / 360 * 2 ** z);
+const lat2y = (lat, z) => { const r = lat * Math.PI / 180; return Math.floor((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * 2 ** z); };
+function addBox(set, s, w, n, e, z0, z1) {
+  for (let z = z0; z <= z1; z++) {
+    const lim = 2 ** z - 1;
+    for (let x = Math.max(0, lon2x(w, z)); x <= Math.min(lim, lon2x(e, z)); x++)
+      for (let y = Math.max(0, lat2y(n, z)); y <= Math.min(lim, lat2y(s, z)); y++) set.add(z + '/' + x + '/' + y);
+  }
+}
+function addAround(set, lat, lng, m, z0, z1) {
+  const dLat = m / 111320, dLng = m / (111320 * Math.cos(lat * Math.PI / 180));
+  addBox(set, lat - dLat, lng - dLng, lat + dLat, lng + dLng, z0, z1);
+}
+function routeTiles(data) {
+  const set = new Set();
+  const pts = (data.points || []).filter(p => p.lat != null);
+  if (!pts.length) return [];
+  const bb = list => list.reduce((b, p) => [Math.min(b[0], p.lat), Math.min(b[1], p.lng), Math.max(b[2], p.lat), Math.max(b[3], p.lng)], [90, 180, -90, -180]);
+  const all = bb(pts);
+  addBox(set, all[0], all[1], all[2], all[3], 5, 8);
+  (data.dates || []).forEach(d => {
+    const dp = pts.filter(p => p.date === d);
+    if (!dp.length) return;
+    const b = bb(dp);
+    addBox(set, b[0] - 0.02, b[1] - 0.02, b[2] + 0.02, b[3] + 0.02, 9, 11);
+  });
+  pts.forEach(p => {
+    addAround(set, p.lat, p.lng, 1200, 12, 14);
+    if (p.endLat != null) addAround(set, p.endLat, p.endLng, 800, 12, 14);
+  });
+  (data.segments || []).forEach(s => {
+    let line = [];
+    try {
+      if (s.polyline) line = decodePoly(s.polyline);
+      else if (Array.isArray(s.steps)) s.steps.forEach(st => { if (st.poly) line = line.concat(decodePoly(st.poly)); });
+    } catch (e) { line = []; }
+    // 긴 구간(야간버스·신칸센 등 30km 넘음)은 창밖 풍경까지 자세히 받을 필요 없어서 z10~12만
+    const km = line.reduce((a, ll, i) => i ? a + Math.hypot((ll[0] - line[i - 1][0]) * 111, (ll[1] - line[i - 1][1]) * 91) : 0, 0);
+    const long = km > 30;
+    let last = null;
+    line.forEach(ll => {
+      if (last && Math.hypot((ll[0] - last[0]) * 111, (ll[1] - last[1]) * 91) < (long ? 2 : 0.3)) return;   // 300m(긴 구간 2km)마다
+      last = ll;
+      addAround(set, ll[0], ll[1], long ? 1500 : 400, long ? 10 : 12, long ? 12 : 14);
+    });
+  });
+  return Array.from(set);
+}
+let prewarmSig = '', prewarming = false;
+async function prewarm(reason) {
+  if (prewarming || !cache.data) return;
+  const tiles = routeTiles(cache.data);
+  const sig = sha256(tiles.join(','));
+  if (sig === prewarmSig) return;
+  prewarming = true;
+  try {
+    // 현재 타일 주소 형식 (버전 들어간 planet 경로)
+    const tj = await mapGet('planet');
+    const tpl = JSON.parse((tj.gz ? zlib.gunzipSync(tj.body) : tj.body).toString('utf8')).tiles[0];
+    const base = tpl.replace(OFM, '');
+    let got = 0, had = 0, failN = 0, i = 0;
+    const t0 = Date.now();
+    async function worker() {
+      while (i < tiles.length) {
+        const [z, x, y] = tiles[i++].split('/');
+        const p = base.replace('{z}', z).replace('{x}', x).replace('{y}', y);
+        if (mapIndex.has(sha256(p))) { had++; continue; }
+        try { await mapGet(p); got++; } catch (e) { failN++; if (mapUpstreamFails > 20) return; }
+        await new Promise(r => setTimeout(r, 40));   // 원본 서버에 부담 안 주게 천천히
+      }
+    }
+    await Promise.all([worker(), worker(), worker()]);
+    prewarmSig = failN ? '' : sig;
+    log('지도 미리 받기', reason, '전체 ' + tiles.length + ' · 새로 ' + got + ' · 있음 ' + had + ' · 실패 ' + failN, Math.round((Date.now() - t0) / 1000) + 's');
+  } catch (e) {
+    log('지도 미리 받기 실패', e.message);
+  } finally { prewarming = false; }
+}
+
 /* ── 출발 알림 ── */
 let push = { subs: {}, sent: {} };   // subs: 엔드포인트 해시 → { sub, user, lead, at } / sent: 보낸 알림 키 → 시각
 try { push = Object.assign(push, JSON.parse(fs.readFileSync(PUSH_FILE, 'utf8'))); } catch (e) { /* 처음 */ }
@@ -494,6 +676,7 @@ const server = http.createServer(async (req, res) => {
     if (p === '/api/events' && req.method === 'GET') return apiEvents(req, res);
     if (p === '/api/call' && req.method === 'POST') return await apiCall(req, res);
     if (p === '/api/photo' && req.method === 'GET') return await apiPhoto(req, res, url.searchParams);
+    if (p.indexOf('/api/map/ofm/') === 0 && req.method === 'GET') return await apiMap(req, res, p.slice('/api/map/ofm/'.length));
     if (p === '/api/hook/invalidate' && req.method === 'POST') {
       const k = String(req.headers['x-trip-key'] || '');
       if (k.length !== PROXY_KEY.length || !crypto.timingSafeEqual(Buffer.from(k), Buffer.from(PROXY_KEY))) return fail(req, res, 403, '키가 틀림');
@@ -512,6 +695,10 @@ server.requestTimeout = 120000;
 server.headersTimeout = 20000;
 
 await scanPhotos().catch(e => log('사진 캐시 확인 실패', e.message));
+await scanMap().catch(e => log('지도 캐시 확인 실패', e.message));
+// 데이터가 바뀌면(경로 추가 등) 경로 주변 타일 다시 확인, 시작 1분 뒤 첫 실행
+setTimeout(() => prewarm('시작'), Number(ENV.PREWARM_DELAY_SEC || 60) * 1000).unref();
+setInterval(() => prewarm('주기'), 6 * 3600000).unref();
 server.listen(PORT, () => log('trip-api 시작', PORT, PUSH_ON ? '알림 켜짐' : '알림 꺼짐 (VAPID 없음)'));
 refresh('시작').catch(e => log('시작 갱신 실패 (첫 요청 때 다시)', e.message));
 const stop = () => { log('종료'); for (const r of sse) r.end(); server.close(); clearTimeout(pushSaveTimer); try { fs.writeFileSync(PUSH_FILE, JSON.stringify(push)); } catch (e) { /* 무시 */ } process.exit(0); };

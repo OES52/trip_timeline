@@ -703,12 +703,16 @@
       try { m.setLayoutProperty(l.id, 'text-field', tf); } catch (e) { /* 무시 */ }
     });
   }
+  // 홈랩 페이지면 지도 요청(스타일·타일·글꼴)을 프록시(/api/map/ofm/) 경유 → 서버 디스크 캐시, 경로 주변은 미리 받아둠
+  const OFM_HOST = 'https://tiles.openfreemap.org/';
+  const viaProxy = typeof API_URL === 'string' && API_URL.charAt(0) === '/';
+  const mapUrl = u => viaProxy && u.indexOf(OFM_HOST) === 0 ? location.origin + API_URL + '/map/ofm/' + u.slice(OFM_HOST.length) : u;
   async function styleFor(dark) {
     // 다크 스타일이 없으면 밝은 스타일에 기존 반전 필터를 씀
     if (dark) {
-      try { const r = await fetch(OFM + 'dark'); if (r.ok) return { style: await r.json(), native: true }; } catch (e) { /* 다음 */ }
+      try { const r = await fetch(mapUrl(OFM + 'dark')); if (r.ok) return { style: await r.json(), native: true }; } catch (e) { /* 다음 */ }
     }
-    const r = await fetch(OFM + 'liberty');
+    const r = await fetch(mapUrl(OFM + 'liberty'));
     if (!r.ok) throw new Error('스타일 ' + r.status);
     return { style: await r.json(), native: !dark };
   }
@@ -720,7 +724,9 @@
       if (!window.maplibregl || !L.maplibreGL) return;
       const st = await styleFor(darkMQ.matches);
       map.eachLayer(l => { if (l instanceof L.TileLayer) osmLayer = l; });
-      const gl = L.maplibreGL({ style: st.style, attributionControl: false, localIdeographFontFamily: 'sans-serif' });
+      const gl = L.maplibreGL({ style: st.style, attributionControl: false, localIdeographFontFamily: 'sans-serif',
+        maxTileCacheSize: 600,   // 리플레이처럼 넓게 움직여도 받은 타일을 오래 들고 있게
+        transformRequest: url => (viaProxy && url.indexOf(OFM_HOST) === 0 ? { url: mapUrl(url) } : undefined) });
       let ok = false, errs = 0;
       gl.once('add', () => {
         const m = gl.getMaplibreMap();
@@ -789,9 +795,10 @@
     const uniq = Array.from(new Set(seq));
     return { seq: seq.map(c => Object.assign({ name: c, color: cityColor(c) || '#ffd166' }, pos(c))), uniq: uniq.map(c => Object.assign({ name: c, color: cityColor(c) || '#ffd166' }, pos(c))) };
   }
+  const curGlobeCard = () => document.querySelector('#homeBody .globe-card');
   async function mountGlobe(card) {
     if (!hasWebGL || globeBusy) return;
-    if (navigator.connection && navigator.connection.saveData) return;
+    if (navigator.connection && navigator.connection.saveData) { card.remove(); return; }
     if (globeHost) { card.appendChild(globeHost); resumeGlobe(); fitGlobe(); return; }
     globeBusy = true;
     try {
@@ -799,7 +806,7 @@
       if (!window.Globe) return;
       globeHost = document.createElement('div');
       globeHost.className = 'globe-host';
-      card.appendChild(globeHost);
+      (curGlobeCard() || card).appendChild(globeHost);   // 받는 동안 홈을 다시 그렸으면 새 카드에
       const t = tripCities();
       const arcs = [];
       for (let i = 1; i < t.seq.length; i++) arcs.push({ a: t.seq[i - 1], b: t.seq[i] });
@@ -822,7 +829,7 @@
       const j = t.uniq.filter(c => c.lng > 129);
       const tgt = j.length ? { lat: j.reduce((s, c) => s + c.lat, 0) / j.length - 2, lng: j.reduce((s, c) => s + c.lng, 0) / j.length } : { lat: 35, lng: 136 };
       setTimeout(() => globe.pointOfView({ lat: tgt.lat, lng: tgt.lng, altitude: 1.25 }, still ? 0 : 3200), 400);
-      fitGlobe();
+      requestAnimationFrame(fitGlobe);
       // 화면에서 안 보이면 멈춤
       if (window.IntersectionObserver) new IntersectionObserver(es => es.forEach(e => e.isIntersecting ? resumeGlobe() : pauseGlobe())).observe(globeHost);
     } catch (e) {
@@ -832,7 +839,9 @@
   }
   function fitGlobe() {
     if (!globe || !globeHost) return;
-    const w = globeHost.clientWidth || 320;
+    const c = curGlobeCard();
+    if (c && globeHost.parentNode !== c) c.appendChild(globeHost);
+    const w = (globeHost.parentNode && globeHost.parentNode.clientWidth) || 320;
     globe.width(w).height(Math.min(320, Math.max(220, Math.round(w * 0.62))));
   }
   function pauseGlobe() { try { if (globe) globe.pauseAnimation(); } catch (e) { /* 무시 */ } }
@@ -879,4 +888,55 @@
       if (img.closest('.gallery') && typeof openPhoto === 'function') openPhoto(img);
     });
   }, true);
+
+  /* ── 하루 돌아보기: 재생 전에 지나갈 길의 지도 타일을 먼저 받음 ── */
+  //  벡터 지도가 빨리 움직이는 카메라를 못 따라가서 빈 화면이 되던 것. 최대 8초 기다리고 시작
+  function replayTileUrls() {
+    const m = glLayer && glLayer.getMaplibreMap && glLayer.getMaplibreMap();
+    if (!m || !RP) return [];
+    const st = m.getStyle();
+    const src = Object.keys(st.sources || {}).map(id => m.getSource(id)).find(s => s && s.type === 'vector' && Array.isArray(s.tiles) && s.tiles.length);
+    if (!src) return [];
+    const tpl = src.tiles[0], maxz = src.maxzoom || 14;
+    const z = Math.min(maxz, Math.max(0, Math.round(map.getZoom()) - 1));   // Leaflet 확대 단계 - 1 = 벡터 타일 단계
+    const set = new Set();
+    const add = (lat, lng) => {
+      const n = 2 ** z, x = Math.floor((lng + 180) / 360 * n);
+      const r = lat * Math.PI / 180, y = Math.floor((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * n);
+      for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) set.add(z + '/' + (x + dx) + '/' + (y + dy));
+    };
+    RP.ev.forEach(ev => {
+      if (ev.type === 'stay' && ev.p && ev.p.lat != null) add(ev.p.lat, ev.p.lng);
+      (ev.coords || []).forEach((c, i) => { if (i % 3 === 0) add(c[0], c[1]); });
+    });
+    return Array.from(set).map(k => { const [zz, x, y] = k.split('/'); return mapUrl(tpl.replace('{z}', zz).replace('{x}', x).replace('{y}', y)); });
+  }
+  const startReplay_theme = startReplay;
+  startReplay = function (date) {
+    startReplay_theme(date);
+    if (!RP || !glLayer) return;
+    const urls = replayTileUrls();
+    if (!urls.length) return;
+    const lab = document.getElementById('rpLabel'), play = document.getElementById('rpPlay');
+    RP.playing = false;
+    if (play) play.textContent = '▶';
+    let done = 0, go = false;
+    const start = () => {
+      if (go || !RP) return;
+      go = true;
+      if (lab) lab.textContent = '';
+      if (play && !RP.playing) play.click();
+    };
+    const tick = () => { if (lab && !go) lab.textContent = '지도 준비 ' + done + ' / ' + urls.length; };
+    tick();
+    let i = 0;
+    const worker = async () => {
+      while (i < urls.length && !go) {
+        try { await fetch(urls[i++]); } catch (e) { /* 넘어감 */ }
+        done++; tick();
+      }
+    };
+    Promise.all([1, 2, 3, 4, 5, 6].map(worker)).then(start);
+    setTimeout(start, 8000);
+  };
 </script>

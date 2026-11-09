@@ -13,7 +13,7 @@ spec:
   # storageClassName: longhorn   # 기본 스토리지클래스가 아니면 지정
   resources:
     requests:
-      storage: 2Gi   # 사진 캐시 상한 PHOTO_CACHE_MB(500MB) + 알림 구독
+      storage: 2Gi   # 사진 PHOTO_CACHE_MB(500MB) + 지도 MAP_CACHE_MB(700MB) + 알림 구독
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -59,6 +59,9 @@ spec:
               value: /data
             - name: PHOTO_CACHE_MB
               value: "500"
+            # 벡터 지도 타일 캐시 (경로 주변 미리 받기 포함)
+            - name: MAP_CACHE_MB
+              value: "700"
             # X-Forwarded-For 끝에서 몇 번째가 실제 폰 IP인지 (게이트웨이 → nginx → 여기: 2)
             - name: XFF_HOPS
               value: "2"
