@@ -823,54 +823,72 @@
       });
 
       // 지도: 핀
+      //  하루 안에 같은 장소를 여러 번 들르면 핀 하나로 묶고 번호를 "3·15"처럼 모두 표시
+      //  같은 장소 = 장소 키가 같거나 30m 이내
+      const samePin = (a, b) => (a.placeKey && a.placeKey === b.placeKey) || haversine([a.lat, a.lng], [b.lat, b.lng]) <= 30;
+      const pinGroups = [];
       pts.forEach(p => {
         if (p.lat == null) return;
+        const g = pinGroups.find(x => samePin(x[0], p));
+        if (g) g.push(p); else pinGroups.push([p]);
+      });
+      pinGroups.forEach(g => {
+        const p = g[0];
+        const multi = g.length > 1;
+        const label = g.map(x => x.order).join('·');
         const pl = placeOf(p);
         const photo = pl && pl.photos && pl.photos.length ? pl.photos[0] : '';
+        const pinW = Math.max(28, 14 + label.length * 7);   // 묶음 핀 가로 폭
         // 도감에 사진 있는 장소는 동그란 사진 핀 + 순서 번호 뱃지
         const icon = photo
           ? L.divIcon({
               className: '',
-              html: '<div class="pin-photo" style="--pin:' + pinColor + '"><img src="' + esc(photo) + '" alt="" loading="lazy"><span>' + p.order + '</span></div>',
+              html: '<div class="pin-photo" style="--pin:' + pinColor + '"><img src="' + esc(photo) + '" alt="" loading="lazy"><span>' + label + '</span></div>',
               iconSize: [40, 40], iconAnchor: [20, 20], popupAnchor: [0, -22]
             })
           : L.divIcon({
               className: '',
-              html: '<div class="pin" style="--pin:' + pinColor + '">' + p.order + '</div>',
-              iconSize: [26, 26], iconAnchor: [13, 13], popupAnchor: [0, -14]
+              html: '<div class="pin' + (multi ? ' multi' : '') + '" style="--pin:' + pinColor + '">' + label + '</div>',
+              iconSize: multi ? [pinW, 28] : [26, 26], iconAnchor: multi ? [pinW / 2, 14] : [13, 13], popupAnchor: [0, -14]
             });
+        // 팝업: 들르는 횟수만큼 번호·시간·활동 줄
+        const visits = multi
+          ? g.map(x => '<br><b>' + x.order + '</b> ' + esc(timeRange(x)) + (x.activity ? ' · ' + esc(x.activity) : '')).join('')
+          : '<br>' + esc(timeRange(p)) + (p.activity ? '<br>' + esc(p.activity) : '');
         const m = L.marker([p.lat, p.lng], { icon: icon, title: pname(p), zIndexOffset: photo ? 100 : 0 }).bindPopup(
           (photo ? '<img class="pop-photo" src="' + esc(photo) + '" alt="">' : '') +
           (pl ? '<span class="badge t-' + esc(pl.type) + '">' + esc(pl.type) + '</span> ' : '') +
-          '<b>' + esc(pname(p)) + '</b><br>' + esc(timeRange(p)) + (p.activity ? '<br>' + esc(p.activity) : '') +
+          '<b>' + esc(pname(p)) + '</b>' + visits +
           (pl && costText(pl) ? '<br>' + esc(costText(pl)) : '') +
           '<br>' + navBtn(p.lat, p.lng, true)
         ).addTo(layer);
-        const vk = date + '#' + p.order;
-        const sk = 'S:' + vk;
-        markers[vk] = reg(sk, m);
-        // 지도에서 핀을 눌러도 그 장소만 강조 + 리스트에서 그 장소 표시
+        const vks = g.map(x => date + '#' + x.order);
+        // 묶인 핀은 각 일정 번호 그룹에 모두 등록 (리스트에서 어느 쪽을 눌러도 이 핀이 진하게)
+        vks.forEach(vk => { markers[vk] = reg('S:' + vk, m); });
+        // 지도에서 핀을 눌러도 그 장소만 강조 + 리스트에서 그 장소 표시 (묶인 핀은 들르는 일정 전부)
         m.on('click', () => {
-          highlightStop(vk);
-          const el = document.querySelector('.stop[data-key="' + vk + '"]');
-          if (el) { clearActive(); el.classList.add('active'); el.scrollIntoView({ block: 'nearest' }); }
+          highlightStop(vks[0], vks.slice(1));
+          const el = document.querySelector('.stop[data-key="' + vks[0] + '"]');
+          if (el) { clearActive(); vks.forEach(k => { const e = document.querySelector('.stop[data-key="' + k + '"]'); if (e) e.classList.add('active'); }); el.scrollIntoView({ block: 'nearest' }); }
         });
         bounds.push([p.lat, p.lng]);
         // 종착점이 따로 있으면: 시작점→종착점 점선 + 작은 네모 핀 (여기서 다음 장소로 출발)
-        if (hasEnd(p)) {
-          reg(sk, L.polyline([[p.lat, p.lng], [p.endLat, p.endLng]], {
+        g.forEach(x => {
+          if (!hasEnd(x)) return;
+          const sk = 'S:' + date + '#' + x.order;
+          reg(sk, L.polyline([[x.lat, x.lng], [x.endLat, x.endLng]], {
             color: pinColor, weight: 3, opacity: 0.7, dashArray: '2 7', lineCap: 'round', interactive: false
           }).addTo(layer));
-          reg(sk, L.marker([p.endLat, p.endLng], {
+          reg(sk, L.marker([x.endLat, x.endLng], {
             icon: L.divIcon({
               className: '',
               html: '<div style="width:14px;height:14px;border-radius:3px;background:#fff;border:3px solid ' + pinColor + ';box-shadow:0 1px 3px rgba(29,38,51,.4)"></div>',
               iconSize: [14, 14], iconAnchor: [7, 7]
             }),
-            title: pname(p) + ' 종착점', interactive: false, keyboard: false
+            title: pname(x) + ' 종착점', interactive: false, keyboard: false
           }).addTo(layer));
-          bounds.push([p.endLat, p.endLng]);
-        }
+          bounds.push([x.endLat, x.endLng]);
+        });
       });
 
       // 타임라인
@@ -1224,9 +1242,11 @@
 
   // set에 든 그룹만 진하게, 나머지는 dim. set 없으면 전부 원래대로
   function applyFocus(set, dim) {
+    // 한 레이어가 여러 그룹에 있으면(같은 장소 묶음 핀) 그중 하나라도 켜지면 진하게
+    const onL = new Set();
+    Object.keys(groups).forEach(k => { if (!set || set.has(k)) groups[k].forEach(l => onL.add(l)); });
     Object.keys(groups).forEach(k => {
-      const on = !set || set.has(k);
-      groups[k].forEach(l => setDim(l, on, dim));
+      groups[k].forEach(l => setDim(l, onL.has(l), dim));
     });
     // 진한 구간은 맨 위로 (흐린 선에 가려지지 않게)
     if (set) set.forEach(k => {
@@ -1365,11 +1385,14 @@
   }
 
   // 장소 하나만 강조: 그 장소 + 들어오는·나가는 구간
-  function highlightStop(vk) {
+  //  extra: 같은 핀으로 묶인 다른 일정 번호들 (같이 강조)
+  function highlightStop(vk, extra) {
     hlKey = null;
     pickKey = vk;
     applyWeight();
-    applyFocus(stopSet(vk), DIM_PICK);
+    const set = stopSet(vk);
+    (extra || []).forEach(k => stopSet(k).forEach(x => set.add(x)));
+    applyFocus(set, DIM_PICK);
   }
 
   // 지도 빈 곳 누르면 강조 해제
