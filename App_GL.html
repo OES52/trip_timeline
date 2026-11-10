@@ -397,23 +397,59 @@
         return ids.find(id => /^tp\d+$/.test(id) && !this._isCasing(id));
       }
       _isCasing(id) { for (const p of this._paths) if (p._id === id) return p.options.pane === 'casing'; return false; }
-      // 스타일 꾸미기: 지명 언어, 3D 건물
+      // 스타일 꾸미기: 지명 언어, 3D 건물, 하늘·조명
       _decorate() {
         const gl = this.gl, st = gl.getStyle();
         let mode = 'ko';
         try { mode = localStorage.getItem('trip-map-label') || 'ko'; } catch (e) { /* 무시 */ }
         this.applyLabels(mode);
-        if (!st.layers.some(l => l.type === 'fill-extrusion')) {
+
+        // 3D 건물: 높이별 색, 확대하면 솟아오름, 위→아래 그라데이션
+        const h = ['coalesce', ['get', 'render_height'], ['get', 'height'], 8];
+        const hBase = ['coalesce', ['get', 'render_min_height'], 0];
+        const paint = {
+          'fill-extrusion-color': ['interpolate', ['linear'], h,
+            0,   dark ? '#2a3240' : '#e6e9ed',
+            40,  dark ? '#344055' : '#d3d9e1',
+            120, dark ? '#46546d' : '#bcc5d2',
+            250, dark ? '#5d6f8d' : '#a3afc1'],
+          'fill-extrusion-height': ['interpolate', ['linear'], ['zoom'], 14, 0, 15.5, h],
+          'fill-extrusion-base': ['interpolate', ['linear'], ['zoom'], 14, 0, 15.5, hBase],
+          'fill-extrusion-opacity': ['interpolate', ['linear'], ['zoom'], 14, 0, 15, 0.85],
+          'fill-extrusion-vertical-gradient': true,
+        };
+        const ext = st.layers.filter(l => l.type === 'fill-extrusion');
+        if (ext.length) {
+          // liberty 등 스타일에 원래 있는 건물 층 → 색·높이만 덮어씀
+          ext.forEach(l => Object.keys(paint).forEach(k => {
+            try { gl.setPaintProperty(l.id, k, paint[k]); } catch (e) { /* 무시 */ }
+          }));
+        } else {
           const srcId = Object.keys(st.sources).find(id => st.sources[id].type === 'vector');
           const firstSym = (st.layers.find(l => l.type === 'symbol') || {}).id;
           if (srcId) try {
             gl.addLayer({ id: 'trip-3d-buildings', type: 'fill-extrusion', source: srcId, 'source-layer': 'building', minzoom: 14,
-              paint: { 'fill-extrusion-color': dark ? '#2a3240' : '#dfe3e8',
-                'fill-extrusion-height': ['coalesce', ['get', 'render_height'], ['get', 'height'], 8],
-                'fill-extrusion-base': ['coalesce', ['get', 'render_min_height'], 0],
-                'fill-extrusion-opacity': ['interpolate', ['linear'], ['zoom'], 14, 0, 15, 0.8] } }, firstSym);
+              paint: paint }, firstSym);
           } catch (e) { /* 건물 층 없음 */ }
         }
+
+        // 하늘: 기울였을 때 지평선 위 빈 배경 대신
+        try {
+          gl.setSky({
+            'sky-color': dark ? '#0b1020' : '#8fb8f0',
+            'horizon-color': dark ? '#1c2433' : '#e6eef8',
+            'fog-color': dark ? '#141a26' : '#eef2f7',
+            'sky-horizon-blend': 0.6,
+            'horizon-fog-blend': 0.7,
+            'fog-ground-blend': 0.35,
+            'atmosphere-blend': 0,
+          });
+        } catch (e) { /* 하늘 미지원 */ }
+
+        // 조명: 건물 면마다 밝기 차이 (지도 기준이라 돌리면 그림자 면도 바뀜)
+        try {
+          gl.setLight({ anchor: 'map', position: [1.15, 210, 30], color: '#ffffff', intensity: dark ? 0.3 : 0.45 });
+        } catch (e) { /* 무시 */ }
       }
       applyLabels(mode) {
         const gl = this.gl;
