@@ -177,7 +177,7 @@
     // 선·원: GeoJSON 원본 + 층 하나
     class Path extends Layer {
       constructor(o) { super(Object.assign({ color: '#3388ff', weight: 3, opacity: 1, interactive: true }, o)); this._id = 'tp' + (++seq); }
-      _onAdd(m) { this._map = m; m._paths.add(this); m._whenStyle(() => this._addGL()); }
+      _onAdd(m) { this._map = m; m._paths.add(this); m._whenStyle(() => { this._addGL(); m._poiTop(); }); }
       _onRemove(m) { m._paths.delete(this); this._rmGL(); this._map = null; }
       _rmGL() { const gl = this._map && this._map.gl; if (!gl || !gl.getStyle()) return;
         this._ids().forEach(id => { if (gl.getLayer(id)) gl.removeLayer(id); }); if (gl.getSource(this._id)) gl.removeSource(this._id); }
@@ -315,6 +315,7 @@
         this._popup = null;
         this._labels = null;
         this._styleTries = 0;
+        this._poi = { toilet: false, konbini: false };   // 화장실·편의점 표시 (앱 켤 때마다 꺼짐)
         this.gl = new ML.Map({
           container: this._container, style: mapUrl(OFM + 'styles/' + (dark ? 'dark' : 'liberty')),
           center: [135.5, 34.69], zoom: 10, maxPitch: 70, attributionControl: false, localIdeographFontFamily: 'sans-serif',
@@ -340,6 +341,7 @@
           this._decorate();
           // 스타일이 바뀌면 그려둔 선·원이 다 지워지므로 다시 그림
           this._paths.forEach(p => { try { p._addGL(); } catch (e) { /* 무시 */ } });
+          this._poiTop();
           const q = this._queue; this._queue = [];
           q.forEach(f => { try { f(); } catch (e) { console.warn(e); } });
         });
@@ -397,9 +399,10 @@
         return ids.find(id => /^tp\d+$/.test(id) && !this._isCasing(id));
       }
       _isCasing(id) { for (const p of this._paths) if (p._id === id) return p.options.pane === 'casing'; return false; }
-      // 스타일 꾸미기: 지명 언어, 3D 건물, 하늘·조명
+      // 스타일 꾸미기: 지명 언어, 3D 건물, 하늘·조명, 역 출구·화장실·편의점
       _decorate() {
         const gl = this.gl, st = gl.getStyle();
+        const vecSrc = Object.keys(st.sources).find(id => st.sources[id].type === 'vector');
         let mode = 'ko';
         try { mode = localStorage.getItem('trip-map-label') || 'ko'; } catch (e) { /* 무시 */ }
         this.applyLabels(mode);
@@ -447,10 +450,67 @@
           });
         } catch (e) { /* 하늘 미지원 */ }
 
+        if (vecSrc) try { this._addPoi(vecSrc); } catch (e) { console.warn('시설 표시 실패', e); }
+
         // 조명: 건물 면마다 밝기 차이 (지도 기준이라 돌리면 그림자 면도 바뀜)
         try {
           gl.setLight({ anchor: 'map', position: [1.15, 210, 30], color: '#ffffff', intensity: dark ? 0.3 : 0.45 });
         } catch (e) { /* 무시 */ }
+      }
+      /* ── 역 출구·화장실·편의점 ──
+       *  지도 타일(OpenMapTiles poi 층)의 subclass로 고름. 아이콘은 캔버스로 직접 그림 (스타일 아이콘 세트와 무관)
+       *  - 역 출구: 확대 15.5 이상 항상 (Leaflet 기준 16.5)
+       *  - 화장실·편의점: 기본 꺼짐, 버튼으로 켬, 확대 16.5 이상 (Leaflet 기준 17.5)
+       *  - 겹치면 숨김 (일정 핀은 DOM이라 항상 위) */
+      _poiIcons() {
+        const gl = this.gl;
+        const mk = (id, bg, txt, size) => {
+          if (gl.hasImage(id)) return;
+          const s = 44, c = document.createElement('canvas');
+          c.width = c.height = s;
+          const x = c.getContext('2d');
+          x.fillStyle = bg; x.strokeStyle = '#fff'; x.lineWidth = 4;
+          x.beginPath();
+          if (x.roundRect) x.roundRect(3, 3, s - 6, s - 6, 10); else x.rect(3, 3, s - 6, s - 6);
+          x.fill(); x.stroke();
+          x.fillStyle = '#fff'; x.textAlign = 'center'; x.textBaseline = 'middle';
+          x.font = '800 ' + size + 'px "Pretendard Variable", "Noto Sans JP", sans-serif';
+          x.fillText(txt, s / 2, s / 2 + 1);
+          gl.addImage(id, x.getImageData(0, 0, s, s), { pixelRatio: 2 });
+        };
+        mk('trip-exit', '#2b8a3e', '出', 22);
+        mk('trip-toilet', '#1c7ed6', 'WC', 16);
+        mk('trip-konbini', '#e8590c', '🏪', 20);
+      }
+      _addPoi(srcId) {
+        const gl = this.gl;
+        this._poiIcons();
+        const lay = (id, subs, icon, minzoom, on, label) => {
+          if (gl.getLayer(id)) return;
+          const layout = { visibility: on ? 'visible' : 'none', 'icon-image': icon, 'icon-allow-overlap': false, 'icon-padding': 2 };
+          const paint = {};
+          if (label) {
+            Object.assign(layout, { 'text-field': ['coalesce', ['get', 'name:ko'], ['get', 'name']], 'text-font': ['Noto Sans Regular'],
+              'text-size': 10, 'text-offset': [0, 1.2], 'text-anchor': 'top', 'text-optional': true, 'text-max-width': 6 });
+            Object.assign(paint, { 'text-color': dark ? '#b2f2bb' : '#2b8a3e', 'text-halo-color': dark ? '#000' : '#fff', 'text-halo-width': 1.4 });
+          }
+          gl.addLayer({ id, type: 'symbol', source: srcId, 'source-layer': 'poi', minzoom,
+            filter: ['in', ['get', 'subclass'], ['literal', subs]], layout, paint });
+        };
+        lay('trip-poi-exit', ['subway_entrance', 'train_station_entrance'], 'trip-exit', 15.5, true, true);
+        lay('trip-poi-toilet', ['toilets'], 'trip-toilet', 16.5, this._poi.toilet, false);
+        lay('trip-poi-konbini', ['convenience'], 'trip-konbini', 16.5, this._poi.konbini, false);
+      }
+      // 경로 선이 나중에 그려져도 시설 아이콘이 선 위에 오게
+      _poiTop() {
+        const gl = this.gl;
+        ['trip-poi-exit', 'trip-poi-toilet', 'trip-poi-konbini'].forEach(id => { try { if (gl.getLayer(id)) gl.moveLayer(id); } catch (e) { /* 무시 */ } });
+      }
+      togglePoi(kind) {
+        this._poi[kind] = !this._poi[kind];
+        const id = 'trip-poi-' + kind;
+        try { if (this.gl.getLayer(id)) this.gl.setLayoutProperty(id, 'visibility', this._poi[kind] ? 'visible' : 'none'); } catch (e) { /* 무시 */ }
+        return this._poi[kind];
       }
       applyLabels(mode) {
         const gl = this.gl;
