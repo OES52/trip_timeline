@@ -95,6 +95,10 @@
     areaFilters.innerHTML = areas.length < 2 ? '' : '<span class="label">지역</span>' + ['전체'].concat(areas).map(a =>
       '<button class="filter" type="button" data-a="' + esc(a) + '" aria-pressed="' + (a === guideArea) + '">' + esc(a) + '</button>').join('');
     areaFilters.querySelectorAll('.filter').forEach(b => b.addEventListener('click', () => { guideArea = b.dataset.a; renderGuide(); }));
+    [dayFilters, filters, areaFilters].forEach(f => {
+      const on = f.querySelector('.filter[aria-pressed="true"]');
+      if (on && f.scrollWidth > f.clientWidth) f.scrollLeft = Math.max(0, on.offsetLeft - f.clientWidth / 2 + on.offsetWidth / 2);
+    });
 
     const q = guideQuery.trim().toLowerCase();
     const list = byT.filter(p => guideArea === '전체' || p.area === guideArea)

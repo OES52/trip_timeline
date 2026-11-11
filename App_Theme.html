@@ -387,7 +387,11 @@
     if (!slides.length) return;
     slides.forEach(el => { el.style.minHeight = ''; });
     const max = Math.max.apply(null, Array.from(slides).map(el => el.offsetHeight));
-    if (max > 0) slides.forEach(el => { el.style.minHeight = max + 'px'; });
+    const cap = Math.max(420, Math.round(window.innerHeight * 0.72));
+    const h = Math.min(max, cap);
+    if (h > 0) slides.forEach(el => { el.style.minHeight = h + 'px'; });
+    const sw = document.querySelector('.pass-swiper');
+    if (sw && h > 0) sw.style.setProperty('--pass-cap', h + 'px');
     try { if (passSwiper) passSwiper.updateAutoHeight(0); } catch (e) { /* 무시 */ }
   }
   const renderPass_theme = renderPass;

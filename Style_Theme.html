@@ -472,4 +472,16 @@
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
   }
+  /* ───────── 디자인 점검 ───────── */
+  /* 승차권 안: 원화 환산 줄과 교통비 줄 겹침 */
+  .kippu .kp-body .spend { margin-bottom: 0 !important; }
+  .kippu .kp-body .fare-sum { margin-top: 8px; }
+  /* 도감 필터: 줄마다 한 줄 가로 스크롤 (지역 칩이 20개 넘어서 목록이 화면 밖으로 밀리던 것) */
+  .dex-side .filters { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; position: relative; padding-bottom: 2px;
+    -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent); }
+  .dex-side .filters::-webkit-scrollbar { display: none; }
+  .dex-side .filters .filter { flex: none; }
+  /* 여권: 옆 쪽이 더 길면 그 끝이 표지 아래로 삐져나와 보이던 것 */
+  .pass-swiper .swiper-slide:not(.swiper-slide-active) { max-height: var(--pass-cap, none); overflow: hidden; }
+  .dex-side .filters .label { flex: none; position: sticky; left: 0; z-index: 1; background: var(--panel); padding-right: 4px; }
 </style>
