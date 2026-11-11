@@ -168,11 +168,12 @@
         if (sp) facts.push('<span>실제 <b>' + YEN(sp.amount) + '</b>' + (sp.memo ? ' (' + esc(sp.memo) + ')' : '') + '</span>');
 
         // sunDone: 이미 해 진 뒤 도착 (일몰 선을 이 장소 앞이나 앞 장소 머무는 중에 그림)
-        html += '<div class="titem' + (isVisited(p) ? ' done' : '') + (isNow ? ' is-now' : '') + (past ? ' past' : '') + (sunDone ? ' night' : '') + '" data-key="' + vk + '">' +
+        // 시간 비례: 카드는 내용 높이 그대로, 줄(titem) 최소 높이로 체류 시간 표현 → 남는 높이는 카드 아래 간격
+        html += '<div class="titem' + (isVisited(p) ? ' done' : '') + (isNow ? ' is-now' : '') + (past ? ' past' : '') + (sunDone ? ' night' : '') + '" data-key="' + vk + '"' +
+          (tlScale && p.stay ? ' style="--stay-h:' + tlPx(p.stay, 280) + 'px"' : '') + '>' +
           '<div class="ttime"><span class="a">' + esc(p.arrive || '') + '</span>' +
           (p.depart && p.depart !== p.arrive ? '<span class="d">~ ' + esc(p.depart) + '</span>' : '') + timeExtra(p) + '</div>' +
-          '<article class="tcard' + (pl ? ' t-' + esc(pl.type) : '') + '"' +
-            (tlScale && p.stay ? ' style="min-height:' + tlPx(p.stay, 280) + 'px"' : '') + '>' +
+          '<article class="tcard' + (pl ? ' t-' + esc(pl.type) : '') + '">' +
             (pl && pl.photos && pl.photos.length ? '<img class="photo" src="' + esc(pl.photos[0]) + '" alt="" loading="lazy">' : (pl && !isStation ? emblem(pl.type) : '')) +
             '<div class="top">' + (pl ? '<span class="badge">' + esc(pl.type) + '</span>' : '') +
               (pl && pl.area ? '<span>' + esc(pl.area) + '</span>' : '') +
