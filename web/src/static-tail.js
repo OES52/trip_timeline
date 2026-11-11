@@ -468,6 +468,9 @@
     }, () => null).finally(() => { pulling = false; if (pendingPull) pull(); });
   }
   addEventListener('load', startEvents);
+  // 접속 코드 입력 전에 열면 401로 닫힘 → 데이터를 받을 때마다 닫혀 있으면 다시 연결
+  const applyData_ev = applyData;
+  applyData = function () { const r = applyData_ev.apply(this, arguments); startEvents(); return r; };
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState !== 'visible') return;
     startEvents();      // 폰이 백그라운드에서 끊은 연결 다시

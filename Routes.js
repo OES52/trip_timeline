@@ -133,7 +133,7 @@ function runCalc_(force, opts) {
         seg.summary, seg.transfers, seg.polyline,
         '=HYPERLINK("' + seg.link + '","경로")',
         seg.cached ? seg.calcAt : now, seg.key, seg.fare, seg.warn || '', seg.steps || '', pass,
-        seg.walk == null ? '' : seg.walk, seg.taxi == null ? '' : seg.taxi,
+        seg.walk == null ? '' : seg.walk, seg.taxi == null ? '' : seg.taxi, seg.last == null ? '' : seg.last,
       ]);
       const wh = walkHint_(r.mode, seg.minutes, seg.walk, seg.summary);
       if (wh) walkHints.push(date.slice(5).replace('-', '/') + ' ' + r.place + ' → ' + next.place + ': ' + wh);
@@ -160,7 +160,7 @@ function runCalc_(force, opts) {
       fmtMin_(end.depart), fmtMin_(end.depart + seg.minutes), seg.minutes,
       seg.summary, seg.transfers, seg.polyline,
       '=HYPERLINK("' + seg.link + '","경로")',
-      seg.cached ? seg.calcAt : now, seg.key, seg.fare, '', '', '', '', '',
+      seg.cached ? seg.calcAt : now, seg.key, seg.fare, '', '', '', '', '', '',
     ]);
   });
 
@@ -305,6 +305,11 @@ function computeSegment_(date, departMin, from, to, cache, errors, quick, pref) 
   if (mode === '대중교통' && !quick && res.steps && res.steps.indexOf('"t":"transit"') !== -1 && res.steps.indexOf('"jfrom"') === -1) {
     res.steps = enrichJa_(res.steps, date, departMin, from, to);
   }
+  // 저녁 대중교통 구간: 막차(마지막으로 출발할 수 있는 시각). 한 번 확인하면 캐시 (웹앱 조정 중엔 생략)
+  if (mode === '대중교통' && (res.last === '' || res.last == null) && !quick) {
+    const rides = String(res.steps || '').indexOf('"t":"transit"') !== -1;
+    res.last = departMin >= CONFIG.LAST_CHECK_FROM && rides ? lastTrain_(date, departMin, from, to) : '-';
+  }
   // 차 구간은 자기 결과가 곧 택시 정보 (택시로 가기 구간 요금 계산용)
   if (mode === '차' && !res.taxi && res.meters) res.taxi = res.minutes + '|' + res.meters + (res.traffic ? '|' + res.traffic : '');
   return res;
@@ -348,6 +353,49 @@ function lateCheck_(date, departMin, from, to, res, pref) {
   const more = late.minutes - res.minutes;
   if (more < CONFIG.LATE_WARN_MIN) return 'OK';
   return '배차 드묾: ' + CONFIG.LATE_CHECK_MIN + '분 늦게 출발하면 도착 +' + (more + CONFIG.LATE_CHECK_MIN) + '분 (소요 ' + late.minutes + '분)';
+}
+
+// 막차: 출발 시각을 늦춰가며 조회해서, 첫 탑승이 다음 날 첫차로 넘어가기 직전의 가장 늦은 출발 시각
+//  반환: "23:42" / "00:15 (+1)" / "지남"(계획 출발 때 이미 경로 없음) / ""(조회 실패, 다음에 다시)
+//  이분 탐색: 계획 출발 ~ 02:00 사이 6번 (약 5분 단위), 호출 8번 안팎
+function lastTrain_(date, departMin, from, to) {
+  const HI = 26 * 60;
+  const probe = t => {
+    const target = toDate_(date, t);
+    const whens = [target, proxyDate_(target)];   // 먼 날짜라 시간표가 없으면 같은 요일로
+    for (let i = 0; i < whens.length; i++) {
+      const w = whens[i];
+      try {
+        const out = Maps.newDirectionFinder().setOrigin(from.lat, from.lng).setDestination(to.lat, to.lng)
+          .setMode(Maps.DirectionFinder.Mode.TRANSIT).setDepart(w).setLanguage('ko').getDirections();
+        Utilities.sleep(CONFIG.SLEEP_MS);
+        if (!out || out.status !== 'OK' || !out.routes || !out.routes.length) continue;
+        const leg = out.routes[0].legs[0];
+        const ride = (leg.steps || []).find(s => s.travel_mode === 'TRANSIT' && s.transit_details && s.transit_details.departure_time);
+        if (!ride) return { none: true };   // 도보만 나옴
+        const toMinAt = sec => t + (Number(sec) * 1000 - w.getTime()) / 60000;
+        const rideAt = toMinAt(ride.transit_details.departure_time.value);
+        const leave = leg.departure_time ? toMinAt(leg.departure_time.value) : rideAt;
+        return { ride: rideAt, leave: Math.max(t, Math.floor(leave)) };
+      } catch (e) { /* 다음 후보 */ }
+    }
+    return null;
+  };
+  // 요청 시각 뒤 2시간 안에 첫 탑승이 있어야 "그날 밤에 갈 수 있음" (아니면 다음 날 첫차)
+  const ok = (r, t) => r && !r.none && r.ride - t < 120;
+  const first = probe(departMin);
+  if (!first) return '';
+  if (first.none) return '-';
+  if (!ok(first, departMin)) return '지남';
+  const end = probe(HI);
+  if (ok(end, HI)) return '-';   // 새벽 2시에도 다님 (심야 노선 등)
+  let lo = departMin, hi = HI, best = first.leave;
+  for (let i = 0; i < 6 && hi - lo > 3; i++) {
+    const mid = Math.round((lo + hi) / 2);
+    const r = probe(mid);
+    if (ok(r, mid)) { lo = mid; best = Math.max(best, r.leave); } else hi = mid;
+  }
+  return fmtMin_(best);
 }
 
 /* ── 주유패스: 구간의 탑승 단계가 패스 노선인지 ── */
@@ -752,6 +800,7 @@ function loadRouteCache_(sh) {
       steps: String(v[R.STEPS - 1] || ''),
       walk: v[R.WALK - 1] === '' || v[R.WALK - 1] == null ? '' : v[R.WALK - 1],
       taxi: String(v[R.TAXI - 1] || ''),
+      last: String(v[R.LAST - 1] || ''),
     };
   });
   return cache;

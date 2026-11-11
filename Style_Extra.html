@@ -189,12 +189,13 @@
   }
   .pop-photo { display: block; width: 200px; max-width: 100%; height: 110px; object-fit: cover; border-radius: 8px; margin-bottom: 6px; }
 
-  /* ───────── 탈것 이모지 (지도 탑승 구간 가운데·단계 줄) ───────── */
-  .veh-pin {
-    display: grid; place-items: center; width: 26px; height: 26px; box-sizing: border-box; border-radius: 50%;
-    background: var(--panel); border: 2px solid var(--c, var(--transit, #2b62d9)); box-shadow: 0 1px 3px rgba(29, 38, 51, .35);
-    font-size: 14px; line-height: 1;
-  }
+  /* ───────── 막차 줄 ───────── */
+  .last-train { margin-top: 4px; font-size: 12px; color: var(--muted); }
+  .last-train b { color: var(--ink); }
+  .last-train.tight, .last-train.tight b { color: var(--late); font-weight: 700; }
+  .last-train.over { color: var(--late); font-weight: 700; }
+
+  /* ───────── 탈것 이모지 (지도 목록·타임라인 단계 줄. 지도 위에는 안 그림) ───────── */
   .veh { margin-right: 4px; font-size: 1.05em; }
 
   /* ───────── 도보 거리 라벨 ───────── */

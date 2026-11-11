@@ -265,6 +265,7 @@ function buildMapBase_() {
         passFare: Number(String(v[R.FARE - 1] || '').replace(/[^\d]/g, '')) || 0,   // 패스 적용 전 원래 요금 (1인)
         walkHint: walkHint_(v[R.MODE - 1], Number(v[R.MIN - 1]) || 0, v[R.WALK - 1], v[R.SUMMARY - 1]),   // 도보 추천
         taxi: segTaxi_(v, from, travelers),   // 택시 비교·택시로 가기 상태
+        last: String(v[R.LAST - 1] || ''),     // 막차 출발 시각 / 지남 / - / 빈 칸
       });
     });
   }

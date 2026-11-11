@@ -18,6 +18,17 @@ kubectl -n trip create secret generic trip-api \
 kubectl -n trip get secret trip-api -o jsonpath='{.data.PROXY_KEY}' | base64 -d; echo   # Apps Script에 넣을 값
 ```
 
+### 접속 코드 (일정 보기 잠금)
+
+`ACCESS_CODE`를 넣으면 일정 데이터·사진·쓰기·알림 API가 코드 입력 후 받은 쿠키(기본 90일) 없이는 401. 지도 타일은 공개 그대로.
+코드를 바꾸면 기존 세션 전부 끊김 (다시 입력).
+
+```bash
+kubectl -n trip patch secret trip-api --type merge -p '{"stringData":{"ACCESS_CODE":"원하는코드"}}'
+kubectl -n trip rollout restart deploy/trip-api
+curl -s -o /dev/null -w '%{http_code}\n' https://japan2026.oesgame.xyz/api/data   # 401이면 잠김
+```
+
 ## 2. Apps Script
 
 1. `clasp push` → 편집기 **배포 → 배포 관리 → 기존 배포 연필 → 버전: 새 버전** (주소 그대로, 새 버전 안 만들면 /exec 는 예전 코드)

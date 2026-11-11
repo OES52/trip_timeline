@@ -53,7 +53,7 @@ spec:
               containerPort: 8080
           envFrom:
             - secretRef:
-                name: trip-api   # APPS_SCRIPT_URL, PROXY_KEY, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT
+                name: trip-api   # APPS_SCRIPT_URL, PROXY_KEY, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT, ACCESS_CODE(선택)
           env:
             - name: DATA_DIR
               value: /data

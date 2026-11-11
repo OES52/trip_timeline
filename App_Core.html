@@ -453,9 +453,29 @@
     });
     return runner;
   }
+  // 홈랩 프록시가 접속 코드를 요구하면(401) 코드 묻고 로그인 → 성공하면 원래 요청 다시
+  //  여러 요청이 동시에 401 받아도 묻는 건 한 번만
+  let accessAsk = null;
+  function askAccess() {
+    if (accessAsk) return accessAsk;
+    accessAsk = (async () => {
+      for (let i = 0; i < 3; i++) {
+        const code = prompt(i ? '접속 코드가 틀림. 다시 입력' : '여행 일정 접속 코드 입력');
+        if (code == null || code === '') return false;
+        try {
+          const r = await fetch(API_URL + '/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: code }), credentials: 'same-origin' });
+          if (r.ok) return true;
+          if (r.status === 429) { alert('시도가 너무 많음. 잠시 뒤 다시'); return false; }
+        } catch (e) { return false; }
+      }
+      return false;
+    })().finally(() => { setTimeout(() => { accessAsk = null; }, 0); });
+    return accessAsk;
+  }
+
   // POST {fn, args} → {ok, result} / {ok:false, error}
   //  API_URL이 /api 처럼 상대 경로면 홈랩 프록시: 데이터는 GET /api/data (프록시 캐시), 나머지는 POST /api/call
-  async function apiCall(fn, args) {
+  async function apiCall(fn, args, retried) {
     if (!API_URL) throw new Error('API 주소가 없음 (TRIP_API_URL)');
     const proxy = API_URL.charAt(0) === '/';
     let res;
@@ -472,6 +492,10 @@
       }
     } catch (e) {
       throw Object.assign(new Error('연결 안 됨'), { status: 0 });
+    }
+    if (proxy && res.status === 401 && !retried) {
+      if (await askAccess()) return apiCall(fn, args, true);
+      throw Object.assign(new Error('접속 코드 필요'), { status: 401 });
     }
     // status: 0 연결 안 됨 / 5xx 서버 쪽 / 4xx 요청 문제 (오프라인 대기열이 다시 보낼지 판단)
     let j = null;
@@ -1017,6 +1041,7 @@
             (s.fare != null && !isNaN(s.fare) && s.fare > 0 ? ', ' + YEN(s.fare) : '') +
             ' ' + passChip(s) + '</div>' +
             (s.warn ? '<div class="warn"><span>' + esc(s.warn) + '</span></div>' : '') +
+            lastTrainHtml(s) +
             (s.walkHint ? '<div class="callout good">' + modeIcon('walk') + ' 도보 추천: ' + esc(s.walkHint) + '</div>' : '') +
             taxiBox(s) +
             (split
@@ -1103,6 +1128,29 @@
 
   // 대중교통 단계별 선 + 승차·환승·하차 역 표시. 강조 처리용으로 그린 것들 반환
   // 역 이름 라벨은 확대했을 때만 (도보 거리 라벨과 같은 층)
+  // 막차 줄: 그 구간을 대중교통으로 갈 수 있는 마지막 출발 시각 + 계획 출발 기준 여유
+  //  오늘이면 지금 시각 기준으로도 (막차 지남 / 막차까지 N분)
+  function lastTrainHtml(s) {
+    const v = String((s && s.last) || '');
+    if (!v || v === '-') return '';
+    if (v === '지남') return '<div class="last-train over">🌙 이 시각엔 막차 끊김 (대중교통 경로 없음)</div>';
+    let lm = toMin(v);
+    if (lm == null) return '';
+    if (/\(\+1\)/.test(v)) lm += 1440;
+    let dep = toMin(s.dep);
+    if (dep != null && (/\(\+1\)/.test(String(s.dep)) || dep < 4 * 60)) dep += 1440;
+    const hm = v.replace(/\s*\(\+1\)/, '');
+    const nt = tokyoNow();
+    if (s.date === nt.date) {
+      const now = nt.min < 4 * 60 ? nt.min + 1440 : nt.min;
+      if (now > lm) return '<div class="last-train over">🌙 막차 출발(' + hm + ') 지남</div>';
+      if (lm - now <= 60) return '<div class="last-train tight">🌙 막차까지 <b>' + (lm - now) + '분</b> (' + hm + '까지 출발)</div>';
+    }
+    const margin = dep != null ? lm - dep : null;
+    return '<div class="last-train' + (margin != null && margin < 30 ? ' tight' : '') + '">🌙 막차 타려면 <b>' + hm + '</b>까지 출발' +
+      (margin != null ? ' · 여유 ' + margin + '분' : '') + '</div>';
+  }
+
   // 탈것 이모지: 구글 경로의 탈것 이름(지하철·기차·버스 …)과 노선명으로
   function vehicleEmoji(st) {
     const v = String((st && st.vehicle) || '') + ' ' + String((st && (st.line + ' ' + (st.full || ''))) || '');
@@ -1131,15 +1179,6 @@
         }).addTo(layer));
         out.push(pl);
         mine.push(pl);
-        // 탑승 구간 가운데에 탈것 이모지 (지하철 🚇, 버스 🚌 …)
-        if (transit) {
-          const vm = reg(gk, L.marker(lineInfo(ll).mid, {
-            icon: L.divIcon({ className: '', html: '<span class="veh-pin" style="--c:' + esc(c) + '">' + vehicleEmoji(st) + '</span>', iconSize: [26, 26], iconAnchor: [13, 13] }),
-            interactive: false, keyboard: false,
-          }).addTo(layer));
-          out.push(vm);
-          mine.push(vm);
-        }
       }
       if (!transit) return;
       const before = steps.slice(0, i).some(x => x.t === 'transit');

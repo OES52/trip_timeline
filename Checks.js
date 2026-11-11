@@ -194,6 +194,16 @@ function runChecks_(rows, routeRows, places) {
     let dep = hmToMin_(depText);
     if (dep == null) return;
     if (/\(\+1\)/.test(depText)) dep += 1440;
+    const last = String(v[R.LAST - 1] || '');
+    const where = md(String(v[R.DATE - 1])) + ' ' + v[R.FROM - 1] + ' → ' + v[R.TO - 1] + ': ';
+    if (last === '지남') { issues.push(where + depText + ' 출발이면 이미 막차 끊김 (대중교통 경로 없음)'); return; }
+    let lm = hmToMin_(last);
+    if (lm != null) {
+      if (/\(\+1\)/.test(last)) lm += 1440;
+      if (lm - dep < CONFIG.LAST_WARN_MARGIN) issues.push(where + '🌙 막차 타려면 ' + last + '까지 출발, 계획(' + depText + ') 기준 여유 ' + (lm - dep) + '분');
+      return;
+    }
+    if (last === '-') return;
     if (dep >= CONFIG.LAST_TRAIN_FROM) {
       issues.push(md(String(v[R.DATE - 1])) + ' ' + v[R.FROM - 1] + ' → ' + v[R.TO - 1] + ': ' + depText + ' 출발, 막차 시간대 (막차 시각 확인)');
     }

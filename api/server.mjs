@@ -8,8 +8,12 @@
 //                                  일정 경로 주변 타일은 미리 받아둠 (prewarm). 화면은 transformRequest로 이리로 보냄
 //  GET  /api/push/key             VAPID 공개키
 //  POST /api/push/subscribe|unsubscribe|test   출발 알림 구독
+//  POST /api/login  {code}        접속 코드 확인 → 세션 쿠키 (ACCESS_CODE 있을 때)
+//  GET  /api/session              세션 있는지 {need, ok}
 //  GET  /healthz
+//  ACCESS_CODE가 있으면 data·events·call·photo·push는 세션 쿠키 없으면 401. 지도 타일은 그대로 공개
 //  환경변수: APPS_SCRIPT_URL, PROXY_KEY (필수) / VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT (알림)
+//           ACCESS_CODE (일정 보기 접속 코드, 비우면 잠금 없음), SESSION_DAYS(90)
 //           DATA_DIR(/data), PORT(8080), PHOTO_CACHE_MB(500), XFF_HOPS(2), FRESH_SEC(30)
 import http from 'node:http';
 import https from 'node:https';
@@ -45,6 +49,31 @@ fs.mkdirSync(MAP_DIR, { recursive: true });
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 const sha256 = s => crypto.createHash('sha256').update(String(s)).digest('hex');
+
+/* ── 접속 코드 세션 ──
+ *  쿠키 trip_s = 만료시각.HMAC. 키는 PROXY_KEY+ACCESS_CODE에서 만듦 → 코드 바꾸면 기존 세션 전부 무효 */
+const ACCESS_CODE = String(ENV.ACCESS_CODE || '');
+const SESSION_DAYS = Number(ENV.SESSION_DAYS || 90);
+const SESSION_KEY = crypto.createHash('sha256').update('trip-session|' + PROXY_KEY + '|' + ACCESS_CODE).digest();
+const sessSig = p => crypto.createHmac('sha256', SESSION_KEY).update(p).digest('base64url');
+function cookieOf(req, name) {
+  const m = String(req.headers.cookie || '').split(';').map(s => s.trim()).find(s => s.indexOf(name + '=') === 0);
+  return m ? decodeURIComponent(m.slice(name.length + 1)) : '';
+}
+function hasSession(req) {
+  if (!ACCESS_CODE) return true;
+  const v = cookieOf(req, 'trip_s');
+  const i = v.lastIndexOf('.');
+  if (i < 1) return false;
+  const p = v.slice(0, i), sig = Buffer.from(v.slice(i + 1)), want = Buffer.from(sessSig(p));
+  if (sig.length !== want.length || !crypto.timingSafeEqual(sig, want)) return false;
+  return Number(p) > Date.now();
+}
+function sessionCookie() {
+  const exp = Date.now() + SESSION_DAYS * 86400000;
+  const p = String(exp);
+  return 'trip_s=' + encodeURIComponent(p + '.' + sessSig(p)) + '; Path=/api; Max-Age=' + SESSION_DAYS * 86400 + '; HttpOnly; Secure; SameSite=Lax';
+}
 
 /* ── Apps Script 호출 ── */
 // GET: 302로 googleusercontent에 넘어가서 결과. POST: 302 따라가면 GET으로 바뀌는 게 Apps Script 방식
@@ -250,7 +279,7 @@ async function apiData(req, res) {
   } else if (Date.now() - cache.at > FRESH_MS) {
     refresh('오래됨').catch(e => log('뒤에서 갱신 실패', e.message));   // 지금은 있는 것 주고 뒤에서
   }
-  const h = { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-cache', ETag: cache.etag, Vary: 'Accept-Encoding',
+  const h = { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'private, no-cache', ETag: cache.etag, Vary: 'Accept-Encoding, Cookie',
     'X-Data-Age': String(Math.round((Date.now() - cache.at) / 1000)) };
   if (req.headers['if-none-match'] === cache.etag) return send(res, 304, h);
   const enc = pickEncoding(req);
@@ -666,12 +695,28 @@ setInterval(() => {
 }, 30000).unref();
 setInterval(() => pushTick().catch(e => log('알림 처리 오류', e.message)), 30000).unref();
 
+async function apiLogin(req, res) {
+  const ip = clientIp(req);
+  const wait = limited('login|' + ip, 10, 600000);
+  if (wait) return fail(req, res, 429, '시도가 너무 많음. ' + Math.ceil(wait / 60) + '분 뒤 다시');
+  if (!ACCESS_CODE) return ok(req, res, true);
+  const b = await readBody(req, 4096);
+  const a = Buffer.from(sha256(String(b.code || '').trim())), w = Buffer.from(sha256(ACCESS_CODE));
+  if (!crypto.timingSafeEqual(a, w)) { log('접속 코드 틀림', ip); return fail(req, res, 403, '접속 코드가 틀림'); }
+  sendJSON(req, res, 200, { ok: true, result: true }, { 'Set-Cookie': sessionCookie() });
+}
+// 세션이 있어야 하는 주소 (지도 타일·healthz·hook·login은 제외)
+const NEED_SESSION = /^\/api\/(data|events|call|photo|push\/(key|subscribe|unsubscribe|test))$/;
+
 /* ── 서버 ── */
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
   const p = url.pathname;
   try {
     if (p === '/healthz') return send(res, 200, { 'Content-Type': 'text/plain' }, 'ok\n');
+    if (p === '/api/login' && req.method === 'POST') return await apiLogin(req, res);
+    if (p === '/api/session' && req.method === 'GET') return ok(req, res, { need: !!ACCESS_CODE, ok: hasSession(req) });
+    if (NEED_SESSION.test(p) && !hasSession(req)) return fail(req, res, 401, '접속 코드 필요');
     if (p === '/api/data' && req.method === 'GET') return await apiData(req, res);
     if (p === '/api/events' && req.method === 'GET') return apiEvents(req, res);
     if (p === '/api/call' && req.method === 'POST') return await apiCall(req, res);
