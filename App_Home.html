@@ -242,14 +242,7 @@
         (pts.length > 6 ? '<li><span class="tm"></span><span style="color:var(--muted)">외 ' + (pts.length - 6) + '곳</span></li>' : '') + '</ul></div>';
     }
 
-    const stamped = stampedPlaces().length;
-    const totalPlaces = passPlaces().length;
-    // 일정·장소·여권은 탭에 있으니 여기엔 여행 결산만
-    html += '<div class="navgrid">' +
-      '<button type="button" data-go="wrap"><b>여행 결산</b><span>' + (stamped ? '실제 기준' : '계획 미리보기') + ' · 도장 ' + stamped + ' / ' + totalPlaces + '</span></button>' +
-      '</div>';
     box.innerHTML = html;
-    box.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => { wrapIdx = 0; setView(b.dataset.go); }));
     const lb = document.getElementById('locBtn');
     if (lb) lb.addEventListener('click', startHomeLocation);
   }

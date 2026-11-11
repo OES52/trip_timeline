@@ -377,7 +377,7 @@
   }
   let animNext = false;
   document.addEventListener('click', e => {
-    if (e.target.closest && e.target.closest('.seg .view, .tabbar button, .navgrid [data-go], .subnav button')) { animNext = true; setTimeout(() => { animNext = false; }, 0); }
+    if (e.target.closest && e.target.closest('.seg .view, .tabbar button, .subnav button')) { animNext = true; setTimeout(() => { animNext = false; }, 0); }
   }, true);
   const setView0 = setView;
   setView = function (v) {
@@ -663,7 +663,7 @@
     tabbar.querySelectorAll('[data-v]').forEach(b => { if (b.dataset.v === groupOf(currentView)) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
   }
   function scrollTopCurrent() {
-    const sel = { home: '#home', pass: '#pass', wrap: '#wrap', who: '#who', area: '#area', guide: '#dexList', plan: '#list', tl: '.swiper-slide-active, .tl-scroll' }[currentView];
+    const sel = { home: '#home', pass: '#pass', who: '#who', area: '#area', guide: '#dexList', plan: '#list', tl: '.swiper-slide-active, .tl-scroll' }[currentView];
     const el = sel && document.querySelector(sel);
     if (el) el.scrollTo({ top: 0, behavior: 'smooth' });
     setHeaderMin(false);

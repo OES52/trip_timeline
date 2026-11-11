@@ -188,7 +188,7 @@
   /* ───────── 개조 2차: 탭 4개 · 카드 버튼·접기 · 지도 아래 시트 · 야외 모드 ───────── */
 
   /* ── 탭 묶음: 홈 / 일정(타임라인·지도) / 장소(추천 가이드·도감) / 여권 ── */
-  const VIEW_GROUP = { home: 'home', wrap: 'home', plan: 'sched', tl: 'sched', area: 'place', guide: 'place', pass: 'pass' };
+  const VIEW_GROUP = { home: 'home', plan: 'sched', tl: 'sched', area: 'place', guide: 'place', pass: 'pass' };
   const GROUP_LS = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
   let lastPlace = GROUP_LS('trip-last-place') || 'area';
   // 일정 탭은 항상 지도부터

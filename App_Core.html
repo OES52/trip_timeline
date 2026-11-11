@@ -421,7 +421,6 @@
     if (currentView === 'guide') renderGuide();
     if (currentView === 'area') renderAreaGuide();
     if (currentView === 'pass') renderPass();
-    if (currentView === 'wrap') renderWrap();
     if (currentView === 'who') renderWho();
     mountLotties(document);
   }
@@ -596,7 +595,7 @@
   function finishChoose(id) {
     USER = users().find(u => u.id === id) || null;
     try { localStorage.setItem(USER_KEY, id); } catch (e) { /* 무시 */ }
-    selected = null; guideSel = null; guideDay = '전체'; wrapIdx = 0; scrolledToNow = false; tlScrolled = false;
+    selected = null; guideSel = null; guideDay = '전체'; scrolledToNow = false; tlScrolled = false;
     if (RAW) applyData(RAW, true);
     setView('home');
   }
