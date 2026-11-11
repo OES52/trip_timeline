@@ -749,7 +749,7 @@
     body.has-tabbar.hdr-min .title-row { max-height: 0; opacity: 0; }
     body.has-tabbar header { transition: padding .22s var(--ease); }
     body.has-tabbar.hdr-min header { padding-top: env(safe-area-inset-top, 0px); }
-    body.has-tabbar.hdr-min .days { margin-top: 0; }
+    body.has-tabbar.hdr-min .navrow { margin-top: 4px; }
   }
   @media (prefers-reduced-motion: reduce) {
     ::view-transition-old(root), ::view-transition-new(root) { animation: none; }

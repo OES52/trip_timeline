@@ -206,14 +206,19 @@
     e.stopPropagation();
     goGroup(b.id === 'viewPlan' ? 'sched' : 'place');
   }, true);
-  // 일정·장소 안에서 바꾸는 작은 전환줄 (헤더 아래)
+  // 일정·장소 안에서 바꾸는 작은 전환 (날짜 줄 왼쪽에 붙여서 헤더 2줄로)
   const subnav = document.createElement('div');
   subnav.className = 'subnav';
   subnav.innerHTML =
     '<div class="sn-group" data-g="sched" role="group" aria-label="일정 보기"><button type="button" data-v="plan">지도</button><button type="button" data-v="tl">타임라인</button></div>' +
     '<div class="sn-group" data-g="place" role="group" aria-label="장소 보기"><button type="button" data-v="area">추천 가이드</button><button type="button" data-v="guide">도감</button></div>';
   subnav.querySelectorAll('[data-v]').forEach(b => b.addEventListener('click', () => setView(b.dataset.v)));
-  document.querySelector('header').appendChild(subnav);
+  const navrow = document.createElement('div');
+  navrow.className = 'navrow';
+  const daysEl = document.getElementById('days');
+  daysEl.parentNode.insertBefore(navrow, daysEl);
+  navrow.appendChild(subnav);
+  navrow.appendChild(daysEl);
   const setView_theme = setView;
   setView = function (v) {
     setView_theme(v);
