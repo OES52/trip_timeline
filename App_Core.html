@@ -104,6 +104,7 @@
   ];
   const PLACE_TYPES = ['숙소', '식당', '카페', '관광지', '쇼핑', '교통', '기타'];
   const markers = {};   // key: date#order
+  const overLines = {};   // 날짜 넘는 구간 선. key: date#from#+to
   const lines = {};     // key: date#from#to
   const casings = {};   // 같은 키, 흰 테두리 선
   const groups = {};    // 흐리게 처리용: 'S:날짜#순서'(장소) / 'L:날짜#출발#도착'(구간) → 지도에 그린 것들
@@ -493,11 +494,20 @@
     const inR = d => !u || (d >= u.from && d <= u.to);
     const points = raw.points.filter(p => inR(p.date));
     const keys = new Set(points.map(p => p.placeKey).filter(Boolean));
+    // 날짜 넘는 구간(밤버스 등) 분리: 서버가 overnight로 주거나, 예전 서버면 segments에 "13→1"처럼 거꾸로 섞여 옴
+    const dl = raw.dates.slice().sort();
+    const over = (raw.overnight || []).slice();
+    const segs = [];
+    raw.segments.forEach(s => {
+      if (s.toOrder > s.fromOrder) { segs.push(s); return; }
+      const toDate = dl[dl.indexOf(s.date) + 1];
+      if (toDate && !over.some(o => o.date === s.date && o.fromOrder === s.fromOrder)) over.push(Object.assign({}, s, { toDate: toDate }));
+    });
     return Object.assign({}, raw, {
       dates: raw.dates.filter(inR),
       points: points,
-      segments: raw.segments.filter(s => inR(s.date)),
-      overnight: (raw.overnight || []).filter(s => inR(s.date) && inR(s.toDate)),
+      segments: segs.filter(s => inR(s.date)),
+      overnight: over.filter(s => inR(s.date) && inR(s.toDate)),
       places: (raw.places || []).filter(p => keys.has(p.key)),   // 도감·여권: 일정에 나오는 장소만
       allPlaces: raw.places || [],                                // 가이드: 일정 밖 추천 장소까지
       visited: u && raw.visitedBy ? (raw.visitedBy[u.id] || {}) : {},
@@ -738,6 +748,7 @@
     layer.clearLayers();
     walkLayer.clearLayers();
     Object.keys(markers).forEach(k => delete markers[k]);
+    Object.keys(overLines).forEach(k => delete overLines[k]);
     Object.keys(lines).forEach(k => delete lines[k]);
     Object.keys(casings).forEach(k => delete casings[k]);
     Object.keys(groups).forEach(k => delete groups[k]);
@@ -823,22 +834,42 @@
         latlngs.forEach(ll => bounds.push(ll));
       });
 
-      // 지도: 날짜를 넘는 구간 (밤버스 등). 전체 탭에서만, 이날 색 점선으로 다음 날 첫 장소까지
-      if (selected === 'all') (DATA.overnight || []).filter(s => s.date === date).forEach(s => {
-        const from = pts.find(p => p.order === s.fromOrder);
+      // 지도: 날짜를 넘는 구간 (밤버스 등)
+      //  전체 탭: 이날 색 점선, 화면 맞춤에 포함
+      //  하루 탭: 회색 점선으로 떠나는 날·도착하는 날 둘 다 그리되 화면 맞춤엔 안 넣음 (지도는 그날 장소 위주, 선은 화면 밖으로 이어짐)
+      (DATA.overnight || []).filter(s => s.date === date || (selected !== 'all' && s.toDate === date)).forEach(s => {
+        const from = DATA.points.find(p => p.date === s.date && p.order === s.fromOrder);
         const to = DATA.points.find(p => p.date === s.toDate && p.order === s.toOrder);
         if (!from || !to || from.lat == null || to.lat == null) return;
+        const all = selected === 'all';
+        const out = s.date === date;   // 이날 떠나는 구간인지 (아니면 전날에서 들어오는 구간)
         const fromLL = hasEnd(from) ? [from.endLat, from.endLng] : [from.lat, from.lng];
         const latlngs = s.polyline ? decodePolyline(s.polyline) : arcPoints(fromLL, [to.lat, to.lng]);
         if (latlngs.length < 2) return;
-        const gk = 'O:' + date + '#' + s.fromOrder;
+        const okey = s.date + '#' + s.fromOrder + '#+' + s.toOrder;
+        const gk = 'O:' + okey;
+        const color = all ? dayColor(s.date) : MODE_COLOR.manual;
         reg(gk, L.polyline(latlngs, { pane: 'casing', color: '#ffffff', weight: 9, opacity: 0.95, lineCap: 'round', lineJoin: 'round', interactive: false }).addTo(layer));
-        reg(gk, L.polyline(latlngs, { color: dayColor(date), weight: 5, opacity: 0.9, dashArray: '2 10', lineCap: 'round', lineJoin: 'round' })
+        const ol = reg(gk, L.polyline(latlngs, { color: color, weight: 5, opacity: 0.9, dashArray: '2 10', lineCap: 'round', lineJoin: 'round' })
           .bindPopup('<b>' + esc(pname(from)) + ' → ' + esc(pname(to)) + '</b><br>' +
-            esc(s.dep) + ' → ' + esc(s.arr) + ' (' + s.minutes + '분, 다음 날 도착)' +
+            esc(s.dep) + ' → ' + esc(s.arr) + (s.minutes ? ' (' + s.minutes + '분)' : '') + ', 다음 날 도착' +
             (s.summary ? '<br>' + esc(s.summary) : ''))
           .addTo(layer));
-        latlngs.forEach(ll => bounds.push(ll));
+        overLines[okey] = ol;
+        if (all) { latlngs.forEach(ll => bounds.push(ll)); return; }
+        // 하루 탭: 그날 장소 쪽 끝에서 2km쯤 떨어진 곳에 라벨 (어디로 가는지·어디서 오는지)
+        const seq = out ? latlngs : latlngs.slice().reverse();
+        let acc = 0, at = seq[seq.length - 1];
+        for (let i = 1; i < seq.length; i++) {
+          acc += haversine(seq[i - 1], seq[i]);
+          if (acc >= 2000) { at = seq[i]; break; }
+        }
+        const text = out ? '→ ' + pname(to) + ' (다음 날 ' + String(s.arr || '').replace(/\s*\(\+\d+\)/, '') + ')'
+                         : '← ' + pname(from) + ' (전날 ' + String(s.dep || '') + ')';
+        reg(gk, L.marker(at, {
+          icon: L.divIcon({ className: '', html: '<span class="walk-label" style="color:#5b6472;border-color:#8b93a1">' + esc(text) + '</span>', iconSize: null }),
+          interactive: false, keyboard: false,
+        }).addTo(layer));
       });
 
       // 지도: 핀
@@ -962,6 +993,15 @@
         }
         if (pd != null) prevDep = pd;
 
+        const ov = selected !== 'all' && (DATA.overnight || []).find(x => x.date === date && x.fromOrder === p.order);
+        if (ov) {
+          const toP = DATA.points.find(x => x.date === ov.toDate && x.order === ov.toOrder);
+          html += '<li class="leg mode-manual" tabindex="0" data-over="' + esc(ov.date + '#' + ov.fromOrder + '#+' + ov.toOrder) + '">' +
+            '<div class="time"></div><div class="rail"></div>' +
+            '<div class="body"><div class="leg-head">' + modeIcon('manual') + esc(ov.mode) + (ov.minutes ? ' ' + ov.minutes + '분' : '') +
+            ' → 다음 날 ' + esc(toP ? pname(toP) : '') + '</div>' +
+            '<div class="leg-sum">' + esc(ov.dep) + ' → ' + esc(ov.arr) + '</div></div></li>';
+        }
         const s = segs.find(x => x.fromOrder === p.order);
         if (s) {
           const cls = MODE_CLASS[s.mode] || 'manual';
@@ -1432,6 +1472,11 @@
   function focusLeg(el) {
     clearActive();
     el.classList.add('active');
+    if (el.dataset.over) {
+      const ol = overLines[el.dataset.over];
+      if (ol) { map.fitBounds(ol.getBounds(), { padding: [40, 40], maxZoom: 12 }); ol.openPopup(ol.getCenter()); }
+      return;
+    }
     const line = lines[el.dataset.key];
     if (!line) return;
     // 같은 구간 다시 누르면 강조 해제
