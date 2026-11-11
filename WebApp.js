@@ -22,7 +22,7 @@ function doGet(e) {
   t.bootUsers = bootUsersJson_();
   return t.evaluate()
     .setTitle('여행 타임라인')
-    .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover');
 }
 
 // 첫 화면용 사용자 목록 (PIN 값은 빼고 있는지만). <script> 안에 들어가므로 < 이스케이프

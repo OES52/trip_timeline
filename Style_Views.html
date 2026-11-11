@@ -18,8 +18,10 @@
   .board .glow { text-shadow: 0 0 4px rgba(255,174,0,.65), 0 0 10px rgba(255,140,0,.25); }
   .board .bhead { display: flex; justify-content: space-between; font-size: 12px; color: #9a9a9a; border-bottom: 1px dashed #333; padding-bottom: 6px; margin-bottom: 6px; }
   .board .clock { color: #e0e0e0; }
-  .brow { display: grid; grid-template-columns: 54px 62px 1fr auto; gap: 8px; align-items: center; padding: 7px 0; border-bottom: 1px solid #1c1c1c; font-size: 17px; }
+  /* 시각 칸: "~10:27" 6글자 들어가게 */
+  .brow { display: grid; grid-template-columns: 54px 74px 1fr auto; gap: 8px; align-items: center; padding: 7px 0; border-bottom: 1px solid #1c1c1c; font-size: 17px; }
   .brow:last-child { border-bottom: 0; }
+  .brow .t { white-space: nowrap; }
   .brow .kind { font-size: 13px; text-align: center; border: 1px solid currentColor; border-radius: 3px; padding: 1px 0; }
   .brow .kind.now { color: var(--led-r); } .brow .kind.next { color: var(--led-g); } .brow .kind.after { color: #8fd3ff; }
   .brow .t { letter-spacing: .02em; }
@@ -29,13 +31,13 @@
   @keyframes mq { to { transform: translateX(-100%); } }
   .brow .rem { font-size: 14px; color: var(--led-g); text-align: right; white-space: nowrap; }
   .bsub { font-size: 13px; color: #c9c9c9; padding: 6px 0 0 124px; }
-  .bsub .ln { font-family: "IBM Plex Sans KR", sans-serif; }
+  .bsub .ln { font-family: var(--sans-font); }
   .count-big { font-size: clamp(30px, 8vw, 54px); line-height: 1.1; text-align: center; padding: 14px 0 6px; letter-spacing: .03em; }
   .count-sub { text-align: center; font-size: 14px; color: #c9c9c9; padding-bottom: 6px; }
   .count-unit { font-size: .45em; color: var(--led-dim); margin: 0 .15em 0 .05em; color: #b37a00; }
   .bfoot { font-size: 12px; color: #8a8a8a; text-align: center; padding-top: 6px; }
   @media (max-width: 520px) {
-    .brow { grid-template-columns: 44px 54px 1fr; font-size: 15px; }
+    .brow { grid-template-columns: 44px 68px 1fr; font-size: 15px; }
     .brow .rem { grid-column: 2 / -1; text-align: left; font-size: 13px; margin-top: -4px; }
     .bsub { padding-left: 0; }
   }
@@ -119,6 +121,7 @@
   .typebar i { display: block; background: var(--t); }
   .typebar i.dim { opacity: .28; }
   .dex-search { width: 100%; font: inherit; font-size: 14px; padding: 7px 10px; border: 1px solid var(--rule); border-radius: 8px; background: var(--panel-2); color: var(--ink); margin: 6px 0 10px; }
+  @media (max-width: 800px) { .dex-search { font-size: 16px; } }   /* iOS 입력 시 확대 방지 */
   .dex-side .filters { margin-bottom: 6px; gap: 4px; }
   .dex-side .filters .label { width: 28px; }
   .dex-side .filter { font-size: 12px; padding: 2px 9px; }

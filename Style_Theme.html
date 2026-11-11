@@ -157,6 +157,8 @@
   .tcard:not(.open) .note.memo { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .tcard.open .tsum { margin-bottom: -2px; }
   .tcard { cursor: pointer; }
+  .tcard.no-fold { cursor: default; }
+  .tcard img.photo { cursor: zoom-in; }
   .tcard input, .tcard button, .tcard a { cursor: auto; }
   .tcard button, .tcard a { cursor: pointer; }
 
@@ -344,7 +346,7 @@
   /* ───────── 오버홀 ───────── */
   /* 글꼴: 한국어 Pretendard, 일본어 Noto Sans JP */
   body, button, input, select, textarea, .leaflet-popup-content, .leaflet-container {
-    font-family: "Pretendard Variable", Pretendard, "Noto Sans JP", -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; }
+    font-family: var(--sans-font); }
   :lang(ja), .ja, .tst .jn, .ek-sub { font-family: "Noto Sans JP", "Pretendard Variable", sans-serif; }
 
   /* 글 속 선 아이콘 (택시·도보) */

@@ -284,6 +284,7 @@
       // 펼칠 게 없는 카드는 요약 줄·화살표 없앰
       const ts = c.querySelector('.tsum');
       if (ts && !ts.textContent.trim() && !c.querySelector('.facts, .chips, .note:not(.memo), .slack.ok')) ts.remove();
+      c.classList.toggle('no-fold', !c.querySelector('.tsum'));   // 펼칠 게 없으면 손가락 커서 안 보이게
       if (TL_OPEN.has(it.dataset.key)) c.classList.add('open');
     });
   };
@@ -464,7 +465,7 @@
     const r = receiptData(date);
     try { if (document.fonts && document.fonts.ready) await document.fonts.ready; } catch (e) { /* 무시 */ }
     const W = 420, S = 3, P = 26;
-    const sans = '"IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif';
+    const sans = '"Pretendard Variable", Pretendard, "Noto Sans JP", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif';
     const mono = '"DotGothic16", "Galmuri11", ui-monospace, monospace';
     const lines = [];   // 높이 계산 먼저
     const L2 = (h, fn) => lines.push({ h: h, fn: fn });
@@ -598,18 +599,7 @@
   const setView_theme2 = setView;
   setView = function (v) { setView_theme2(v); if (v === 'plan') setTimeout(animateRoute, 380); };
 
-  /* ── 지도(폰): 아래 목록을 좌우로 밀면 다음 날·전날 ── */
-  (() => {
-    const list = document.getElementById('list');
-    let x0 = null, y0 = null;
-    list.addEventListener('touchstart', e => { const t = e.touches[0]; x0 = t.clientX; y0 = t.clientY; }, { passive: true });
-    list.addEventListener('touchend', e => {
-      if (x0 == null) return;
-      const t = e.changedTouches[0], dx = t.clientX - x0, dy = t.clientY - y0;
-      x0 = null;
-      if (Math.abs(dx) > 70 && Math.abs(dx) > Math.abs(dy) * 1.8) shiftDay(dx < 0 ? 1 : -1);
-    }, { passive: true });
-  })();
+  /* 지도(폰): 아래 목록 좌우로 밀어 날짜 바꾸기는 App_Core 한 곳에서만 (여기 중복 등록하면 두 칸씩 넘어감) */
 
   /* ── 타임라인: 지난 구간 레일을 도시 색으로 채움 (역 줄까지) ── */
   const renderTimeline_theme2 = renderTimeline;

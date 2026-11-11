@@ -1,6 +1,7 @@
 <!--Style_Base.html-->
 <style>
   :root {
+    --sans-font: "Pretendard Variable", Pretendard, "Noto Sans JP", -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
     --paper: #f2f4f6;
     --panel: #ffffff;
     --ink: #1d2633;
@@ -17,7 +18,7 @@
   * { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; }
   body {
-    font-family: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+    font-family: var(--sans-font);
     color: var(--ink);
     background: var(--paper);
     font-variant-numeric: tabular-nums;
@@ -138,9 +139,9 @@
     background: var(--pin, #1d2633); color: #fff; border: 2px solid #fff;
     box-shadow: 0 1px 3px rgba(29, 38, 51, .45);
     display: grid; place-items: center;
-    font: 700 12px "IBM Plex Sans KR", sans-serif;
+    font: 700 12px var(--sans-font);
   }
-  .leaflet-popup-content { font-family: "IBM Plex Sans KR", sans-serif; font-size: 13px; line-height: 1.5; }
+  .leaflet-popup-content { font-family: var(--sans-font); font-size: 13px; line-height: 1.5; }
   .leaflet-popup-content b { font-size: 14px; }
 
   /* 보기 전환 */
@@ -460,6 +461,8 @@
     background: var(--panel); color: var(--ink);
   }
   .spend-form input.memo-in { width: 160px; font-size: 14px; }
+  /* iOS: 16px 미만 입력창은 누르면 화면이 확대됨 */
+  @media (max-width: 800px) { .spend-form input.memo-in { font-size: 16px; } }
   .spend-form button { font: inherit; font-size: 13px; border-radius: 8px; padding: 5px 12px; cursor: pointer; border: 1px solid var(--rule); background: var(--panel); color: var(--ink); }
   .spend-form button.save { background: var(--ink); color: var(--panel); border-color: var(--ink); }
   .actual { font-size: 13px; margin: -6px 0 14px; }

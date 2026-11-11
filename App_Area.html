@@ -65,6 +65,7 @@
     background: var(--panel); border: 1px solid var(--rule); border-radius: 14px; padding: 10px; cursor: pointer;
     box-shadow: var(--shadow-1); position: relative; overflow: hidden; transition: box-shadow .18s var(--ease), transform .18s var(--ease);
   }
+  .aplace > div { min-width: 0; }   /* 좁은 화면에서 긴 이름·칩이 카드 밖으로 안 밀리게 */
   .aplace::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--t); }
   .aplace:hover { box-shadow: var(--shadow-2); transform: translateY(-1px); }
   .aplace .ph { width: 76px; height: 76px; border-radius: 10px; object-fit: cover; display: grid; place-items: center;

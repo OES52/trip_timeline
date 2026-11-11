@@ -51,7 +51,7 @@
     if (lines.length > 2) { lines.length = 2; lines[1] = Array.from(lines[1]).slice(0, MAX - 1).join('') + '…'; }
     const longest = Math.max.apply(null, lines.map(l => Array.from(l).length));
     const fs = lines.length > 1 ? 19 : (longest <= 4 ? 30 : longest <= 6 ? 25 : 21);
-    const text = lines.map((l, i) => '<text x="100" y="' + (lines.length > 1 ? 98 + i * 24 : 110) + '" text-anchor="middle" font-size="' + fs + '" font-weight="700" fill="' + c + '" font-family="IBM Plex Sans KR, sans-serif">' + esc(l) + '</text>').join('');
+    const text = lines.map((l, i) => '<text x="100" y="' + (lines.length > 1 ? 98 + i * 24 : 110) + '" text-anchor="middle" font-size="' + fs + '" font-weight="700" fill="' + c + '" font-family="Pretendard Variable, Pretendard, Noto Sans JP, Apple SD Gothic Neo, Malgun Gothic, sans-serif">' + esc(l) + '</text>').join('');
     return '<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="' + esc(name) + ' 도장">' +
       '<defs><filter id="' + id + '"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="' + (seed % 50) + '"/>' +
       '<feDisplacementMap in="SourceGraphic" scale="3.5"/><feComponentTransfer><feFuncA type="discrete" tableValues="0 .85 .95 1 1"/></feComponentTransfer></filter>' +
