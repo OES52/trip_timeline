@@ -315,7 +315,7 @@
         this._popup = null;
         this._labels = null;
         this._styleTries = 0;
-        this._poi = { toilet: false, konbini: false };   // 화장실·편의점 표시 (앱 켤 때마다 꺼짐)
+        this._poi = { exit: true, toilet: false, konbini: false };   // 역 출구(기본 켬)·화장실·편의점 표시 (앱 켤 때마다 초기화)
         this.gl = new ML.Map({
           container: this._container, style: mapUrl(OFM + 'styles/' + (dark ? 'dark' : 'liberty')),
           center: [135.5, 34.69], zoom: 10, maxPitch: 70, attributionControl: false, localIdeographFontFamily: 'sans-serif',
@@ -459,7 +459,7 @@
       }
       /* ── 역 출구·화장실·편의점 ──
        *  지도 타일(OpenMapTiles poi 층)의 subclass로 고름. 아이콘은 캔버스로 직접 그림 (스타일 아이콘 세트와 무관)
-       *  - 역 출구: 확대 15.5 이상 항상 (Leaflet 기준 16.5)
+       *  - 역 출구: 기본 켜짐, 버튼으로 끔, 확대 15.5 이상 (Leaflet 기준 16.5). 너무 빽빽해서 아이콘·글자 반투명 (EXIT_OPACITY)
        *  - 화장실·편의점: 기본 꺼짐, 버튼으로 켬, 확대 16.5 이상 (Leaflet 기준 17.5)
        *  - 겹치면 숨김 (일정 핀은 DOM이라 항상 위) */
       _poiIcons() {
@@ -485,19 +485,21 @@
       _addPoi(srcId) {
         const gl = this.gl;
         this._poiIcons();
-        const lay = (id, subs, icon, minzoom, on, label) => {
+        const lay = (id, subs, icon, minzoom, on, label, op) => {
           if (gl.getLayer(id)) return;
           const layout = { visibility: on ? 'visible' : 'none', 'icon-image': icon, 'icon-allow-overlap': false, 'icon-padding': 2 };
-          const paint = {};
+          const paint = op != null ? { 'icon-opacity': op } : {};
           if (label) {
             Object.assign(layout, { 'text-field': ['coalesce', ['get', 'name:ko'], ['get', 'name']], 'text-font': ['Noto Sans Regular'],
               'text-size': 10, 'text-offset': [0, 1.2], 'text-anchor': 'top', 'text-optional': true, 'text-max-width': 6 });
             Object.assign(paint, { 'text-color': dark ? '#b2f2bb' : '#2b8a3e', 'text-halo-color': dark ? '#000' : '#fff', 'text-halo-width': 1.4 });
+            if (op != null) paint['text-opacity'] = op;
           }
           gl.addLayer({ id, type: 'symbol', source: srcId, 'source-layer': 'poi', minzoom,
             filter: ['in', ['get', 'subclass'], ['literal', subs]], layout, paint });
         };
-        lay('trip-poi-exit', ['subway_entrance', 'train_station_entrance'], 'trip-exit', 15.5, true, true);
+        const EXIT_OPACITY = 0.3;   // 역 출구 아이콘·이름 불투명도 (0~1)
+        lay('trip-poi-exit', ['subway_entrance', 'train_station_entrance'], 'trip-exit', 15.5, this._poi.exit, true, EXIT_OPACITY);
         lay('trip-poi-toilet', ['toilets'], 'trip-toilet', 16.5, this._poi.toilet, false);
         lay('trip-poi-konbini', ['convenience'], 'trip-konbini', 16.5, this._poi.konbini, false);
       }

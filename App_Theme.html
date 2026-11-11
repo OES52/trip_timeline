@@ -973,19 +973,19 @@
     },
   });
   new Btn3D().addTo(map);
-  // 화장실·편의점 켜고 끄기 (벡터 지도 엔진일 때만). 확대해야 보임
+  // 역 출구·화장실·편의점 켜고 끄기 (벡터 지도 엔진일 때만). 확대해야 보임. 출구만 기본 켜짐
   if (window.TRIP_GL && map.togglePoi) {
     const BtnPoi = L.Control.extend({
       options: { position: 'topright' },
       onAdd() {
         const box = L.DomUtil.create('div', 'poi-ctl');
-        [['toilet', 'WC', '화장실 표시 (확대하면 보임)'], ['konbini', '🏪', '편의점 표시 (확대하면 보임)']].forEach(([k, t, title]) => {
-          const b = L.DomUtil.create('button', 'leaflet-bar btn3d btn-poi', box);
-          b.type = 'button'; b.textContent = t; b.title = title; b.setAttribute('aria-pressed', 'false');
+        [['exit', '出', '역 출구 표시 (확대하면 보임)', true, 16.5], ['toilet', 'WC', '화장실 표시 (확대하면 보임)', false, 17.5], ['konbini', '🏪', '편의점 표시 (확대하면 보임)', false, 17.5]].forEach(([k, t, title, init, z]) => {
+          const b = L.DomUtil.create('button', 'leaflet-bar btn3d btn-poi' + (init ? ' on' : ''), box);
+          b.type = 'button'; b.textContent = t; b.title = title; b.setAttribute('aria-pressed', String(init));
           b.onclick = () => {
             const on = map.togglePoi(k);
             b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on));
-            if (on && map.getZoom() < 17.5) showToast(title.replace(' (확대하면 보임)', '') + ' 켬 · 더 확대하면 보임');
+            if (on && map.getZoom() < z) showToast(title.replace(' (확대하면 보임)', '') + ' 켬 · 더 확대하면 보임');
           };
         });
         L.DomEvent.disableClickPropagation(box);
