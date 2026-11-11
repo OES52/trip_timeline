@@ -1103,6 +1103,19 @@
 
   // 대중교통 단계별 선 + 승차·환승·하차 역 표시. 강조 처리용으로 그린 것들 반환
   // 역 이름 라벨은 확대했을 때만 (도보 거리 라벨과 같은 층)
+  // 탈것 이모지: 구글 경로의 탈것 이름(지하철·기차·버스 …)과 노선명으로
+  function vehicleEmoji(st) {
+    const v = String((st && st.vehicle) || '') + ' ' + String((st && (st.line + ' ' + (st.full || ''))) || '');
+    if (/신칸센|新幹線|고속\s*열차|High speed/i.test(v)) return '🚄';
+    if (/버스|バス|Bus/i.test(v)) return '🚌';
+    if (/지하철|地下鉄|Subway|Metro/i.test(v)) return '🚇';
+    if (/트램|노면|路面|Tram/i.test(v)) return '🚋';
+    if (/모노레일|モノレール|Monorail/i.test(v)) return '🚝';
+    if (/페리|배|フェリー|Ferry/i.test(v)) return '⛴️';
+    if (/케이블|ケーブル|로프웨이|ロープウェイ|Cable|Gondola/i.test(v)) return '🚡';
+    return '🚆';
+  }
+
   function drawSteps(steps, gk) {
     const out = [];
     const stations = stepLayers[gk + '|st'] = [];
@@ -1118,6 +1131,15 @@
         }).addTo(layer));
         out.push(pl);
         mine.push(pl);
+        // 탑승 구간 가운데에 탈것 이모지 (지하철 🚇, 버스 🚌 …)
+        if (transit) {
+          const vm = reg(gk, L.marker(lineInfo(ll).mid, {
+            icon: L.divIcon({ className: '', html: '<span class="veh-pin" style="--c:' + esc(c) + '">' + vehicleEmoji(st) + '</span>', iconSize: [26, 26], iconAnchor: [13, 13] }),
+            interactive: false, keyboard: false,
+          }).addTo(layer));
+          out.push(vm);
+          mine.push(vm);
+        }
       }
       if (!transit) return;
       const before = steps.slice(0, i).some(x => x.t === 'transit');
@@ -1236,7 +1258,7 @@
       if (st.ag) sub.push(esc(st.ag));
       pushStep({
         type: 'step', k: 'ride', i: i, c: c, min: min,
-        head: '<span class="ln">' + esc(st.line) + '</span>' + min + '분' + (st.stops ? ' · ' + st.stops + '정거장' : '') +
+        head: '<span class="veh" aria-hidden="true">' + vehicleEmoji(st) + '</span><span class="ln">' + esc(st.line) + '</span>' + min + '분' + (st.stops ? ' · ' + st.stops + '정거장' : '') +
           (st.pass === true ? ' <span class="step-pass">🎫 주유패스</span>' : st.pass === false ? ' <span class="step-card">💳 IC카드·현금</span>' : ''),
         sub: sub.join(' · '),
       });
