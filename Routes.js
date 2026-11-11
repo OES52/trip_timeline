@@ -1,7 +1,29 @@
 /* ───────────────────────── 경로 계산 ───────────────────────── */
 /* Routes.gs  */
-function calculateRoutes() { requireSheetUi_(); runCalc_(false); }
-function calculateRoutesForce() { requireSheetUi_(); runCalc_(true); }
+function calculateRoutes() { requireSheetUi_(); runCalcSafe_(false); }
+function calculateRoutesForce() { requireSheetUi_(); runCalcSafe_(true); }
+
+/* ── 구글 지도 하루 호출 한도 ──
+ *  한도에 걸리면 지도 호출이 전부 예외("Service invoked too many times …")로 실패함
+ *  예전엔 이걸 "경로를 못 찾음"으로 삼켜서 경로 시트·이동(분)을 빈 값으로 덮어썼음
+ *  → 한도 예외는 그대로 던져서 계산을 통째로 중단 (시트에 아무것도 안 씀, 기존 경로 유지) */
+const QUOTA_RE_ = /too many times|invoked too many|quota|rate limit|할당량|한도/i;
+function rethrowQuota_(e) {
+  const m = String((e && e.message) || e || '');
+  if (e && e.quota) throw e;
+  if (QUOTA_RE_.test(m)) {
+    const err = new Error('구글 지도 하루 호출 한도 초과 (' + m + ')');
+    err.quota = true;
+    throw err;
+  }
+}
+function runCalcSafe_(force) {
+  try { runCalc_(force); }
+  catch (e) {
+    if (!e.quota) throw e;
+    alert_('구글 지도 하루 호출 한도에 걸려서 경로 계산을 멈춤.\n시트는 그대로 둠 (기존 경로·시각 유지).\n한도는 보통 하루 지나면 풀림 → 그때 다시 실행.\n\n' + e.message);
+  }
+}
 
 // opts.quick = true: 웹앱 조정(체류·건너뛰기)에서 부를 때. 배차 점검 호출을 생략해서 빠르게
 // (점검 안 한 구간은 경고 칸이 빈 채로 남고, 다음에 시트에서 경로 계산하면 그때 점검)
@@ -377,7 +399,7 @@ function lastTrain_(date, departMin, from, to) {
         const rideAt = toMinAt(ride.transit_details.departure_time.value);
         const leave = leg.departure_time ? toMinAt(leg.departure_time.value) : rideAt;
         return { ride: rideAt, leave: Math.max(t, Math.floor(leave)) };
-      } catch (e) { /* 다음 후보 */ }
+      } catch (e) { rethrowQuota_(e); /* 다음 후보 */ }
     }
     return null;
   };
@@ -470,6 +492,7 @@ function innerWalk_(r, fetch) {
         return parse(val);
       }
     } catch (e) {
+      rethrowQuota_(e);
       // 조회 실패하면 어림값
     }
   }
@@ -577,6 +600,7 @@ function fetchShape_(date, departMin, from, to, prefer, roadOnly) {
       }
       if (pick.overview_polyline) return { poly: pick.overview_polyline.points, line: lineNames(pick).join(' → '), matched: matched || !re };
     } catch (e) {
+      rethrowQuota_(e);
       // 다음 시각으로
     }
   }
@@ -586,7 +610,7 @@ function fetchShape_(date, departMin, from, to, prefer, roadOnly) {
     if (out && out.status === 'OK' && out.routes && out.routes.length && out.routes[0].overview_polyline) {
       return { poly: out.routes[0].overview_polyline.points, line: '도로', matched: !re };
     }
-  } catch (e) { /* 모양 없음 */ }
+  } catch (e) { rethrowQuota_(e); /* 모양 없음 */ }
   return { poly: '', line: '', matched: false };
 }
 
@@ -613,6 +637,7 @@ function fetchDirections_(date, departMin, from, to, mode, pref) {
                        : parseRoute_(out.routes[0], c.when, mode, c.approx);
       }
     } catch (e) {
+      rethrowQuota_(e);
       // 다음 후보로
     }
   }
@@ -729,6 +754,7 @@ function enrichJa_(stepsJson, date, departMin, from, to) {
           ts.every((st, i) => (st.transit_details.num_stops || 0) === (rides[i].stops || 0))) || null;
       return !!match;
     } catch (e) {
+      rethrowQuota_(e);
       return false;
     }
   });
