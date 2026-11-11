@@ -167,7 +167,8 @@
         const sp = DATA.spend && DATA.spend[vk];
         if (sp) facts.push('<span>실제 <b>' + YEN(sp.amount) + '</b>' + (sp.memo ? ' (' + esc(sp.memo) + ')' : '') + '</span>');
 
-        html += '<div class="titem' + (isVisited(p) ? ' done' : '') + (isNow ? ' is-now' : '') + (past ? ' past' : '') + '" data-key="' + vk + '">' +
+        // sunDone: 이미 해 진 뒤 도착 (일몰 선을 이 장소 앞이나 앞 장소 머무는 중에 그림)
+        html += '<div class="titem' + (isVisited(p) ? ' done' : '') + (isNow ? ' is-now' : '') + (past ? ' past' : '') + (sunDone ? ' night' : '') + '" data-key="' + vk + '">' +
           '<div class="ttime"><span class="a">' + esc(p.arrive || '') + '</span>' +
           (p.depart && p.depart !== p.arrive ? '<span class="d">~ ' + esc(p.depart) + '</span>' : '') + timeExtra(p) + '</div>' +
           '<article class="tcard' + (pl ? ' t-' + esc(pl.type) : '') + '"' +

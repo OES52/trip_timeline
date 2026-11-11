@@ -47,7 +47,8 @@
     const route = dayRoute(date);
     const past = date < nt.date;
     const today = date === nt.date;
-    return '<section class="kippu' + (today ? ' today' : '') + '" style="--city:' + city.color + '">' +
+    return '<section class="kippu' + (today ? ' today' : '') + (past ? ' past' : '') + '" style="--city:' + city.color + '">' +
+      (past || today ? '<span class="kp-punch" aria-hidden="true"></span>' : '') +   // 개찰구 검표 홈
       '<div class="kp-top"><span>乗車券 · ' + (i + 1) + '일차</span><span class="kp-no">No.' + String(i + 1).padStart(4, '0') + '</span></div>' +
       '<div class="kp-main"><h2 class="tl-day">' + dayLabel(date) + '</h2>' +
         (route.length ? '<div class="kp-route">' + route.map(c => '<span style="--cc:' + (cityColor(c) || 'var(--ink)') + '">' + esc(c) + '</span>').join('<i>→</i>') + '</div>' : '') +
@@ -448,7 +449,7 @@
         row('쓴 돈 (기록)', YEN(r.spent)) +
         (r.budget ? row('예산 (1인, 엔 환산)', money(r.budget), 'muted') : '') +
         '<div class="rc-sep dbl"></div>' +
-        row('합계', YEN(r.sum), 'total') +
+        row('합계' + (r.planned ? '' : '<span class="rc-hanko" aria-hidden="true">領収</span>'), YEN(r.sum), 'total') +
         '<div class="rc-bar" aria-hidden="true"></div>' +
         '<div class="rc-thanks">またお越しくださいませ · 또 와요</div>' +
       '</div>' +
@@ -505,6 +506,8 @@
     if (r.budget) row('예산 (1인, 엔 환산)', money(r.budget), { muted: true });
     sep(true);
     row('합계', YEN(r.sum), { total: true });
+    let hankoY = null;   // 합계 줄 위치 기억 → 다 그린 뒤 도장을 맨 위에 찍음
+    if (!r.planned) L2(0, y => { hankoY = y - 30; });
     L2(58, y => {   // 바코드 (날짜·사용자로 고정된 무늬)
       let seed = 0; String(date + r.user).split('').forEach(ch => { seed = (seed * 31 + ch.charCodeAt(0)) >>> 0; });
       let x = P + 30;
@@ -524,6 +527,18 @@
     g.closePath(); g.fill();
     let y = P;
     lines.forEach(l => { l.fn(y); y += l.h; });
+    if (hankoY != null) {   // 領収 도장: 빨간 이중 원, 살짝 기울여서
+      g.save();
+      g.translate(W / 2 + 10, hankoY + 15);
+      g.rotate(-12 * Math.PI / 180);
+      g.globalAlpha = 0.75;
+      g.strokeStyle = '#c4302b'; g.fillStyle = '#c4302b';
+      g.lineWidth = 2.5; g.beginPath(); g.arc(0, 0, 25, 0, Math.PI * 2); g.stroke();
+      g.lineWidth = 1; g.beginPath(); g.arc(0, 0, 20.5, 0, Math.PI * 2); g.stroke();
+      g.font = '700 15px "Noto Sans JP", ' + sans; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillText('領収', 0, 1);
+      g.restore();
+    }
     const name = RC_SHOP + '_영수증_' + date + '.png';
     c.toBlob(async blob => {
       if (!blob) return showToast('영수증을 못 만듦');
