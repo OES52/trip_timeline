@@ -484,4 +484,69 @@
   /* 여권: 옆 쪽이 더 길면 그 끝이 표지 아래로 삐져나와 보이던 것 */
   .pass-swiper .swiper-slide:not(.swiper-slide-active) { max-height: var(--pass-cap, none); overflow: hidden; }
   .dex-side .filters .label { flex: none; position: sticky; left: 0; z-index: 1; background: var(--panel); padding-right: 4px; }
+  /* ───────── 홈: 큰 발차 안내판 ─────────
+   *  전광판이 홈의 주인공. 카운트다운 아래에 그날 행선지가 줄줄이 뜨고(예전 흰 목록 카드 대신),
+   *  폰에서는 화면 폭을 꽉 채워 천장에 붙고, 넓은 화면에서는 두 칸짜리 판이 봉에 매달림 */
+  .board .b-day { border-top: 1px dashed #333; margin-top: 10px; padding-top: 8px; }
+  .board .dhead { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-size: 12px; color: #9a9a9a; padding-bottom: 2px; }
+  .board .dhead .ds { display: inline-flex; gap: 10px; white-space: nowrap; }
+  .board .dhead .dx { color: var(--led-g); }
+  .drow { display: grid; grid-template-columns: 50px minmax(0, 1fr) auto; gap: 10px; align-items: baseline; padding: 7px 0; border-bottom: 1px solid #1c1c1c; font-size: 16px; }
+  .drow .t { color: var(--led); letter-spacing: .02em; text-shadow: 0 0 4px rgba(255,174,0,.6), 0 0 10px rgba(255,140,0,.22); }
+  .drow .dest { color: #f4f1e8; overflow: hidden; white-space: nowrap; position: relative; }
+  .drow .dest .mq { display: inline-block; }
+  .drow .dest .mq.scroll { animation: mq var(--dur, 8s) linear infinite; padding-left: 100%; }
+  .drow .ty { font-size: 13px; white-space: nowrap; }
+  .drow.done .t, .drow.done .dest { color: #6f6f6f; text-shadow: none; }
+  .board .dmore { position: relative; z-index: 1; display: block; width: 100%; min-height: 44px; margin-top: 10px; cursor: pointer;
+    font: inherit; font-size: 14px; color: var(--led-g); background: #111; border: 1px solid #2c2c2c; border-radius: 4px; }
+  .board .dmore:hover { border-color: var(--led-g); }
+  .board .dmore:focus-visible { outline: 2px solid var(--led-g); outline-offset: 2px; }
+  .count-big { font-size: clamp(34px, 10.4vw, 60px); padding: 16px 0 8px; }
+  .board { box-shadow: inset 0 0 0 1px #000, 0 6px 18px rgba(0,0,0,.25), 0 22px 34px -22px rgba(255, 150, 0, .38); }
+  /* 홈에서는 머리줄도 전광판과 한 덩어리: 검은 천장 들보 */
+  body[data-view="home"] header { --panel: #161616; --panel-2: #1e1e1e; --ink: #f0f0f0; --muted: #a3a3a3; --rule: #323232;
+    background: #0a0a0a; color: var(--ink); box-shadow: none; border-bottom: 1px solid #000; }
+  @media (max-width: 859px) {
+    .home-inner { padding-top: 0; }
+    .board { margin: 0 -14px; border-radius: 0; border-width: 0 0 6px; padding: 12px 16px 14px; }
+    .board::after { border-radius: 0; }
+  }
+  @media (min-width: 860px) {
+    .home-inner { max-width: 980px; padding-top: 30px;
+      background: linear-gradient(90deg, #3a3a3a, #1c1c1c) 16% 0 / 7px 32px no-repeat, linear-gradient(90deg, #3a3a3a, #1c1c1c) 84% 0 / 7px 32px no-repeat; }
+    .board { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 24px; padding: 14px 20px 18px; }
+    .board .b-main { align-self: center; }
+    .board .count-big { font-size: clamp(34px, 3.9vw, 48px); white-space: nowrap; }
+    .board .b-main:only-child { grid-column: 1 / -1; }
+    .board .b-day { border-top: 0; margin-top: 0; padding-top: 0; border-left: 1px dashed #333; padding-left: 24px; }
+    .board > .count-sub, .board > .count-big { grid-column: 1 / -1; }
+    #homeBody { max-width: 760px; margin: 0 auto; }
+  }
+  /* ───────── 홈: 회수권 묶음 ───────── */
+  .kaisu { display: flex; margin-top: 14px; overflow-x: auto; scroll-snap-type: x proximity; scrollbar-width: none;
+    border-radius: 10px; box-shadow: var(--shadow-1); background: var(--kp-paper); }
+  .kaisu::-webkit-scrollbar { display: none; }
+  .ks { flex: 1 0 124px; scroll-snap-align: start; position: relative; display: flex; flex-direction: column; gap: 4px; min-height: 112px;
+    padding: 8px 12px 10px; text-align: left; font: inherit; color: var(--kp-ink); cursor: pointer;
+    background: var(--kp-paper) repeating-linear-gradient(-45deg, rgba(120, 90, 40, .035) 0 2px, transparent 2px 6px);
+    border: 0; border-top: 5px solid var(--city); border-left: 1.5px dashed color-mix(in srgb, var(--kp-ink) 32%, transparent); }
+  .ks:first-child { border-left: 0; }
+  .ks:hover { background-color: color-mix(in srgb, var(--city) 7%, var(--kp-paper)); }
+  .ks:focus-visible { outline-offset: -3px; }
+  .ks-top { display: flex; justify-content: space-between; align-items: center; font-size: 12px; letter-spacing: .08em; opacity: .8; }
+  .ks-now { font-weight: 700; color: #fff; background: var(--city); border-radius: 4px; padding: 0 6px; letter-spacing: .06em; opacity: 1; }
+  .ks-date { font-size: 18px; letter-spacing: -.01em; white-space: nowrap; }
+  .ks-route { display: flex; flex-wrap: wrap; align-items: center; gap: 1px 3px; font-size: 12px; font-weight: 700; line-height: 1.35; }
+  .ks-route i { font-style: normal; font-weight: 400; opacity: .45; }
+  .ks-foot { display: flex; justify-content: space-between; gap: 6px; margin-top: auto; padding-top: 4px; font-size: 12px; opacity: .8; }
+  .ks.past { color: color-mix(in srgb, var(--kp-ink) 55%, transparent); }
+  .ks.past .ks-route span { color: inherit !important; }
+  .ks-stamp { position: absolute; right: 8px; bottom: 8px; width: 34px; height: 34px; display: grid; place-items: center; font-size: 17px; font-weight: 700;
+    color: #c4302b; border: 2px double #c4302b; border-radius: 50%; transform: rotate(-14deg); opacity: .8; mix-blend-mode: multiply; }
+  .ks.past .ks-foot span:last-child { visibility: hidden; }
+  @media (prefers-color-scheme: dark) {
+    .ks { background-image: repeating-linear-gradient(-45deg, rgba(255, 220, 160, .03) 0 2px, transparent 2px 6px); }
+    .ks-stamp { color: #ff6b5f; border-color: #ff6b5f; mix-blend-mode: screen; }
+  }
 </style>

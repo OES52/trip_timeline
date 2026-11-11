@@ -173,8 +173,36 @@
     renderHomeBody_theme();
     paintBodyCity();
     const bp = boardingPass();
-    if (bp) document.getElementById('homeBody').insertAdjacentHTML('afterbegin', bp);
+    const box = document.getElementById('homeBody');
+    if (bp) box.insertAdjacentHTML('afterbegin', bp);
+    box.insertAdjacentHTML('beforeend', couponStrip());
+    box.querySelectorAll('.kaisu .ks').forEach(b => b.addEventListener('click', () => {
+      selected = b.dataset.day;
+      renderTabs();
+      setView('tl');
+    }));
+    const today = box.querySelector('.kaisu .ks.today');
+    if (today && today.parentNode.scrollWidth > today.parentNode.clientWidth) today.parentNode.scrollLeft = Math.max(0, today.offsetLeft - 24);
   };
+
+  /* ── 홈: 회수권 묶음. 날짜마다 승차권 한 장이 절취선으로 이어져 있고, 누르면 그날 타임라인 ── */
+  function couponStrip() {
+    if (!DATA || !DATA.dates || !DATA.dates.length) return '';
+    const nt = tokyoNow();
+    return '<div class="kaisu" role="group" aria-label="날짜별 일정">' + DATA.dates.map((d, i) => {
+      const route = dayRoute(d);
+      const n = DATA.points.filter(p => p.date === d).length;
+      const past = d < nt.date, today = d === nt.date;
+      const w = DATA.weather && DATA.weather[d];
+      return '<button type="button" class="ks' + (past ? ' past' : '') + (today ? ' today' : '') + '" data-day="' + esc(d) + '" style="--city:' + dayCity(d).color + '">' +
+        '<span class="ks-top"><span>' + (i + 1) + '일차</span>' + (today ? '<span class="ks-now">本日</span>' : '') + '</span>' +
+        '<b class="ks-date">' + esc(dayLabel(d)) + '</b>' +
+        '<span class="ks-route">' + route.map(c => '<span style="color:' + (cityColor(c) || 'inherit') + '">' + esc(c) + '</span>').join('<i aria-hidden="true">›</i>') + '</span>' +
+        '<span class="ks-foot"><span>' + n + '곳</span>' + (w ? '<span>' + wxInfo(w.code)[0] + ' ' + Math.round(w.max) + '°</span>' : '') + '</span>' +
+        (past ? '<span class="ks-stamp" aria-label="지난 날">済</span>' : '') +
+        '</button>';
+    }).join('') + '</div>';
+  }
 
   /* ── 지금 선이 낡지 않게: 타임라인 보는 중이면 2분마다 다시 그림 (입력 중이면 건너뜀) ── */
   setInterval(() => {

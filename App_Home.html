@@ -91,6 +91,51 @@
       (seg.warn ? ' ' + led('⚠', 'var(--led-r)') : '') + '</div>';
   }
 
+  // 전광판 아래칸: 그날 행선지 (발차 안내판처럼 시각·행선지·종류). fromOrder가 있으면 그 뒤 일정만
+  const LED_TYPE = { '교통': '#8fd3ff', '숙소': '#c8a8ff', '식당': '#ff9d6b', '카페': '#ffd98a', '관광지': '#5dff9a', '쇼핑': '#ff8ad1', '기타': '#c9c9c9' };
+  function boardDay(day, title, fromOrder) {
+    if (!day) return '';
+    const all = DATA.points.filter(p => p.date === day).sort((a, b) => a.order - b.order);
+    const pts = fromOrder == null ? all : all.filter(p => p.order > fromOrder);
+    if (!pts.length) return '';
+    const show = pts.slice(0, fromOrder == null ? 6 : 4);   // 여행 중엔 아래 '다음 장소까지' 카드가 밀리지 않게 4줄
+    const rows = show.map((p, i) => {
+      const pl = typeof placeOf === 'function' ? placeOf(p) : null;
+      const ty = pl && pl.type ? pl.type : '';
+      const done = isVisited(p);
+      return '<div class="drow' + (done ? ' done' : '') + '"><span class="t">' + esc(p.arrive || p.depart || '') + '</span>' +
+        '<span class="dest">' + mqSpan(pname(p), 'n' + i) + '</span>' +
+        '<span class="ty" style="color:' + (done ? '#8a8a8a' : LED_TYPE[ty] || '#c9c9c9') + '">' + esc(done ? '済' : ty) + '</span></div>';
+    }).join('');
+    const w = DATA.weather && DATA.weather[day];
+    const visited = all.filter(p => isVisited(p)).length;
+    const side = (visited ? '<span>방문 ' + visited + ' / ' + all.length + '</span>' : '') +
+      (w ? '<span class="dx">' + wxInfo(w.code)[0] + ' ' + Math.round(w.min) + '° / ' + Math.round(w.max) + '°' + (w.pop != null ? ' ☂' + w.pop + '%' : '') + '</span>' : '');
+    const rest = pts.length - show.length;
+    return '<div class="b-day"><div class="dhead"><span>' + esc(title) + '</span><span class="ds">' + side + '</span></div>' + rows +
+      '<button type="button" class="dmore" data-day="' + esc(day) + '">하루 일정 보기' + (rest > 0 ? ' (외 ' + rest + '곳)' : '') + '</button></div>';
+  }
+  // 홈에 처음 들어올 때 한 번: 행선지가 위에서부터 차례로 넘어가며 뜸
+  function boardArrive(board) {
+    if (board._arrived) return;
+    board._arrived = true;
+    if (!board._wired) {
+      board._wired = true;
+      board.addEventListener('click', e => {
+        const b = e.target.closest && e.target.closest('.dmore');
+        if (!b) return;
+        selected = b.dataset.day;
+        renderTabs();
+        setView('tl');
+      });
+    }
+    board.querySelectorAll('.b-day .mq').forEach((el, i) => {
+      const to = el.dataset.final != null ? el.dataset.final : el.textContent;
+      cellsFor(el, ' '.repeat(Array.from(to).length));
+      setTimeout(() => flapTo(el, to, () => armMarquee(board)), 200 + i * 120);
+    });
+  }
+
   function renderBoard() {
     const board = document.getElementById('board');
     const range = tripRange();
@@ -105,7 +150,7 @@
       const h = Math.floor(sec / 3600); sec -= h * 3600;
       const m = Math.floor(sec / 60); const s2 = sec - m * 60;
       const u = t => '<span class="count-unit">' + t + '</span>';
-      const sig = [range.first.date, d, h, m].join('|');
+      const sig = [range.first.date, d, h, m, DATA.points.length].join('|');
       if (board.dataset.sig === sig) {  // 초만 바꿔서 깜빡임 방지
         const secEl = board.querySelector('.sec');
         const clk = board.querySelector('.clock');
@@ -114,12 +159,14 @@
         return;
       }
       board.dataset.sig = sig;
-      setBoard(board, head +
+      setBoard(board, '<div class="b-main">' + head +
         '<div class="count-sub">出発まで · 출발까지</div>' +
         '<div class="count-big glow"><span data-flap="cd">' + d + '</span>' + u('일') + '<span data-flap="ch">' + String(h).padStart(2, '0') + '</span>' + u('시간') +
           '<span data-flap="cm">' + String(m).padStart(2, '0') + '</span>' + u('분') +
           '<span class="sec" data-flap="cs">' + String(s2).padStart(2, '0') + '</span>' + u('초') + '</div>' +
-        '<div class="count-sub">' + esc(dayLabel(range.first.date)) + ' ' + esc(range.first.arrive || '') + ' ' + esc(pname(range.first)) + '에서 출발</div>');
+        '<div class="count-sub">' + esc(dayLabel(range.first.date)) + ' ' + esc(range.first.arrive || '') + ' ' + esc(pname(range.first)) + '에서 출발</div></div>' +
+        boardDay(DATA.dates[0], '初日 · 첫날 ' + dayLabel(DATA.dates[0])));
+      boardArrive(board);
       return;
     }
 
@@ -128,7 +175,7 @@
       if (board.dataset.sig === 'end') { const clk = board.querySelector('.clock'); if (clk) clk.textContent = tokyoClock(); return; }
       board.dataset.sig = 'end';
       setBoard(board, head + '<div class="count-big glow" style="font-size:clamp(24px,6vw,40px)"><span data-flap="end">おつかれさまでした</span></div>' +
-        '<div class="count-sub">여행 끝. 결산 보러 가기 ↓</div>');
+        '<div class="count-sub">여행 끝. 모은 도장은 여권에서 보기</div>');
       return;
     }
 
@@ -144,7 +191,7 @@
     });
     const next = nextIdx >= 0 ? list[nextIdx] : null;
     const after = nextIdx >= 0 ? list[nextIdx + 1] : null;
-    const sig = [nt.date, nt.min, cur && cur.order, next && next.order].join('|');
+    const sig = [nt.date, nt.min, cur && cur.order, next && next.order, DATA.points.length, Object.keys(DATA.visited || {}).length].join('|');
     if (board.dataset.sig === sig) { const clk = board.querySelector('.clock'); if (clk) clk.textContent = tokyoClock(); return; }
     board.dataset.sig = sig;
 
@@ -173,7 +220,10 @@
         '<span class="dest">' + mqSpan(pname(after), 'd2') + '</span><span class="rem"></span></div>';
     }
     if (!rows) rows = '<div class="count-sub">오늘 일정 끝. 푹 쉬기</div>';
-    setBoard(board, head + rows + '<div class="bfoot">일본 시간 기준</div>');
+    const lastShown = after || next || cur;
+    setBoard(board, '<div class="b-main">' + head + rows + '<div class="bfoot">일본 시간 기준</div></div>' +
+      (pts.length ? boardDay(nt.date, 'このあと · 오늘 남은 일정', lastShown ? lastShown.order : null) : ''));
+    boardArrive(board);
   }
 
   function nextStopNow() {
@@ -226,21 +276,7 @@
 
   function renderHomeBody() {
     const box = document.getElementById('homeBody');
-    const range = tripRange();
-    const nt = tokyoNow();
-    let html = distanceCard();
-
-    // 오늘(여행 중) 또는 첫날(여행 전) 미리보기
-    const day = DATA.dates.includes(nt.date) ? nt.date : (range && new Date() < range.start ? DATA.dates[0] : null);
-    if (day) {
-      const pts = DATA.points.filter(p => p.date === day).sort((a, b) => a.order - b.order);
-      const done = pts.filter(p => isVisited(p)).length;
-      html += '<div class="hcard"><h2>' + (day === nt.date ? '오늘 ' : '첫날 ') + esc(dayLabel(day)) + wxShort(day) + '</h2>' +
-        wxLine(day) +
-        (done ? '<p>방문 ' + done + ' / ' + pts.length + '</p>' : '') +
-        '<ul class="mini-list">' + pts.slice(0, 6).map(p => '<li><span class="tm">' + esc(p.arrive || '') + '</span><span>' + esc(pname(p)) + '</span></li>').join('') +
-        (pts.length > 6 ? '<li><span class="tm"></span><span style="color:var(--muted)">외 ' + (pts.length - 6) + '곳</span></li>' : '') + '</ul></div>';
-    }
+    const html = distanceCard();
 
     box.innerHTML = html;
     const lb = document.getElementById('locBtn');
