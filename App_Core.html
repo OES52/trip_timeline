@@ -497,6 +497,7 @@
       dates: raw.dates.filter(inR),
       points: points,
       segments: raw.segments.filter(s => inR(s.date)),
+      overnight: (raw.overnight || []).filter(s => inR(s.date) && inR(s.toDate)),
       places: (raw.places || []).filter(p => keys.has(p.key)),   // 도감·여권: 일정에 나오는 장소만
       allPlaces: raw.places || [],                                // 가이드: 일정 밖 추천 장소까지
       visited: u && raw.visitedBy ? (raw.visitedBy[u.id] || {}) : {},
@@ -819,6 +820,24 @@
           const el = document.querySelector('.leg[data-key="' + lkey + '"]');
           if (el) { clearActive(); el.classList.add('active'); el.scrollIntoView({ block: 'nearest' }); }
         });
+        latlngs.forEach(ll => bounds.push(ll));
+      });
+
+      // 지도: 날짜를 넘는 구간 (밤버스 등). 전체 탭에서만, 이날 색 점선으로 다음 날 첫 장소까지
+      if (selected === 'all') (DATA.overnight || []).filter(s => s.date === date).forEach(s => {
+        const from = pts.find(p => p.order === s.fromOrder);
+        const to = DATA.points.find(p => p.date === s.toDate && p.order === s.toOrder);
+        if (!from || !to || from.lat == null || to.lat == null) return;
+        const fromLL = hasEnd(from) ? [from.endLat, from.endLng] : [from.lat, from.lng];
+        const latlngs = s.polyline ? decodePolyline(s.polyline) : arcPoints(fromLL, [to.lat, to.lng]);
+        if (latlngs.length < 2) return;
+        const gk = 'O:' + date + '#' + s.fromOrder;
+        reg(gk, L.polyline(latlngs, { pane: 'casing', color: '#ffffff', weight: 9, opacity: 0.95, lineCap: 'round', lineJoin: 'round', interactive: false }).addTo(layer));
+        reg(gk, L.polyline(latlngs, { color: dayColor(date), weight: 5, opacity: 0.9, dashArray: '2 10', lineCap: 'round', lineJoin: 'round' })
+          .bindPopup('<b>' + esc(pname(from)) + ' → ' + esc(pname(to)) + '</b><br>' +
+            esc(s.dep) + ' → ' + esc(s.arr) + ' (' + s.minutes + '분, 다음 날 도착)' +
+            (s.summary ? '<br>' + esc(s.summary) : ''))
+          .addTo(layer));
         latlngs.forEach(ll => bounds.push(ll));
       });
 

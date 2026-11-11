@@ -84,7 +84,9 @@ function runCalc_(force, opts) {
   const moveOut = {};
   const routeRows = [];
 
-  groupByDate_(rows).forEach(group => {
+  const dayGroups = groupByDate_(rows);
+  const dayEnds = {};   // 날짜별 마지막 행과 출발 시각 (날짜 넘는 구간용)
+  dayGroups.forEach(group => {
     const date = group.date;
     const list = group.rows;
     let arrive = null;
@@ -105,7 +107,7 @@ function runCalc_(force, opts) {
       const depart = ceilTo_(start + r.stay, step);
 
       const next = list[idx + 1];
-      if (!next) return;
+      if (!next) { dayEnds[date] = { r: r, depart: depart }; return; }
 
       const seg = computeSegment_(date, depart, departFrom_(r), next, cache, errors, quick, passPref(date));
       if (seg.passExtra != null) passPicked++;
@@ -139,6 +141,27 @@ function runCalc_(force, opts) {
       if (th) taxiHints.push(date.slice(5).replace('-', '/') + ' ' + r.place + ' → ' + next.place + ': ' + th);
       arrive = depart + ceilTo_(seg.minutes, moveStep_(r.mode));
     });
+  });
+
+  // 2-2. 날짜를 넘는 구간 (밤버스·야간 이동 등)
+  //  그날 마지막 행의 다음 이동수단이 "수동"이면 다음 날 첫 행까지 이어서 경로 시트에 기록 (구간 칸: "8→+1")
+  //  시간·요금은 수동 값 그대로, 지도 선 모양만 받음. 메모에 [도로] 적으면 도로 경로 모양 (거리 제한 없음)
+  //  다음 날 도착·출발 시각은 지금처럼 그날 첫 행 고정 시각 기준 (시트 함수는 날짜가 바뀌면 새로 시작)
+  dayGroups.forEach((g, i) => {
+    const nextG = dayGroups[i + 1];
+    const end = dayEnds[g.date];
+    if (!nextG || !end || end.r.mode !== '수동') return;
+    const r = end.r;
+    const next = nextG.rows[0];
+    const seg = computeSegment_(g.date, end.depart, departFrom_(r), next, cache, errors, quick, null);
+    routeRows.push([
+      g.date, r.order + '→+' + next.order, r.place + (r.endLat != null ? ' (종착점)' : ''),
+      next.place + ' (' + nextG.date.slice(5).replace('-', '/') + ')', r.mode,
+      fmtMin_(end.depart), fmtMin_(end.depart + seg.minutes), seg.minutes,
+      seg.summary, seg.transfers, seg.polyline,
+      '=HYPERLINK("' + seg.link + '","경로")',
+      seg.cached ? seg.calcAt : now, seg.key, seg.fare, '', '', '', '', '',
+    ]);
   });
 
   // 3. 일정 시트에 이동(분)·API 요금 기록 (도착·출발·여유·교통비는 함수가 알아서 갱신)
@@ -225,16 +248,18 @@ function computeSegment_(date, departMin, from, to, cache, errors, quick, pref) 
     // 시간·요금은 수동 값 그대로. 지도에 그릴 선 모양만 구글 경로에서 빌려옴 (300km 넘는 비행 구간 등은 웹앱에서 곡선으로)
     // 메모에 [노선:난카이] 처럼 적으면 그 노선을 지나는 경로 모양을 우선 고름
     const res = Object.assign(base, { minutes: from.manual, summary: '수동 입력 ' + from.manual + '분' });
-    if (from.lat != null && to.lat != null && distanceM_(from.lat, from.lng, to.lat, to.lng) < 300000) {
+    // 메모에 [도로]: 밤버스처럼 먼 구간도 도로 경로 모양으로 (300km 넘어도)
+    const road = /\[도로\]/.test(String(from.memo || ''));
+    if (from.lat != null && to.lat != null && (road || distanceM_(from.lat, from.lng, to.lat, to.lng) < 300000)) {
       const pm = String(from.memo || '').match(/\[노선\s*:\s*([^\]]+)\]/);
-      const prefer = pm ? pm[1].trim() : '';
-      const key = ['shape', from.lat, from.lng, to.lat, to.lng, prefer].join('|');
+      const prefer = road ? '' : (pm ? pm[1].trim() : '');
+      const key = ['shape', from.lat, from.lng, to.lat, to.lng, prefer].join('|') + (road ? '|road' : '');
       const hit = cache[key];
       let shape;
       if (hit && hit.polyline) {
         shape = { poly: hit.polyline, line: String(hit.summary || '').split(' · 모양: ')[1] || '' };
       } else {
-        shape = fetchShape_(date, departMin, from, to, prefer);   // 전에 못 받았으면(빈 값) 다시 시도
+        shape = fetchShape_(date, departMin, from, to, prefer, road);   // 전에 못 받았으면(빈 값) 다시 시도
         Utilities.sleep(CONFIG.SLEEP_MS);
         if (prefer && shape.poly && !shape.matched) errors.push(date + ' ' + from.place + ' → ' + to.place + ': [노선:' + prefer + ']을 지나는 경로를 못 찾아서 다른 경로 모양을 씀');
       }
@@ -478,7 +503,8 @@ function fmtKm_(m) { return m >= 1000 ? (m / 1000).toFixed(1) + 'km' : Math.roun
 
 // 선 모양만 필요할 때: 그 시각(먼 미래면 같은 요일 근사) 대중교통 경로 여러 개 중 고름 → 없으면 자동차
 // prefer: 노선 이름 일부 (예: 난카이, 南海, 라피트, JR). 해당 노선이 들어간 경로를 우선
-function fetchShape_(date, departMin, from, to, prefer) {
+// roadOnly: 대중교통 경로는 건너뛰고 바로 도로 경로 모양 (메모 [도로])
+function fetchShape_(date, departMin, from, to, prefer, roadOnly) {
   const re = prefer ? new RegExp(prefer.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') : null;
   const lineNames = route => {
     const names = [];
@@ -490,7 +516,7 @@ function fetchShape_(date, departMin, from, to, prefer) {
     });
     return names;
   };
-  const when = [proxyDate_(toDate_(date, departMin)), toDate_(date, departMin)];
+  const when = roadOnly ? [] : [proxyDate_(toDate_(date, departMin)), toDate_(date, departMin)];
   for (let i = 0; i < when.length; i++) {
     try {
       const out = Maps.newDirectionFinder().setOrigin(from.lat, from.lng).setDestination(to.lat, to.lng)

@@ -201,6 +201,8 @@ function buildMapBase_() {
   points.forEach(p => { pointIndex[p.date + '#' + p.order] = p; });
 
   const segments = [];
+  const overnight = [];   // 날짜를 넘는 구간 (밤버스 등). 구간 칸 "8→+1" = 이날 8번 → 다음 날 1번
+  const dateList = Array.from(new Set(points.map(p => p.date))).sort();
   const travelers = readSettings_().travelers;
   // 주유패스 날: 탑승 단계마다 패스 노선인지 표시 (웹앱에서 QR·IC카드 구분용)
   const stt = readSettings_();
@@ -216,6 +218,23 @@ function buildMapBase_() {
       const date = v[R.DATE - 1];
       const seg = String(v[R.SEG - 1]).split('→');
       if (!date || seg.length !== 2) return;
+      if (/^\s*\+/.test(seg[1])) {
+        const toDate = dateList[dateList.indexOf(date) + 1];
+        if (!toDate) return;
+        overnight.push({
+          date: date,
+          toDate: toDate,
+          fromOrder: Number(seg[0]),
+          toOrder: Number(String(seg[1]).replace(/[^\d]/g, '')),
+          mode: v[R.MODE - 1],
+          dep: v[R.DEP - 1],
+          arr: v[R.ARR - 1],
+          minutes: Number(v[R.MIN - 1]) || 0,
+          summary: v[R.SUMMARY - 1],
+          polyline: v[R.POLY - 1],
+        });
+        return;
+      }
       const from = pointIndex[date + '#' + Number(seg[0])];
       const to = pointIndex[date + '#' + Number(seg[1])];
       let steps = [];
@@ -255,6 +274,7 @@ function buildMapBase_() {
     dates: dates,
     points: points,
     segments: segments,
+    overnight: overnight,
     rate: rate,
     walk: walk,
     walkWarnKm: CONFIG.WALK_DAY_KM,
