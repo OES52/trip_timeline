@@ -34,7 +34,7 @@
   .dev .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; }
   .dev select { font: inherit; font-size: 14px; border: 1px solid var(--rule); border-radius: 10px; padding: 7px 10px; background: var(--panel); color: var(--ink); }
   .dev .bar { height: 6px; border-radius: 3px; background: var(--rule); overflow: hidden; margin-top: 8px; }
-  .dev .bar i { display: block; height: 100%; width: 0; background: var(--ink); transition: width .2s; }
+  .dev .bar i { display: block; height: 100%; width: 100%; background: var(--ink); transform: scaleX(0); transform-origin: left; transition: transform .2s var(--ease); }
   .dev .ok { color: #13945f !important; }
   .dev .warn-t { color: #c2410c !important; }
 
@@ -170,7 +170,7 @@
   function paintPrep() {
     const b = document.getElementById('prepBar'), m = document.getElementById('prepMsg');
     if (!b || !prep) return;
-    b.style.width = (prep.total ? Math.round(prep.done / prep.total * 100) : 0) + '%';
+    b.style.transform = 'scaleX(' + (prep.total ? prep.done / prep.total : 0).toFixed(3) + ')';
     m.textContent = prep.done + ' / ' + prep.total + (prep.fail ? ' · 실패 ' + prep.fail : '');
   }
   async function runPrep(photos) {
@@ -591,7 +591,7 @@
     }
     const all = text + (url ? '\n' + url : '');
     try { await navigator.clipboard.writeText(all); showToast('복사함. 붙여넣기로 보내기'); }
-    catch (e) { prompt('복사해서 보내기', all); }
+    catch (e) { showText('복사해서 보내기', all); }
   }
   function mapsUrl(p) {
     const pl = typeof placeOf === 'function' ? placeOf(p) : null;
@@ -733,7 +733,7 @@
     .tabbar { display: grid; grid-template-columns: repeat(4, 1fr); order: 99; flex: none; position: relative; z-index: 600;
       background: color-mix(in srgb, var(--panel) 94%, transparent); border-top: 1px solid var(--rule);
       padding: 4px 6px calc(4px + env(safe-area-inset-bottom, 0px)); }
-    .tabbar button { display: flex; flex-direction: column; align-items: center; gap: 2px; font: inherit; font-size: 11px; font-weight: 500; min-height: 48px; justify-content: center;
+    .tabbar button { display: flex; flex-direction: column; align-items: center; gap: 2px; font: inherit; font-size: 12px; font-weight: 500; min-height: 48px; justify-content: center;
       color: var(--muted); background: none; border: 0; padding: 6px 0 4px; border-radius: 10px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
     .tabbar button svg { transition: transform .18s var(--ease); }
     .tabbar button[aria-current="page"] { color: var(--ink); font-weight: 700; }

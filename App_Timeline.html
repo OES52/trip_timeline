@@ -199,23 +199,23 @@
               '<div class="act-more" hidden>' +
                 '<button class="visit" type="button" data-vk="' + vk + '" aria-pressed="' + isVisited(p) + '">' + (isVisited(p) ? '✓ 방문함' : '방문 체크') + '</button>' +
                 '<button class="spend-btn' + (sp ? ' has' : '') + '" type="button" data-vk="' + vk + '">' + (sp ? '지출 ' + YEN(sp.amount) : '지출 입력') + '</button>' +
-                '<button class="arr-btn' + (arrivedAt(p) ? ' has' : '') + '" type="button" data-vk="' + vk + '">' + (arrivedAt(p) ? '도착 ' + esc(arrivedAt(p)) : '도착') + '</button>' +
-                '<button class="edit-btn" type="button" data-vk="' + vk + '">조정</button>' +
-                (pl ? '<button class="linkbtn" type="button" data-place="' + esc(pl.key) + '">도감</button>' : '') +
+                '<button class="arr-btn' + (arrivedAt(p) ? ' has' : '') + '" type="button" data-vk="' + vk + '">' + (arrivedAt(p) ? '도착 ' + esc(arrivedAt(p)) : '도착 기록') + '</button>' +
+                '<button class="edit-btn" type="button" data-vk="' + vk + '">일정 조정</button>' +
+                (pl ? '<button class="linkbtn" type="button" data-place="' + esc(pl.key) + '">도감 보기</button>' : '') +
               '</div>' +
             '</div>' +
             '<div class="arr-form" data-vk="' + vk + '">' +
-              '<input type="time" value="' + esc(arrivedAt(p) && toMin(arrivedAt(p)) < 1440 ? arrivedAt(p).padStart(5, '0') : '') + '" aria-label="실제 도착 시각">' +
+              '<label class="fl"><span>실제 도착 시각</span><input type="time" value="' + esc(arrivedAt(p) && toMin(arrivedAt(p)) < 1440 ? arrivedAt(p).padStart(5, '0') : '') + '"></label>' +
               '<button class="save" type="button">저장</button><button class="del" type="button">지우기</button>' +
             '</div>' +
             '<div class="edit-row" data-vk="' + vk + '" data-stay="' + (p.stay || 0) + '" data-name="' + esc(pname(p)) + '">' +
               '<button type="button" data-d="-15">체류 −15분</button><button type="button" data-d="15">체류 +15분</button>' +
               '<button type="button" class="danger" data-skip="1">건너뛰기</button>' +
-              '<span class="hint">시트에 바로 반영. 모든 사람 일정이 바뀜</span>' +
+              '<span class="hint">시트에 바로 반영되고 모든 사람 일정이 바뀜. 건너뛰면 앞뒤 장소를 바로 잇고, 토스트의 되돌리기로 복구</span>' +
             '</div>' +
             '<div class="spend-form" data-vk="' + vk + '" data-place="' + esc(p.place) + '">' +
-              '<input type="number" inputmode="numeric" min="0" step="1" placeholder="¥ 금액" aria-label="실제 지출 엔화" value="' + (sp ? sp.amount : '') + '">' +
-              '<input class="memo-in" type="text" placeholder="메모 (선택)" aria-label="지출 메모" value="' + (sp ? esc(sp.memo) : '') + '">' +
+              '<label class="fl"><span>쓴 돈 (엔)</span><input type="number" inputmode="numeric" min="0" step="1" placeholder="예: 1200" value="' + (sp ? sp.amount : '') + '"></label>' +
+              '<label class="fl"><span>메모 (선택)</span><input class="memo-in" type="text" value="' + (sp ? esc(sp.memo) : '') + '"></label>' +
               '<button class="save" type="button">저장</button>' +
               (sp ? '<button class="del" type="button">삭제</button>' : '') +
             '</div>' +
@@ -336,7 +336,6 @@
         editPlan(vk, 'stay', d, name + ' 체류 ' + (d > 0 ? '+' : '−') + Math.abs(d) + '분', () => editPlan(vk, 'stay', -d, '체류 되돌림'));
       }));
       r.querySelector('[data-skip]').addEventListener('click', () => {
-        if (!confirm(name + ' 을(를) 건너뛸까? 앞뒤 장소가 바로 이어지게 경로를 다시 계산함 (시트에서도 빠짐)')) return;
         editPlan(vk, 'skip', 0, name + ' 건너뜀', () => editPlan(vk, 'unskip', 0, name + ' 되돌림'));
       });
     });

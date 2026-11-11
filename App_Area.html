@@ -8,7 +8,7 @@
   /* 도시 탭 */
   .area-cities { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; }
   .area-cities .filter { display: inline-flex; align-items: baseline; gap: 5px; padding: 5px 14px; font-weight: 500; }
-  .area-cities .filter small { font-size: 11px; opacity: .6; }
+  .area-cities .filter small { font-size: 12px; opacity: .6; }
 
   /* 구역 카드 */
   .area-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
@@ -41,7 +41,7 @@
   .type-dot { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); white-space: nowrap; }
   .type-dot i { width: 8px; height: 8px; border-radius: 50%; background: var(--t); }
   .day-chips { display: inline-flex; gap: 4px; flex-wrap: wrap; }
-  .day-chip { font-size: 11px; font-weight: 700; color: #fff; border-radius: 10px; padding: 1px 8px; line-height: 17px; }
+  .day-chip { font-size: 12px; font-weight: 700; color: #fff; border-radius: 10px; padding: 1px 8px; line-height: 17px; }
   .acard .in .day-chips { margin-left: auto; }
 
   /* 구역 페이지 머리 (큰 모자이크 + 제목) */
@@ -76,8 +76,8 @@
   .aplace .chips { margin-top: 5px; }
   .aplace .warn { margin-top: 5px; }
   .aplace .nav-btn.sm { margin-top: 6px; }
-  .tag-plan { display: inline-block; font-size: 11px; font-weight: 700; color: #fff; border-radius: 8px; padding: 0 7px; margin-left: 6px; vertical-align: 2px; line-height: 17px; }
-  .tag-rec { display: inline-block; font-size: 11px; font-weight: 700; color: var(--ok); border: 1px solid var(--ok); border-radius: 8px; padding: 0 7px; margin-left: 6px; vertical-align: 2px; line-height: 15px; }
+  .tag-plan { display: inline-block; font-size: 12px; font-weight: 700; color: #fff; border-radius: 8px; padding: 0 7px; margin-left: 6px; vertical-align: 2px; line-height: 17px; }
+  .tag-rec { display: inline-block; font-size: 12px; font-weight: 700; color: var(--ok); border: 1px solid var(--ok); border-radius: 8px; padding: 0 7px; margin-left: 6px; vertical-align: 2px; line-height: 15px; }
   .tag-done { color: var(--ok); font-size: 12px; font-weight: 700; margin-left: 4px; }
   @media (max-width: 640px) {
     .area-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -112,7 +112,7 @@
     if (!DATA) return;
     const all = guidePlaces();
     if (!all.length) {
-      box.innerHTML = '<p class="empty"><strong>가이드에 보여줄 장소가 없음.</strong><br>시트 장소 탭에 도시·구역을 채우고 새로고침.</p>';
+      box.innerHTML = '<p class="empty"><strong>가이드에 보여줄 장소가 없음</strong><br>시트 장소 탭에 도시·구역을 채우고 새로고침</p><p class="empty"><button type="button" class="btn" data-reload>새로고침</button></p>';
       return;
     }
     const first = firstSeen();

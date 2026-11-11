@@ -53,7 +53,7 @@
     if (!DATA.places || !DATA.places.length) {
       document.getElementById('dexStats').innerHTML = '';
       listEl.innerHTML = '';
-      page.innerHTML = '<p class="empty"><strong>장소 도감이 비어 있음.</strong><br>시트에서 여행 도구 → 장소 가이드 갱신을 실행한 뒤 새로고침.</p>';
+      page.innerHTML = '<p class="empty"><strong>장소 도감이 비어 있음</strong><br>시트에서 여행 도구 → 장소 가이드 갱신을 실행한 뒤 새로고침</p><p class="empty"><button type="button" class="btn" data-reload>새로고침</button></p>';
       return;
     }
     const all = orderedPlaces();
@@ -139,8 +139,8 @@
     const maxCost = Math.max(1, ...DATA.places.map(x => x.costMax || x.costMin || 0));
     const maxStay = Math.max(1, ...DATA.places.map(x => appearances(x.key).reduce((a, y) => a + (y.stay || 0), 0)));
     const cost = p.costMax != null ? p.costMax : p.costMin;
-    const bar = (label, ratio, val) => '<div class="statrow"><span>' + label + '</span><span class="bar"><i style="width:' +
-      Math.round(Math.max(0, Math.min(1, ratio)) * 100) + '%"></i></span><span class="val">' + val + '</span></div>';
+    const bar = (label, ratio, val) => '<div class="statrow"><span>' + label + '</span><span class="bar"><i style="transform:scaleX(' +
+      Math.max(0, Math.min(1, ratio)).toFixed(3) + ')"></i></span><span class="val">' + val + '</span></div>';
     const hm = m => (m >= 60 ? Math.floor(m / 60) + '시간 ' : '') + (m % 60 ? (m % 60) + '분' : (m >= 60 ? '' : '0분'));
 
     const info = [['영업시간', p.hours], ['휴무', p.closed], ['메모', p.memo]].filter(r => r[1]);

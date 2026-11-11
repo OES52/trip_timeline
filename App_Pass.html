@@ -163,9 +163,9 @@
   }
 
   let toastTimer = null;
-  function showToast(msg, undo) {
+  function showToast(msg, undo, label) {
     const el = document.getElementById('toast');
-    el.innerHTML = '<span>' + esc(msg) + '</span>' + (undo ? '<button type="button">되돌리기</button>' : '');
+    el.innerHTML = '<span>' + esc(msg) + '</span>' + (undo ? '<button type="button">' + esc(label || '되돌리기') + '</button>' : '');
     el.classList.add('show');
     if (undo) el.querySelector('button').onclick = () => { el.classList.remove('show'); clearTimeout(toastTimer); undo(); };
     clearTimeout(toastTimer);
@@ -179,10 +179,39 @@
       actions.map((a, i) => '<button type="button" data-i="' + i + '" class="' + (a.danger ? 'danger' : '') + '">' + esc(a.label) + '</button>').join('') +
       '<button type="button" class="cancel">취소</button>';
     wrap.classList.add('open');
-    const close = () => wrap.classList.remove('open');
-    sh.querySelectorAll('[data-i]').forEach(b => b.onclick = () => { close(); actions[Number(b.dataset.i)].fn(); });
-    sh.querySelector('.cancel').onclick = close;
+    sheetFocus(sh, wrap);
+    sh.querySelectorAll('[data-i]').forEach(b => b.onclick = () => { wrap._close(); actions[Number(b.dataset.i)].fn(); });
+  }
+  // 시트 공통: 첫 버튼에 포커스, Esc·바깥 누르면 닫고 원래 버튼으로 포커스 복귀, Tab은 시트 안에서만
+  function sheetFocus(sh, wrap) {
+    const back = document.activeElement;
+    const key = e => { if (e.key === 'Escape') { e.preventDefault(); close(); } else if (e.key === 'Tab') trapTab(e, sh); };
+    const close = () => {
+      wrap.classList.remove('open');
+      document.removeEventListener('keydown', key, true);
+      wrap.onclick = null;
+      if (back && back.focus) back.focus();
+    };
+    wrap._close = close;
+    document.addEventListener('keydown', key, true);
+    const c = sh.querySelector('.cancel');
+    if (c) c.onclick = close;
     wrap.onclick = e => { if (e.target === wrap) close(); };
+    setTimeout(() => { const f = sh.querySelector('button, textarea'); if (f) f.focus(); }, 50);
+  }
+  // 복사가 안 될 때: 글을 시트에 띄워서 길게 눌러 복사
+  function showText(title, text) {
+    const wrap = document.getElementById('sheetWrap');
+    const sh = document.getElementById('sheet');
+    sh.innerHTML = '<h4 id="txtT">' + esc(title) + '</h4>' +
+      '<label class="ask-l" for="txtBox">길게 눌러 전체 선택 후 복사</label>' +
+      '<textarea id="txtBox" class="ask-in" rows="5" readonly>' + esc(text) + '</textarea>' +
+      '<button type="button" class="cancel">닫기</button>';
+    sh.setAttribute('aria-labelledby', 'txtT');
+    wrap.classList.add('open');
+    sheetFocus(sh, wrap);
+    const t = sh.querySelector('textarea');
+    setTimeout(() => t.select(), 60);
   }
 
   /* ── 전광판 플랩: 글자마다 고정 칸, 바뀐 칸만 넘어감 ── */

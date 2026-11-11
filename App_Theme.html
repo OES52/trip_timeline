@@ -788,7 +788,7 @@
       '<label class="chk" style="margin-top:6px"><input type="radio" name="mapEngine" value="leaflet"' + (eng === 'leaflet' ? ' checked' : '') + '><span>예전 지도 (가볍고 단순, 느린 폰·문제 있을 때)</span></label></div>');
     box.querySelectorAll('input[name="mapEngine"]').forEach(r => r.onchange = () => {
       try { localStorage.setItem('trip-map-engine', r.value); } catch (e) { /* 무시 */ }
-      if (confirm('지도 방식을 바꾸려면 새로고침해야 함. 지금 할까?')) location.reload();
+      showToast('지도 방식 바뀜. 새로고침하면 적용', () => location.reload(), '지금 새로고침');
     });
     box.querySelectorAll('input[name="mapLabel"]').forEach(r => r.onchange = () => {
       try { localStorage.setItem(LABEL_KEY, r.value); } catch (e) { /* 무시 */ }

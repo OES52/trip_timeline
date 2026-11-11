@@ -9,12 +9,12 @@
   .taxi-pick { display: inline-flex; align-items: center; gap: 5px; margin-top: 4px; font-weight: 700; cursor: pointer; }
   .taxi-pick input { width: 16px; height: 16px; accent-color: var(--car); }
   /* 주유패스 표시 */
-  .pass-chip { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; font-weight: 700; line-height: 18px;
+  .pass-chip { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; font-weight: 700; line-height: 18px;
     padding: 0 8px; border-radius: 9px; color: #fff; background: #13945f; white-space: nowrap; vertical-align: 1px; }
   .pass-chip.some { color: #9a5b00; background: #fff1cc; }
   .pass-chip s { opacity: .75; font-weight: 500; }
   /* 단계별: 이 노선은 패스(QR)로 / IC카드로 */
-  .step-pass, .step-card { display: inline-block; font-size: 11px; font-weight: 700; line-height: 17px; padding: 0 7px;
+  .step-pass, .step-card { display: inline-block; font-size: 12px; font-weight: 700; line-height: 17px; padding: 0 7px;
     border-radius: 9px; white-space: nowrap; vertical-align: 1px; }
   .step-pass { color: #fff; background: #13945f; }
   .step-card { color: var(--car); background: color-mix(in srgb, var(--car) 14%, var(--panel)); }
@@ -347,6 +347,11 @@
   }
 
   document.getElementById('reload').addEventListener('click', load);
+  document.addEventListener('click', e => {
+    const b = e.target.closest && e.target.closest('[data-reload]');
+    if (!b) return;
+    if (b.closest('#boot')) location.reload(); else load();
+  });
   document.getElementById('viewPlan').addEventListener('click', () => setView('plan'));
   document.getElementById('viewGuide').addEventListener('click', () => setView('guide'));
   document.getElementById('viewTl').addEventListener('click', () => setView('tl'));
@@ -458,19 +463,73 @@
   function askAccess() {
     if (accessAsk) return accessAsk;
     accessAsk = (async () => {
-      for (let i = 0; i < 3; i++) {
-        const code = prompt(i ? '접속 코드가 틀림. 다시 입력' : '여행 일정 접속 코드 입력');
-        if (code == null || code === '') return false;
+      let err = '';
+      for (let i = 0; i < 5; i++) {
+        const code = await askText({ title: '여행 일정 접속 코드', label: '접속 코드', type: 'password', ok: '들어가기', error: err });
+        if (code == null) return false;
         try {
           const r = await fetch(API_URL + '/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: code }), credentials: 'same-origin' });
           if (r.ok) return true;
-          if (r.status === 429) { alert('시도가 너무 많음. 잠시 뒤 다시'); return false; }
-        } catch (e) { return false; }
+          err = r.status === 429 ? '시도가 너무 많아 잠깐 막힘. 1분쯤 뒤 다시 입력' : '코드가 맞지 않음. 다시 입력';
+        } catch (e) { err = '서버에 연결 안 됨. 네트워크 확인 후 다시 입력'; }
       }
       return false;
     })().finally(() => { setTimeout(() => { accessAsk = null; }, 0); });
     return accessAsk;
   }
+
+  // 글자 하나 묻는 시트 (prompt 대신). 취소하면 null
+  //  o: { title, label, type, inputmode, ok(버튼 글자), error(처음부터 띄울 오류) }
+  function askText(o) {
+    return new Promise(resolve => {
+      const wrap = document.getElementById('sheetWrap');
+      const sh = document.getElementById('sheet');
+      const back = document.activeElement;
+      sh.innerHTML = '<h4 id="askT">' + escH(o.title) + '</h4>' +
+        '<label class="ask-l" for="askIn">' + escH(o.label) + '</label>' +
+        '<input id="askIn" class="ask-in" type="' + (o.type || 'text') + '"' + (o.inputmode ? ' inputmode="' + o.inputmode + '"' : '') +
+        ' autocomplete="off" aria-describedby="askErr">' +
+        '<p class="ask-err" id="askErr" role="alert">' + escH(o.error || '') + '</p>' +
+        '<button type="button" class="ask-ok">' + escH(o.ok) + '</button>' +
+        '<button type="button" class="cancel">취소</button>';
+      sh.setAttribute('aria-labelledby', 'askT');
+      wrap.classList.add('open', 'ask');
+      const inp = sh.querySelector('#askIn');
+      const errEl = sh.querySelector('#askErr');
+      const done = v => {
+        wrap.classList.remove('open', 'ask');
+        document.removeEventListener('keydown', key, true);
+        wrap.onclick = null;
+        if (back && back.focus) back.focus();
+        resolve(v);
+      };
+      const submit = () => {
+        const v = inp.value.trim();
+        if (!v) { errEl.textContent = o.label + '을(를) 입력해야 넘어감'; inp.focus(); return; }
+        done(v);
+      };
+      const key = e => {
+        if (e.key === 'Escape') { e.preventDefault(); done(null); }
+        else if (e.key === 'Enter' && e.target === inp) { e.preventDefault(); submit(); }
+        else if (e.key === 'Tab') trapTab(e, sh);
+      };
+      document.addEventListener('keydown', key, true);
+      inp.addEventListener('input', () => { errEl.textContent = ''; });
+      sh.querySelector('.ask-ok').onclick = submit;
+      sh.querySelector('.cancel').onclick = () => done(null);
+      wrap.onclick = e => { if (e.target === wrap) done(null); };
+      setTimeout(() => inp.focus(), 50);
+    });
+  }
+  // 시트 안에서만 Tab이 돌게
+  function trapTab(e, box) {
+    const f = Array.from(box.querySelectorAll('button, input, select, textarea, [href], [tabindex]:not([tabindex="-1"])')).filter(x => !x.disabled && x.offsetParent);
+    if (!f.length) return;
+    const first = f[0], last = f[f.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  }
+  function escH(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]); }
 
   // POST {fn, args} → {ok, result} / {ok:false, error}
   //  API_URL이 /api 처럼 상대 경로면 홈랩 프록시: 데이터는 GET /api/data (프록시 캐시), 나머지는 POST /api/call
@@ -581,12 +640,17 @@
     const u = users().find(x => x.id === id);
     if (!u) return;
     if (u.hasPin && !getPin(id)) {
-      const v = prompt(id + ' PIN 입력');
-      if (v == null || v === '') return;
-      RUN()
-        .withSuccessHandler(() => { setPin(id, v); finishChoose(id); })
-        .withFailureHandler(() => showToast('PIN이 틀림'))
-        .checkPin(id, v);
+      (async () => {
+        let err = '';
+        for (;;) {
+          const v = await askText({ title: id + ' PIN', label: 'PIN', type: 'password', inputmode: 'numeric', ok: id + '(으)로 들어가기', error: err });
+          if (v == null) return;
+          const res = await new Promise(r => RUN().withSuccessHandler(() => r(null)).withFailureHandler(e => r(e || 'x')).checkPin(id, v));
+          if (res == null) { setPin(id, v); finishChoose(id); return; }
+          const m = res && res.message ? res.message : String(res);
+          err = /PIN/.test(m) || res === 'x' ? 'PIN이 맞지 않음. 다시 입력' : '확인 못 함 (' + m + '). 다시 시도';
+        }
+      })();
       return;
     }
     finishChoose(id);
@@ -717,8 +781,13 @@
         if (DATA) {
           setStatus('연결 안 됨. 저장된 데이터로 보는 중' + (cacheSavedAt ? ' (' + cacheSavedAt + ')' : ''), true);
         } else {
-          document.getElementById('list').innerHTML =
-            '<p class="empty"><strong>데이터를 못 불러옴.</strong><br>' + esc(err.message || String(err)) + '</p>';
+          const msg = err && err.message ? err.message : String(err || '');
+          const fail = '<div class="boot-err" role="alert"><strong>일정을 못 불러옴</strong>' +
+            '<span>' + escH(navigator.onLine === false ? '인터넷 연결이 끊겨 있음. 연결되면 다시 불러오기' : msg) + '</span>' +
+            '<button type="button" class="btn primary" data-reload>다시 불러오기</button></div>';
+          const boot = document.getElementById('boot');
+          if (boot && !boot.classList.contains('hide')) boot.innerHTML = fail;
+          document.getElementById('list').innerHTML = fail;
         }
       })
       .getMapData();
@@ -759,7 +828,7 @@
   function errorBox(title, e) {
     const stack = String(e && e.stack || '').split('\n').slice(0, 3).join('\n');
     return '<div class="empty"><strong>' + esc(title) + '</strong><br>' + esc(e && e.message || e) +
-      '<pre style="white-space:pre-wrap;font-size:11px;color:var(--muted);margin-top:8px">' + esc(stack) + '</pre>' +
+      '<pre style="white-space:pre-wrap;font-size: 12px;color:var(--muted);margin-top:8px">' + esc(stack) + '</pre>' +
       '<span style="font-size:12px">이 화면 캡처해서 보내주면 바로 고칠 수 있음</span></div>';
   }
 
@@ -783,7 +852,7 @@
 
     const list = document.getElementById('list');
     if (!DATA.points.length) {
-      list.innerHTML = '<p class="empty"><strong>표시할 일정이 없음.</strong><br>시트의 "일정"에 장소를 넣고 여행 도구 → 경로 계산을 실행한 뒤 새로고침.</p>';
+      list.innerHTML = '<p class="empty"><strong>표시할 일정이 없음</strong><br>시트의 "일정"에 장소를 넣고 여행 도구 → 경로 계산을 실행한 뒤 새로고침</p><p class="empty"><button type="button" class="btn" data-reload>새로고침</button></p>';
       return;
     }
 

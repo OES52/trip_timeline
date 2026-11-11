@@ -48,14 +48,14 @@
     background: var(--uc); font-family: "Galmuri11", "DotGothic16", monospace; }
   .who-card b { display: block; font-size: 18px; margin-top: 12px; }
   .who-card .rng { display: block; font-size: 13px; color: var(--muted); margin-top: 2px; }
-  .who-card .tag { display: inline-block; font-size: 11px; font-weight: 700; margin-top: 10px; padding: 1px 8px; border-radius: 10px;
+  .who-card .tag { display: inline-block; font-size: 12px; font-weight: 700; margin-top: 10px; padding: 1px 8px; border-radius: 10px;
     color: var(--uc); background: color-mix(in srgb, var(--uc) 14%, var(--panel)); }
-  .who-card .now { position: absolute; top: 14px; right: 14px; font-size: 11px; color: var(--uc); font-weight: 700; }
+  .who-card .now { position: absolute; top: 14px; right: 14px; font-size: 12px; color: var(--uc); font-weight: 700; }
   .who-chip {
     display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px 0 4px; border-radius: 16px; cursor: pointer;
     font: inherit; font-size: 13px; font-weight: 500; color: var(--ink); background: var(--panel); border: 1px solid var(--rule);
   }
-  .who-chip .avatar { width: 24px; height: 24px; font-size: 11px; }
+  .who-chip .avatar { width: 24px; height: 24px; font-size: 12px; }
   @media (max-width: 640px) { .who-chip .nm { display: none; } .who-chip { padding: 0 4px; } }
 
   /* ───────── 타임라인 시간 비례 ───────── */
@@ -84,7 +84,7 @@
   .arr-form button, .edit-row button { font: inherit; font-size: 13px; border-radius: 8px; padding: 5px 12px; cursor: pointer; border: 1px solid var(--rule); background: var(--panel); color: var(--ink); }
   .arr-form button.save { background: var(--ink); color: var(--panel); border-color: var(--ink); }
   .edit-row button.danger { color: var(--late); border-color: var(--late); }
-  .edit-row .hint { font-size: 11px; color: var(--muted); width: 100%; }
+  .edit-row .hint { font-size: 12px; color: var(--muted); width: 100%; }
   body.guest .arr-btn, body.guest .arr-form, body.noedit .edit-btn, body.noedit .edit-row { display: none !important; }
   /* 카드 버튼이 많아져서 줄바꿈되면 글자 단위로 깨지지 않게 */
   .tcard .actions { flex-wrap: wrap; gap: 6px 8px; }
@@ -123,7 +123,7 @@
   @keyframes flipc { 0% { transform: scaleY(.15); } 100% { transform: none; } }
 
   /* ───────── 금박 도장 ───────── */
-  .rare-tag { display: inline-block; font-size: 11px; font-weight: 700; color: #7a5a00; background: linear-gradient(90deg, #f3d77a, #fff1bf, #e2b84a); border-radius: 10px; padding: 1px 8px; }
+  .rare-tag { display: inline-block; font-size: 12px; font-weight: 700; color: #7a5a00; background: linear-gradient(90deg, #f3d77a, #fff1bf, #e2b84a); border-radius: 10px; padding: 1px 8px; }
   /* 금박 칸: 금빛 바탕·테두리 + 대각선으로 지나가는 광택 */
   .slot.rare {
     background: radial-gradient(circle at 30% 25%, rgba(255, 240, 180, .35), rgba(217, 169, 48, .08) 70%);
@@ -183,9 +183,9 @@
     width: 100%; height: 100%; border-radius: 50%; object-fit: cover; object-position: center; display: block;
   }
   .pin-photo span {
-    position: absolute; right: -6px; bottom: -4px; min-width: 18px; height: 18px; padding: 0 4px; box-sizing: border-box;
-    border-radius: 9px; background: var(--pin, #1d2633); color: #fff; border: 2px solid #fff;
-    font: 700 10px/14px var(--sans-font); text-align: center; white-space: nowrap;
+    position: absolute; right: -6px; bottom: -4px; min-width: 20px; height: 20px; padding: 0 4px; box-sizing: border-box;
+    border-radius: 10px; background: var(--pin, #1d2633); color: #fff; border: 2px solid #fff;
+    font: 700 12px/15px var(--sans-font); text-align: center; white-space: nowrap;
   }
   .pop-photo { display: block; width: 200px; max-width: 100%; height: 110px; object-fit: cover; border-radius: 8px; margin-bottom: 6px; }
 
@@ -201,7 +201,7 @@
   /* ───────── 도보 거리 라벨 ───────── */
   .walk-label {
     display: inline-block; transform: translate(-50%, -50%); white-space: nowrap;
-    font: 700 11px/1 var(--sans-font); color: var(--walk);
+    font: 700 12px/1 var(--sans-font); color: var(--walk);
     background: var(--panel); border: 1.5px solid var(--walk); border-radius: 10px; padding: 3px 7px;
     box-shadow: 0 1px 3px rgba(29, 38, 51, .3);
   }
@@ -277,7 +277,7 @@
   .sleg .s-head .mi { width: 15px; height: 15px; }
   .sleg .s-sub { font-size: 12px; color: var(--muted); margin-top: 2px; line-height: 1.45; overflow-wrap: anywhere; }
   .sleg .ln {
-    font-size: 11px; font-weight: 700; color: #fff; background: var(--c);
+    font-size: 12px; font-weight: 700; color: #fff; background: var(--c);
     border-radius: 4px; padding: 0 6px; line-height: 18px;
   }
   .sleg.active .s-head { text-decoration: underline; text-underline-offset: 3px; }
@@ -290,7 +290,7 @@
     width: 14px; height: 14px; border-radius: 50%; background: var(--panel); border: 3px solid var(--c2);
   }
   .sst .time { align-self: center; font-size: 13px; font-weight: 700; }
-  .sst .time small { display: block; font-size: 11px; font-weight: 400; color: var(--muted); }
+  .sst .time small { display: block; font-size: 12px; font-weight: 400; color: var(--muted); }
   .sst .body { align-self: center; padding: 4px 0; font-size: 13px; min-width: 0; }
   .sst .body .k { margin-left: 6px; font-size: 12px; color: var(--muted); }
 
@@ -301,7 +301,7 @@
   .tstep.mode-transit .mv-head { color: var(--ink); }
   .tstep .mv-head .mi { width: 15px; height: 15px; }
   .tstep .ln {
-    font-size: 11px; font-weight: 700; color: #fff; background: var(--c);
+    font-size: 12px; font-weight: 700; color: #fff; background: var(--c);
     border-radius: 4px; padding: 0 6px; line-height: 18px;
   }
   .tstep .mv-time { overflow-wrap: anywhere; }
@@ -316,7 +316,7 @@
     width: 14px; height: 14px; border-radius: 50%; background: var(--panel); border: 3px solid var(--c2);
   }
   .tst .t { font-size: 12px; font-weight: 700; text-align: right; }
-  .tst .t small { display: block; font-size: 11px; font-weight: 400; color: var(--muted); }
+  .tst .t small { display: block; font-size: 12px; font-weight: 400; color: var(--muted); }
   .tst .st-b { padding: 3px 0 3px 8px; font-size: 13px; min-width: 0; }
   .tst .st-b .k { margin-left: 6px; font-size: 12px; color: var(--muted); }
 
