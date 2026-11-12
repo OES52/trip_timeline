@@ -607,16 +607,16 @@
   function renderWho() {
     const md = d => Number(d.slice(5, 7)) + '/' + Number(d.slice(8, 10));
     const box = document.getElementById('whoInner');
-    box.innerHTML = '<h2>누구로 볼까?</h2><p class="lead">고른 사람에 맞춰 일정이 보이고, 도장은 사람마다 따로 모임</p>' +
+    box.innerHTML = '<h2>누구 카드로 탈까?</h2><p class="lead">고른 사람에 맞춰 일정이 보이고, 도장은 카드마다 따로 모임</p>' +
       '<div class="who-grid">' + users().map(u => {
         const cnt = RAW && RAW.visitedBy && RAW.visitedBy[u.id] ? Object.keys(RAW.visitedBy[u.id]).length : 0;
         return '<button class="who-card" type="button" data-u="' + esc(u.id) + '" style="--uc:' + userColor(u.id) + '"' +
           (USER && USER.id === u.id ? ' aria-current="true"' : '') + '>' +
-          (USER && USER.id === u.id ? '<span class="now">지금</span>' : '') +
-          '<span class="avatar">' + esc(u.id[0]) + '</span><b>' + esc(u.id) + '</b>' +
-          '<span class="rng">' + md(u.from) + ' – ' + md(u.to) + '</span>' +
-          '<span class="tag">' + (u.canStamp ? '도장 ' + cnt + '개' : '보기 전용') + '</span>' +
-          (u.hasPin ? '<span class="tag" style="margin-left:4px">🔒 PIN</span>' : '') + '</button>';
+          '<span class="ic-top"><span class="ic-mark" aria-hidden="true">IC</span>' + (USER && USER.id === u.id ? '<span class="now">지금 쓰는 카드</span>' : '') + '</span>' +
+          '<span class="avatar" aria-hidden="true">' + esc(u.id[0]) + '</span><b>' + esc(u.id) + '</b>' +
+          '<span class="ic-foot"><span class="rng">' + md(u.from) + ' – ' + md(u.to) + '</span>' +
+          '<span class="tags"><span class="tag">' + (u.canStamp ? '도장 ' + cnt + '개' : '보기 전용') + '</span>' +
+          (u.hasPin ? '<span class="tag">🔒 PIN</span>' : '') + '</span></span></button>';
       }).join('') + '</div>';
     box.querySelectorAll('[data-u]').forEach(b => b.addEventListener('click', () => chooseUser(b.dataset.u)));
   }

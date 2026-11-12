@@ -361,6 +361,7 @@
 
   // 지도·타임라인 화면 아래 "다음 장소" 칩
   function paintChip() {
+    if (window.paintTicker) { hideBar('nextChip'); window.paintTicker(); return; }   // 머리줄 전광 띠가 대신함
     const show = DATA && USER && (currentView === 'plan' || currentView === 'tl');
     const t = show ? nextStopNow() : null;
     if (!t || t.lat == null || t.date !== tokyoNow().date) { hideBar('nextChip'); return; }

@@ -147,7 +147,7 @@
     const areas = Object.keys(byArea).sort((a, b) => (areaRank(a) - areaRank(b)) || a.localeCompare(b));
 
     let html = '<div class="area-cities">' + cities.map(c =>
-      '<button class="filter" type="button" data-city="' + esc(c) + '" aria-pressed="' + (c === areaCity) + '">' + esc(c) +
+      '<button class="filter" type="button" data-city="' + esc(c) + '" aria-pressed="' + (c === areaCity) + '" style="--cc:' + ((typeof cityColor === 'function' && cityColor(c)) || 'var(--ink)') + '">' + esc(c) +
       '<small>' + all.filter(p => cityOf(p) === c).length + '</small></button>').join('') + '</div>';
     html += '<div class="area-grid">' + areas.map(a => {
       const list = byArea[a].slice().sort((x, y) => placeRank(x, first) - placeRank(y, first));

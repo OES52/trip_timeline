@@ -139,6 +139,7 @@
     const range = tripRange();
     const now = new Date();
     document.body.classList.toggle('trip-live', !!range && now >= range.start && now <= range.end);
+    if (window.paintTicker) window.paintTicker();
   }
 
   /* ── 홈: 여행 전 탑승권 ── */
@@ -247,6 +248,61 @@
   daysEl.parentNode.insertBefore(navrow, daysEl);
   navrow.appendChild(subnav);
   navrow.appendChild(daysEl);
+
+  // 전광 띠: 여행 중엔 지도·타임라인 위에 지금·다음 일정이 한 줄로 계속 보임 (홈 전광판의 축소판). 누르면 홈
+  const ticker = document.createElement('button');
+  ticker.type = 'button';
+  ticker.className = 'ticker';
+  ticker.hidden = true;
+  navrow.parentNode.insertBefore(ticker, navrow);
+  let tickerTarget = null;   // 다음 장소 (누르면 길찾기. 좌표가 없으면 홈 전광판)
+  ticker.addEventListener('click', () => {
+    if (tickerTarget && tickerTarget.lat != null && typeof navUrl === 'function') window.open(navUrl(tickerTarget.lat, tickerTarget.lng), '_blank', 'noopener');
+    else setView('home');
+  });
+  function paintTicker() {
+    const range = DATA ? tripRange() : null;
+    const now = new Date();
+    if (!range || now < range.start || now > range.end) { ticker.hidden = true; return; }
+    const nt = tokyoNow();
+    const all = sortedPoints();
+    let cur = null, next = null;
+    all.forEach(p => {
+      const a = toMin(p.arrive), d = toMin(p.depart);
+      if (p.date === nt.date && a != null && d != null && a <= nt.min && nt.min <= d) cur = p;
+      if (!next && (p.date > nt.date || (p.date === nt.date && a != null && a > nt.min))) next = p;
+    });
+    if (!cur && !next) { ticker.hidden = true; return; }
+    const mins = r => r >= 60 ? Math.floor(r / 60) + '시간 ' + (r % 60) + '분' : r + '분';
+    // 줄이 둘(다음·지금)이면 역 전광판처럼 번갈아 보여줌. 다음 장소가 먼저
+    const lines = [];
+    if (next) {
+      const pr = next.date === nt.date ? predictedMin(next) : null;
+      const at = pr != null ? pr : toMin(next.arrive);
+      let h = '<span class="k next">次</span><span class="am">' + esc(next.date === nt.date ? (pr != null ? hhmm(pr) : next.arrive || '') : dayLabel(next.date) + ' ' + (next.arrive || '')) + '</span>' +
+        '<span class="tx">' + esc(pname(next)) + '</span>' +
+        (next.date === nt.date && at != null && at > nt.min ? '<span class="g">' + mins(at - nt.min) + ' 뒤</span>' : '');
+      // 내 위치를 알면 거리·도보 시간도 (예전 화면 아래 '다음 장소' 칩이 하던 일)
+      if (typeof myPos !== 'undefined' && myPos && next.lat != null) {
+        const dist = haversine(myPos, [next.lat, next.lng]);
+        h += '<span class="ds">' + esc(fmtDist(dist) + (dist <= 2500 ? ' · 도보 ' + Math.max(1, Math.round(dist * 1.3 / 80)) + '분' : '')) + '</span>';
+      }
+      lines.push(h);
+    }
+    if (cur) {
+      const left = toMin(cur.depart) - nt.min;
+      lines.push('<span class="k now">今</span><span class="tx">' + esc(pname(cur)) + '</span><span class="g">' + (left > 0 ? '출발까지 ' + mins(left) : '출발') + '</span>');
+    }
+    tickerTarget = next;
+    const html = lines.map(l => '<span class="tk-line">' + l + '</span>').join('');
+    if (ticker.dataset.sig === html && !ticker.hidden) return;
+    ticker.dataset.sig = html;
+    ticker.hidden = false;
+    ticker.innerHTML = '<span class="tk-in' + (lines.length > 1 ? ' alt' : '') + '">' + html + '</span>';
+    ticker.setAttribute('aria-label', ticker.textContent + (next && next.lat != null ? '. 누르면 다음 장소 길찾기' : '. 누르면 홈 전광판'));
+  }
+  window.paintTicker = paintTicker;
+  setInterval(paintTicker, 30000);
   const setView_theme = setView;
   setView = function (v) {
     setView_theme(v);
