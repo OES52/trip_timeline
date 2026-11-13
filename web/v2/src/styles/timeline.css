@@ -1,0 +1,125 @@
+/* 타임라인. 줄마다 같은 네 칸: 시각 | 선 | 내용 | 행동
+ *  선(rail)은 줄마다 자기 몫만 그리고, 줄 사이에 틈이 없어서 하나로 이어져 보임 */
+.tl { padding: var(--s2) 0 var(--s5); background: var(--plate); }
+.tl > li {
+  position: relative; display: grid; column-gap: var(--s2);
+  grid-template-columns: var(--col-time) var(--col-rail) minmax(0, 1fr) auto;
+  padding: 0 var(--s4) 0 var(--s2);
+}
+
+/* ── 장소 줄 ── */
+.stop-rail { grid-column: 2; grid-row: 1 / span 2; position: relative; pointer-events: none; }
+.stop-rail::before, .stop-rail::after { content: ""; position: absolute; left: 50%; width: 4px; margin-left: -2px; }
+.stop-rail::before { top: 0; height: 26px; background: var(--c-in); }      /* 점 위: 들어오는 구간 색 */
+.stop-rail::after { top: 26px; bottom: 0; background: var(--c-out); }      /* 점 아래: 나가는 구간 색 */
+.is-first > .stop-rail::before, .is-last > .stop-rail::after { display: none; }
+.dot {
+  position: absolute; left: 50%; top: 16px; z-index: 1; display: grid; place-items: center;
+  width: 20px; height: 20px; margin-left: -10px;
+  background: var(--plate); border: 4px solid var(--ink); border-radius: var(--r-round);
+}
+.is-past .dot { border-color: var(--ink-3); }
+.is-next .dot { background: var(--exit); }
+.is-now .dot { background: var(--ink); box-shadow: 0 0 0 4px var(--exit); }
+/* 다녀온 곳: 인주 도장 */
+.is-done .dot { top: 13px; width: 26px; height: 26px; margin-left: -13px; color: #fff; background: var(--seal); border: 0; box-shadow: none; transform: rotate(-8deg); }
+.is-done .dot .ic { width: 14px; height: 14px; }
+
+.stop.is-now { background: color-mix(in srgb, var(--exit) 16%, var(--plate)); }
+.stop.is-now .dot { border-color: var(--ink); }
+
+.stop-head {
+  grid-column: 1 / 4; grid-row: 1; position: relative;
+  display: grid; grid-template-columns: subgrid; align-items: start;
+  min-height: 64px; padding: var(--s3) 0;
+}
+.stop-time { grid-column: 1; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.stop-time b { font-size: var(--fs-time); font-weight: 600; line-height: 28px; }
+.stop-time > span.num { font-size: var(--fs-sub); font-weight: 500; line-height: 1.2; color: var(--ink-2); }
+.stop-real { font-size: var(--fs-meta); font-weight: 700; white-space: nowrap; }
+.stop-body { grid-column: 3; display: flex; flex-direction: column; gap: 2px; min-width: 0; padding-right: var(--s5); }
+.stop-n { font-size: var(--fs-name); font-weight: 700; line-height: 28px; }
+.stop-m { display: flex; align-items: center; gap: 6px; font-size: var(--fs-sub); color: var(--ink-2); }
+.stop-m .ic { width: 16px; height: 16px; color: var(--ink-3); }
+.stop-m > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.is-open .stop-m > span { white-space: normal; }
+.stop-w { display: flex; gap: 6px; font-size: var(--fs-sub); font-weight: 700; line-height: 1.45; color: var(--late); }
+.stop-w .ic { width: 16px; height: 16px; margin-top: 2px; }
+.stop-caret { position: absolute; right: 0; top: 18px; width: 16px; height: 16px; color: var(--ink-3); transition: transform var(--t-fast) var(--ease); }
+.is-open > .stop-head .stop-caret { transform: rotate(180deg); }
+.is-past .stop-n, .is-past .stop-time b { color: var(--ink-2); }
+.stop-act { grid-column: 4; grid-row: 1; align-self: start; padding-top: 10px; }
+
+/* 지금·다음·오늘 딱지 */
+.tag { display: inline-block; margin-left: var(--s2); padding: 0 6px; font-size: var(--fs-meta); font-style: normal; font-weight: 700; line-height: 20px; vertical-align: 3px; border-radius: 4px; }
+.tag-now { color: var(--plate); background: var(--ink); }
+.tag-next { color: var(--exit-ink); background: var(--exit); }
+
+/* 펼친 내용 */
+.stop-more { grid-column: 3 / 5; grid-row: 2; display: grid; gap: var(--s3); padding-bottom: var(--s4); }
+.stop-photo { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; background: var(--plate-2); border-radius: var(--r-plate); }
+.stop-alt, .stop-intro { font-size: var(--fs-sub); color: var(--ink-2); }
+.facts { display: grid; gap: 6px; font-size: var(--fs-sub); }
+.facts > div { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: var(--s2); }
+.facts dt { color: var(--ink-2); }
+.menu { display: grid; gap: 2px; font-size: var(--fs-sub); color: var(--ink-2); }
+.menu li::before { content: "– "; color: var(--ink-3); }
+.stop-memo { padding: var(--s2) var(--s3); font-size: var(--fs-sub); background: var(--plate-2); border-radius: var(--r-plate); }
+.stop-memo::before { content: "메모  "; font-weight: 700; color: var(--ink-2); }
+.stop-btns { display: flex; flex-wrap: wrap; gap: var(--s2); }
+
+/* ── 이동 줄 ── */
+.move-rail { grid-column: 2; grid-row: 1 / span 3; position: relative; }
+.move-rail::before { content: ""; position: absolute; left: 50%; top: 0; bottom: 0; width: 4px; margin-left: -2px; background: var(--c); }
+.is-dash > .move-rail::before { background: repeating-linear-gradient(180deg, var(--c) 0 6px, transparent 6px 11px); }
+.move-head {
+  grid-column: 3 / 5; grid-row: 1; position: relative;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px var(--s2);
+  min-height: 44px; padding: 6px var(--s5) 6px 0;
+  font-size: var(--fs-sub); color: var(--ink-2);
+}
+.move-head b { font-weight: 700; color: var(--ink); }
+.move-head > .ic:first-child { width: 18px; height: 18px; color: var(--ink-2); }
+.move-x { white-space: nowrap; }
+.move-caret { position: absolute; right: 0; top: 14px; width: 16px; height: 16px; color: var(--ink-3); transition: transform var(--t-fast) var(--ease); }
+.is-open > .move-head .move-caret { transform: rotate(180deg); }
+.move.is-past .move-head b { color: var(--ink-2); }
+.move.is-past .move-rail { opacity: .45; }
+.move-alert { grid-column: 3 / 5; grid-row: 2; display: grid; gap: 4px; padding-bottom: var(--s2); font-size: var(--fs-sub); font-weight: 700; color: var(--late); }
+.move-alert p, .move-i { display: flex; gap: 6px; }
+.move-alert .ic, .move-i .ic { width: 16px; height: 16px; margin-top: 2px; }
+.move-more { grid-column: 3 / 5; grid-row: 3; display: grid; justify-items: start; gap: var(--s2); padding-bottom: var(--s3); font-size: var(--fs-sub); color: var(--ink-2); }
+.move-t { font-size: var(--fs-body); font-weight: 500; color: var(--ink); }
+
+/* ── 환승 단계 줄 ── */
+.step { font-size: var(--fs-sub); }
+.step-time { grid-column: 1; padding: 4px 0; font-size: var(--fs-body); font-weight: 600; line-height: 24px; text-align: right; }
+.step-time small { display: block; font-size: var(--fs-meta); font-weight: 500; line-height: 1.2; color: var(--ink-2); }
+.step-rail { grid-column: 2; position: relative; }
+.step-rail::before { content: ""; position: absolute; left: 50%; top: 0; bottom: 0; width: 6px; margin-left: -3px; background: var(--c); }
+.step-walk .step-rail::before { width: 4px; margin-left: -2px; background: repeating-linear-gradient(180deg, var(--c) 0 6px, transparent 6px 11px); }
+.step-st .step-rail::before { bottom: auto; height: 16px; background: var(--c1); }
+.step-st .step-rail::after { content: ""; position: absolute; left: 50%; top: 16px; bottom: 0; width: 6px; margin-left: -3px; background: var(--c2); }
+.step-st .step-rail i { position: absolute; left: 50%; top: 9px; z-index: 1; width: 14px; height: 14px; margin-left: -7px; background: var(--plate); border: 3px solid var(--ink); border-radius: var(--r-round); }
+.step-b { grid-column: 3 / 5; min-width: 0; padding: 4px 0; }
+.step-st .step-b { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 var(--s2); line-height: 24px; }
+.step-st b { font-size: var(--fs-body); }
+.step-k { font-size: var(--fs-meta); color: var(--ink-2); }
+.step-h { display: flex; flex-wrap: wrap; align-items: center; gap: 4px var(--s2); color: var(--ink); }
+.step-h .ic { width: 18px; height: 18px; color: var(--ink-2); }
+.step-s { display: flex; flex-wrap: wrap; align-items: center; gap: 0 var(--s2); color: var(--ink-2); }
+.step-s .ja { margin-left: 0; }
+.step-pay { padding: 0 6px; font-size: var(--fs-meta); font-weight: 700; line-height: 20px; border-radius: 4px; box-shadow: inset 0 0 0 1px var(--hair-2); }
+
+/* ── 지금 선: 전광 칩 + 가로선 ── */
+.nowline, .sunline { align-items: center; min-height: 28px; }
+.nowline::before, .sunline::before { content: ""; grid-column: 2; grid-row: 1; justify-self: center; align-self: stretch; width: 4px; background: var(--hair-2); }
+.now-chip { grid-column: 1 / 3; grid-row: 1; justify-self: end; z-index: 1; margin-right: -6px; padding: 0 6px; font-family: var(--font-led); font-size: var(--fs-meta); line-height: 20px; white-space: nowrap; color: var(--led); background: var(--led-bg); border-radius: 3px; }
+.nowline i { grid-column: 3 / 5; grid-row: 1; height: 2px; background: var(--ink); }
+
+/* ── 일몰 선 ── */
+.sunline { font-size: var(--fs-meta); color: var(--ink-2); }
+.sunline > .num { grid-column: 1; grid-row: 1; font-size: var(--fs-sub); font-weight: 500; text-align: right; }
+.sun-l { grid-column: 3 / 5; grid-row: 1; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.sun-l .ic { width: 16px; height: 16px; }
+.sun-l::after { content: ""; flex: 1; height: 1px; background: var(--hair-2); }

@@ -1,0 +1,23 @@
+/* 글꼴은 전부 npm 패키지에서 가져와 같이 배포함 (CDN 없음 → 오프라인에서도 같은 모양)
+ *  - LINE Seed KR: 본문 한글·영문. 두 굵기만 (400, 700)
+ *  - Pretendard JP: 한자·가나용 뒷받침 (쓰는 글자 조각만 받음)
+ *  - Barlow Semi Condensed: 시각·금액·번호 (main.jsx에서 가져옴)
+ *  - Galmuri11: 전광판 도트 글꼴 */
+@font-face {
+  font-family: "LINE Seed KR";
+  font-weight: 400;
+  font-display: swap;
+  src: url("../../node_modules/@kfonts/line-seed-sans-kr/LINESeedKR-Rg.woff2") format("woff2");
+}
+@font-face {
+  font-family: "LINE Seed KR";
+  font-weight: 700;
+  font-display: swap;
+  src: url("../../node_modules/@kfonts/line-seed-sans-kr/LINESeedKR-Bd.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Galmuri11";
+  font-weight: 400;
+  font-display: swap;
+  src: url("../../node_modules/galmuri/dist/Galmuri11.woff2") format("woff2");
+}

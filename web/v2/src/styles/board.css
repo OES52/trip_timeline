@@ -1,0 +1,72 @@
+/* 전광판 (LED). "지금 이 순간"만 맡는 재료라 오늘 화면에서만 씀 */
+.board {
+  position: relative; overflow: hidden;
+  padding: var(--s3) var(--s4) var(--s4);
+  font-family: var(--font-led); color: var(--led);
+  background: var(--led-bg) radial-gradient(rgba(255, 255, 255, .045) 1px, transparent 1.3px) 0 0 / 4px 4px;
+  border-bottom: 6px solid #1F1F1F;
+  box-shadow: 0 22px 34px -22px rgba(255, 150, 0, .38);   /* 바닥에 번지는 불빛 */
+}
+/* 유리 반사광 + 옅은 주사선 */
+.board::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .06) 0%, transparent 28%), repeating-linear-gradient(0deg, rgba(0, 0, 0, .18) 0 1px, transparent 1px 3px);
+}
+.board .glow { text-shadow: 0 0 4px rgba(255, 174, 0, .65), 0 0 10px rgba(255, 140, 0, .25); }
+.bhead { display: flex; justify-content: space-between; gap: var(--s2); padding-bottom: 6px; margin-bottom: 6px; font-size: 12px; color: var(--led-dim); border-bottom: 1px dashed var(--led-line); }
+.bhead .clock { color: #E0E0E0; }
+.count-sub { text-align: center; font-size: 14px; color: #C9C9C9; }
+.count-big { padding: var(--s4) 0 var(--s2); font-size: clamp(34px, 10.4vw, 60px); line-height: 1.1; text-align: center; letter-spacing: .03em; white-space: nowrap; }
+.count-end { font-size: clamp(22px, 6vw, 40px); }
+.count-unit { margin: 0 .15em 0 .05em; font-size: .45em; color: #B37A00; }
+.bfoot { padding-top: 6px; font-size: 12px; color: #8A8A8A; text-align: center; }
+
+/* 넘어가는 글자 칸 */
+.flap { display: inline-block; white-space: nowrap; }
+.fc { display: inline-block; width: .62em; text-align: center; transform-origin: 50% 50%; animation: flipc 90ms ease-out backwards; }
+.fc.w { width: 1em; }
+.fc.sp { width: .35em; }
+@keyframes flipc { from { transform: rotateX(88deg); opacity: .25; } }
+
+/* 지금·다음 줄 */
+.brow { display: grid; grid-template-columns: 54px 74px minmax(0, 1fr) auto; align-items: center; gap: var(--s2); padding: 7px 0; font-size: 17px; border-bottom: 1px solid #1C1C1C; }
+.brow .t { white-space: nowrap; letter-spacing: .02em; }
+.brow .kind { padding: 1px 0; font-size: 13px; text-align: center; border: 1px solid currentColor; border-radius: 3px; text-shadow: none; }
+.brow .kind.now { color: var(--led-r); }
+.brow .kind.next { color: var(--led-g); }
+.brow .kind.after { color: var(--led-b); }
+.dest { position: relative; overflow: hidden; white-space: nowrap; }
+.dest .mq { display: inline-block; }
+.dest .mq.scroll { padding-left: 100%; animation: mq var(--dur, 8s) linear infinite; }
+@keyframes mq { to { transform: translateX(-100%); } }
+.brow .rem { font-size: 14px; color: var(--led-g); text-align: right; white-space: nowrap; text-shadow: none; }
+.bsub { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 0 0 136px; font-size: 13px; color: #C9C9C9; }
+.bsub .ln { color: var(--led-b); }
+@media (max-width: 639px) {
+  .brow { grid-template-columns: 44px 68px minmax(0, 1fr); font-size: 16px; }
+  .brow .rem { grid-column: 2 / -1; margin-top: -4px; font-size: 13px; text-align: left; }
+  .bsub { padding-left: 0; }
+}
+
+/* 그날 행선지 줄 */
+.b-day { margin-top: 10px; padding-top: var(--s2); border-top: 1px dashed var(--led-line); }
+.dhead { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding-bottom: 2px; font-size: 12px; color: var(--led-dim); }
+.dhead .ds { display: inline-flex; gap: 10px; white-space: nowrap; }
+.dhead .dx { display: inline-flex; align-items: center; gap: 4px; color: var(--led-g); }
+.drow { display: grid; grid-template-columns: 50px minmax(0, 1fr) auto; align-items: baseline; gap: 10px; padding: 7px 0; font-size: 16px; border-bottom: 1px solid #1C1C1C; }
+.drow .t { letter-spacing: .02em; text-shadow: 0 0 4px rgba(255, 174, 0, .6), 0 0 10px rgba(255, 140, 0, .22); }
+.drow .dest { color: var(--led-w); }
+.drow .ty { font-size: 13px; white-space: nowrap; }
+.drow.done .t, .drow.done .dest { color: #6F6F6F; text-shadow: none; }
+.dmore { position: relative; z-index: 1; display: block; width: 100%; min-height: var(--tap); margin-top: 10px; font-family: inherit; font-size: 14px; text-align: center; color: var(--led-g); background: #111; border: 1px solid #2C2C2C; border-radius: 4px; }
+.dmore:hover { border-color: var(--led-g); }
+.dmore:focus-visible { outline: 2px solid var(--led-g); outline-offset: 2px; }
+
+/* 넓은 화면: 두 칸짜리 판 */
+@media (min-width: 1024px) {
+  .board { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 var(--s5); max-width: 960px; margin: var(--s5) auto 0; padding: var(--s4) var(--s5) var(--s5); border: 6px solid #1F1F1F; border-radius: var(--r-plate); }
+  .b-main { align-self: center; }
+  .b-main:only-child { grid-column: 1 / -1; }
+  .b-day { margin-top: 0; padding: 0 0 0 var(--s5); border-top: 0; border-left: 1px dashed var(--led-line); }
+  .count-big { font-size: clamp(34px, 3.9vw, 48px); }
+}

@@ -1,0 +1,90 @@
+/* 화면별: 오늘, 일정 */
+.today-in, .plan-in { max-width: 720px; margin: 0 auto; padding-bottom: var(--s6); }
+
+/* ── 오늘 ── */
+/* 다음 장소로 가는 행동 한 줄 */
+.nextup { display: flex; align-items: center; gap: var(--s3); margin: var(--s4) var(--s4) 0; padding: var(--s3) var(--s3) var(--s3) var(--s4); background: var(--plate); border-radius: var(--r-plate); box-shadow: inset 0 0 0 1.5px var(--hair-2); }
+.nextup-t { flex: 1; min-width: 0; }
+.nextup-n { font-size: var(--fs-name); font-weight: 700; line-height: 1.35; }
+.nextup-s { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; font-size: var(--fs-sub); color: var(--ink-2); }
+.nextup-s .ic { width: 16px; height: 16px; }
+
+.block { margin-top: var(--s5); }
+.block-h { padding: 0 var(--s4) var(--s2); font-size: var(--fs-sub); font-weight: 700; color: var(--ink-2); }
+.block-row { display: flex; align-items: center; justify-content: space-between; padding-right: var(--s2); }
+.block-row .block-h { padding-bottom: 0; }
+
+/* 날짜별 여정: 도시색 띠가 붙은 줄 */
+.days { background: var(--plate); border-block: 1px solid var(--hair); }
+.days li + li { border-top: 1px solid var(--hair); }
+.dayrow {
+  display: grid; grid-template-columns: 6px 48px minmax(0, 1fr) auto 16px; align-items: center; column-gap: var(--s3);
+  width: 100%; min-height: 64px; padding-right: var(--s3);
+}
+.dayrow::before { content: ""; align-self: stretch; background: var(--c); }
+.dayrow:hover { background: var(--plate-2); }
+.dayrow-n { font-size: var(--fs-sub); color: var(--ink-2); white-space: nowrap; }
+.dayrow-d { display: flex; flex-direction: column; min-width: 0; padding: var(--s2) 0; }
+.dayrow-d b { font-size: var(--fs-body); line-height: 1.4; }
+.dayrow-r { overflow: hidden; font-size: var(--fs-sub); color: var(--ink-2); text-overflow: ellipsis; white-space: nowrap; }
+.dayrow-x { display: flex; flex-direction: column; align-items: flex-end; font-size: var(--fs-sub); color: var(--ink-2); white-space: nowrap; }
+.dayrow-x b { font-size: var(--fs-body); font-weight: 600; color: var(--ink); }
+.dayrow > .ic { width: 16px; height: 16px; color: var(--ink-3); }
+.dayrow.is-past::before { opacity: .4; }
+.dayrow.is-past b { color: var(--ink-2); }
+
+/* ── 일정 ── */
+/* 머리줄 날짜 띠 */
+.strip { display: flex; gap: 2px; margin-left: calc(var(--s2) * -1); overflow-x: auto; scrollbar-width: none; }
+.strip::-webkit-scrollbar { display: none; }
+.strip-d {
+  position: relative; flex: 1 0 44px; max-width: 72px; height: 48px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  line-height: 1; border-radius: var(--r-plate);
+}
+.strip-w { font-size: var(--fs-meta); color: var(--ink-2); }
+.strip-w.sat { color: var(--info); }
+.strip-w.sun { color: var(--late); }
+.strip-d b { font-size: var(--fs-name); font-weight: 600; }
+.strip-d::after { content: ""; position: absolute; left: 8px; right: 8px; bottom: 2px; height: 4px; border-radius: 2px; background: var(--c); }
+.strip-d[aria-pressed="true"] { color: var(--plate); background: var(--ink); }
+.strip-d[aria-pressed="true"] .strip-w { color: inherit; opacity: .8; }
+.strip-d.is-today::before { content: ""; position: absolute; top: 4px; right: 6px; width: 8px; height: 8px; border-radius: var(--r-round); background: var(--exit); box-shadow: 0 0 0 1.5px var(--ink); }
+
+/* 날짜 표지판 (역명판) */
+.sign { margin: var(--s4) var(--s4) 0; overflow: hidden; text-align: center; background: var(--plate); border-radius: var(--r-plate); box-shadow: inset 0 0 0 1.5px var(--hair-2); }
+.sign-n { padding-top: var(--s3); font-size: var(--fs-sub); color: var(--ink-2); }
+.sign-d { font-size: var(--fs-sign); font-weight: 700; line-height: 1.25; letter-spacing: -.01em; }
+.sign-r { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 0 6px; padding: 2px var(--s3) var(--s3); font-size: var(--fs-sub); color: var(--ink-2); }
+.sign-r i { margin-right: 6px; font-style: normal; color: var(--ink-3); }
+.sign-w { display: inline-flex; align-items: center; gap: 4px; margin-left: var(--s2); }
+.sign-w .ic { width: 16px; height: 16px; }
+.sign-band { display: flex; height: 10px; }
+.sign-band i { flex: 1; }
+.sign-nav { display: flex; justify-content: space-between; }
+.sign-nav button { display: inline-flex; align-items: center; gap: 4px; min-height: 44px; padding: 0 var(--s3); font-size: var(--fs-sub); color: var(--ink-2); }
+.sign-nav button:hover { color: var(--ink); }
+.sign-nav .ic { width: 14px; height: 14px; }
+
+/* 하루 승차권 (종이): 그날의 돈과 걷기 */
+.ticket {
+  position: relative; margin: var(--s3) var(--s4) var(--s4); padding: var(--s3) var(--s5);
+  color: var(--paper-ink);
+  background: var(--paper) repeating-linear-gradient(-45deg, rgba(120, 90, 40, .045) 0 2px, transparent 2px 6px);
+  border-radius: 3px;
+  /* 양옆 검표 홈 */
+  -webkit-mask: radial-gradient(circle 8px at left center, #0000 97%, #000) left / 51% 100% no-repeat, radial-gradient(circle 8px at right center, #0000 97%, #000) right / 51% 100% no-repeat;
+  mask: radial-gradient(circle 8px at left center, #0000 97%, #000) left / 51% 100% no-repeat, radial-gradient(circle 8px at right center, #0000 97%, #000) right / 51% 100% no-repeat;
+}
+.ticket-top { display: flex; justify-content: space-between; padding-bottom: var(--s2); font-size: var(--fs-meta); letter-spacing: .06em; color: var(--paper-ink-2); border-bottom: 1.5px dashed var(--paper-line); }
+.ticket-figs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s3) var(--s2); padding: var(--s3) 0; }
+.ticket-figs dt { font-size: var(--fs-meta); color: var(--paper-ink-2); }
+.ticket-figs dd { font-size: var(--fs-time); font-weight: 600; line-height: 1.15; }
+.ticket-figs dd.is-due { color: var(--late); }
+.ticket-notes { display: grid; gap: 2px; padding-top: var(--s2); font-size: var(--fs-sub); color: var(--paper-ink-2); border-top: 1.5px dashed var(--paper-line); }
+
+/* 넓은 화면: 타임라인도 판 하나로 */
+@media (min-width: 640px) {
+  .tl { margin: 0 var(--s4); border-radius: var(--r-plate); box-shadow: inset 0 0 0 1.5px var(--hair-2); }
+  .days { margin: 0 var(--s4); border: 0; border-radius: var(--r-plate); box-shadow: inset 0 0 0 1.5px var(--hair-2); overflow: hidden; }
+}

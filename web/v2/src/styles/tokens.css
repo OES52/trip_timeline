@@ -1,0 +1,124 @@
+/* 디자인 토큰. 화면 코드는 여기 값만 씀 (색·크기를 직접 적지 않음)
+ *
+ * 재료 네 가지와 역할
+ *  - 사인(흰 판·남색 판·도시색 띠): 구조와 이동. 머리줄, 탭, 장소 이름, 번호
+ *  - 전광(LED):  지금 이 순간만. 전광판과 지금 표시. 그 외엔 안 씀
+ *  - 종이(승차권): 돈과 기록. 하루 요약, 영수증
+ *  - 도장(인주):  다녀온 것
+ */
+:root {
+  /* ── 사인 ── */
+  --canvas: #ECEEF0;            /* 바닥 */
+  --plate: #FFFFFF;             /* 법랑 흰 판 */
+  --plate-2: #F4F5F7;           /* 판 안에서 한 단 낮은 면 */
+  --ink: #1B2536;               /* 안내판 남색: 글자 */
+  --ink-2: #56627A;             /* 보조 글자 (흰 판 위 5.9:1) */
+  --ink-3: #8A93A3;             /* 장식·비활성 (글자로는 안 씀) */
+  --hair: rgba(27, 37, 54, .12);
+  --hair-2: rgba(27, 37, 54, .22);
+  --panel: #1B2536;             /* 남색 안내판 (탭) */
+  --panel-ink: #FFFFFF;
+  --panel-ink-2: rgba(255, 255, 255, .62);
+  --exit: #FFD400;              /* 출구 노랑: 주 행동 */
+  --exit-ink: #1B2536;
+  --exit-press: #EBC300;
+
+  /* ── 상태 ── */
+  --late: #C4302B;              /* 늦음·경고 */
+  --late-bg: #FCEBEA;
+  --ok: #0B7A4B;                /* 여유·정상 */
+  --ok-bg: #E4F4EC;
+  --info: #1F5FD1;              /* 링크 */
+
+  /* ── 도장 ── */
+  --seal: #C8372D;
+
+  /* ── 이동 방식 (타임라인 선) ── */
+  --mode-transit: #2B62D9;
+  --mode-walk: #13945F;
+  --mode-car: #E2731B;
+
+  /* ── 전광 (전광판 안에서만) ── */
+  --led-bg: #0A0A0A;
+  --led: #FFAE00;
+  --led-g: #39FF7A;
+  --led-r: #FF4B3A;
+  --led-b: #8FD3FF;
+  --led-w: #F4F1E8;
+  --led-dim: #9A9A9A;
+  --led-line: #2A2A2A;
+
+  /* ── 종이 ── */
+  --paper: #F4EFDF;
+  --paper-ink: #2A2620;
+  --paper-ink-2: #6B6253;
+  --paper-line: rgba(42, 38, 32, .26);
+
+  /* ── 글자 ── */
+  --font-ui: "LINE Seed KR", "Pretendard JP Variable", system-ui, -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+  --font-num: "Barlow Semi Condensed", "LINE Seed KR", system-ui, sans-serif;   /* 시각·금액·번호 */
+  --font-led: "Galmuri11", "DotGothic16", ui-monospace, monospace;
+  --fs-meta: 12px;
+  --fs-sub: 14px;
+  --fs-body: 16px;
+  --fs-name: 18px;
+  --fs-time: 24px;              /* 시각 숫자, 큰 제목 */
+  --fs-sign: 32px;              /* 날짜 표지판 */
+
+  /* ── 간격 (4/8 격자) ── */
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px; --s7: 48px;
+
+  /* ── 모서리 3종 ── */
+  --r-plate: 6px;               /* 판·버튼 */
+  --r-sheet: 16px;              /* 아래서 올라오는 시트 */
+  --r-round: 999px;             /* 동그란 것 (정류장 점, 아바타) */
+
+  /* ── 크기 ── */
+  --tap: 48px;                  /* 누르는 곳 최소 (장갑·한 손) */
+  --bar-top: 52px;
+  --bar-tab: 60px;
+  --col-time: 60px;             /* 타임라인 시각 칸 */
+  --col-rail: 28px;             /* 타임라인 선 칸 */
+  --wide: 1120px;
+
+  /* ── 움직임 ── */
+  --ease: cubic-bezier(.2, .7, .2, 1);
+  --t-fast: 120ms;
+  --t-base: 200ms;
+
+  /* ── 쌓임 순서 ── */
+  --z-bar: 2; --z-sheet: 50; --z-toast: 60;
+
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --canvas: #0D121A;
+    --plate: #18202C;
+    --plate-2: #202A38;
+    --ink: #EEF1F5;
+    --ink-2: #A8B2C2;
+    --ink-3: #6C788A;
+    --hair: rgba(255, 255, 255, .10);
+    --hair-2: rgba(255, 255, 255, .20);
+    --panel: #121A26;
+    --exit-press: #FFE04D;
+    --late: #FF6F63;
+    --late-bg: #3A1D1B;
+    --ok: #47D89B;
+    --ok-bg: #12301F;
+    --info: #86B4FF;
+    --seal: #F0584C;
+    --mode-transit: #6E9BFF;
+    --mode-walk: #47D89B;
+    --mode-car: #FF9A4D;
+    --paper: #2A2620;
+    --paper-ink: #EFE6D2;
+    --paper-ink-2: #B5AA95;
+    --paper-line: rgba(239, 230, 210, .24);
+    color-scheme: dark;
+  }
+}

@@ -1,0 +1,79 @@
+/* 바탕: 초기화, 글자, 버튼, 공통 조각 */
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+html, body { height: 100%; margin: 0; }
+body {
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+  line-height: 1.5;
+  color: var(--ink);
+  background: var(--canvas);
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
+  word-break: keep-all;          /* 한글은 낱말 단위로 줄바꿈 */
+  overflow-wrap: anywhere;
+}
+h1, h2, h3, h4, p, ul, ol, dl, dd, figure { margin: 0; padding: 0; }
+ul, ol { list-style: none; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { background: none; border: 0; padding: 0; cursor: pointer; text-align: inherit; }
+a { color: var(--info); text-decoration: none; }
+img, svg { display: block; max-width: 100%; }
+[hidden] { display: none !important; }
+
+/* 키보드로 옮길 때만 포커스 링 */
+:focus-visible { outline: 3px solid var(--info); outline-offset: 2px; border-radius: 4px; }
+:focus:not(:focus-visible) { outline: none; }
+
+/* 숫자 글꼴: 시각·금액·번호 */
+.num { font-family: var(--font-num); font-variant-numeric: tabular-nums; letter-spacing: .01em; }
+/* 일본어 병기: 역 안내판·표 살 때 대조용 */
+.ja { font-size: var(--fs-meta); color: var(--ink-2); font-weight: 400; margin-left: var(--s1); }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* ── 아이콘 ── */
+.ic { display: inline-flex; width: 1.25em; height: 1.25em; flex: none; }
+.ic svg { width: 100%; height: 100%; }
+
+/* ── 버튼 ──
+ *  주 행동(출구 노랑)은 화면에 하나. 나머지는 판 버튼(테두리)이나 글자 버튼 */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--s2);
+  min-height: var(--tap); padding: 0 var(--s4);
+  font-size: var(--fs-body); font-weight: 700; line-height: 1.2; white-space: nowrap;
+  border-radius: var(--r-plate);
+  transition: background-color var(--t-fast) var(--ease), transform var(--t-fast) var(--ease);
+}
+.btn:active { transform: scale(.98); }
+.btn-exit { background: var(--exit); color: var(--exit-ink); }
+.btn-exit:hover, .btn-exit:active { background: var(--exit-press); }
+.btn-plate { background: var(--plate); color: var(--ink); box-shadow: inset 0 0 0 1.5px var(--hair-2); }
+.btn-plate:hover { background: var(--plate-2); }
+.btn-quiet { color: var(--ink-2); padding: 0 var(--s2); font-weight: 400; }
+.btn-quiet:hover { color: var(--ink); }
+.btn-block { display: flex; width: 100%; }
+.btn-sm { min-height: 40px; padding: 0 var(--s3); font-size: var(--fs-sub); }
+@media (pointer: coarse) { .btn-sm { min-height: 44px; } }
+a.btn { text-decoration: none; }
+
+/* ── 노선 배지 (노선색 바탕) ── */
+.line {
+  display: inline-flex; align-items: center; min-height: 20px; padding: 0 6px;
+  font-size: var(--fs-meta); font-weight: 700; line-height: 1.3; white-space: nowrap;
+  border-radius: 4px; background: var(--lc, var(--ink)); color: var(--lt, #fff);
+}
+
+/* ── 상태 글 ── */
+.note-late { color: var(--late); }
+.note-ok { color: var(--ok); }
+
+/* ── 빈 상태·오류 ── */
+.state { display: flex; flex-direction: column; align-items: center; gap: var(--s3); padding: var(--s7) var(--s5); text-align: center; }
+.state h2 { font-size: var(--fs-name); }
+.state p { color: var(--ink-2); font-size: var(--fs-sub); max-width: 32ch; }
+
+/* 움직임 줄이기 설정이면 전환·애니메이션 전부 즉시 */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}
