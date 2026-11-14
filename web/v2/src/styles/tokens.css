@@ -87,7 +87,7 @@
   --t-base: 200ms;
 
   /* ── 쌓임 순서 ── */
-  --z-bar: 2; --z-sheet: 50; --z-toast: 60;
+  --z-bar: 5; --z-sheet: 50; --z-toast: 60;
 
   --safe-t: env(safe-area-inset-top, 0px);
   --safe-b: env(safe-area-inset-bottom, 0px);

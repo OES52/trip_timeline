@@ -103,6 +103,18 @@ export function go(tab, day) {
   else location.hash = hash;
 }
 
+/* ── 일정 탭: 타임라인/지도 전환, 고른 장소 ── */
+const PLAN_VIEW_KEY = 'trip2-plan-view';
+/** 좁은 화면에서 일정을 어떻게 볼지: 'list'(타임라인) | 'map'. 넓은 화면은 둘을 나란히 보여줘서 안 씀 */
+export const planView = signal(local.get(PLAN_VIEW_KEY) === 'map' ? 'map' : 'list');
+export function setPlanView(v) { planView.value = v; local.set(PLAN_VIEW_KEY, v); }
+/**
+ * 고른 장소 { key: "날짜#순서", from }. from = 어디서 골랐는지
+ *  'map' 지도 핀·카드 → 타임라인이 그 줄로 감 / 'list' 타임라인 → 지도가 그 핀으로 감 / 'card' 지도 카드의 앞·다음 → 지도만 움직임
+ */
+export const picked = signal(null);
+export function pick(key, from) { picked.value = key ? { key, from } : null; }
+
 /** 일정 탭에서 보는 날짜: 주소에 있으면 그날, 없으면 오늘(여행 중) 또는 첫날 */
 export const day = computed(() => {
   const v = view.value;

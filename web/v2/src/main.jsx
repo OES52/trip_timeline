@@ -9,6 +9,7 @@ import './styles/shell.css';
 import './styles/board.css';
 import './styles/timeline.css';
 import './styles/screens.css';
+import './styles/map.css';
 import { App } from './app.jsx';
 import { load } from './data/store.js';
 

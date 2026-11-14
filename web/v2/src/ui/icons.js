@@ -36,6 +36,8 @@ import fog from '@phosphor-icons/core/assets/fill/cloud-fog-fill.svg?raw';
 import rain from '@phosphor-icons/core/assets/fill/cloud-rain-fill.svg?raw';
 import snow from '@phosphor-icons/core/assets/fill/cloud-snow-fill.svg?raw';
 import storm from '@phosphor-icons/core/assets/fill/cloud-lightning-fill.svg?raw';
+import list from '@phosphor-icons/core/assets/fill/list-bullets-fill.svg?raw';
+import fit from '@phosphor-icons/core/assets/bold/corners-out-bold.svg?raw';
 import down from '@phosphor-icons/core/assets/bold/caret-down-bold.svg?raw';
 import left from '@phosphor-icons/core/assets/bold/caret-left-bold.svg?raw';
 import right from '@phosphor-icons/core/assets/bold/caret-right-bold.svg?raw';
@@ -47,7 +49,7 @@ import out from '@phosphor-icons/core/assets/bold/arrow-up-right-bold.svg?raw';
 export const ICONS = {
   clock, path, pin, stamp, nav, walk, train, subway, tram, bus, taxi, plane, boat, car, cable,
   bed, food, coffee, camera, bag, warn, moon, sunset, wallet, map, user, lock, ticket, offline, hourglass,
-  sun, cloudSun, cloud, fog, rain, snow, storm,
+  sun, cloudSun, cloud, fog, rain, snow, storm, list, fit,
   down, left, right, check, close, reload, out,
 };
 

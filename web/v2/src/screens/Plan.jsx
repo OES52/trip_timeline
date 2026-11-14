@@ -1,11 +1,14 @@
-// 일정: 날짜를 고르고 그날 타임라인을 봄
+// 일정: 날짜를 고르고 그날 타임라인과 지도를 봄
 //  머리줄 = 날짜 띠(도시색 밑줄) / 본문 = 날짜 표지판(역명판) + 하루 승차권(돈·걷기) + 타임라인
-import { view, nt, day, go } from '../data/store.js';
+//  지도: 넓은 화면은 타임라인 옆에 나란히, 좁은 화면은 떠 있는 버튼으로 타임라인과 바꿔 봄
+import { useEffect, useState } from 'preact/hooks';
+import { view, nt, day, go, planView, setPlanView } from '../data/store.js';
 import { WEEK, dow, md, dayLabel } from '../lib/time.js';
 import { dayCity, dayRoute, dayPoints, daySpend, dayFare, dayActual, dayWalk, isVisited } from '../lib/trip.js';
 import { money, YEN, WON } from '../lib/money.js';
 import { TopBar, SyncLine } from '../ui/Shell.jsx';
 import { Timeline } from '../ui/Timeline.jsx';
+import { MapView } from '../ui/MapView.jsx';
 import { Icon } from '../ui/Icon.jsx';
 import { weatherInfo } from '../ui/icons.js';
 
@@ -95,10 +98,28 @@ function DayTicket({ v, date }) {
   );
 }
 
+/** 타임라인과 지도를 나란히 놓을 만큼 넓은 화면인지 */
+function useWide() {
+  const [wide, setWide] = useState(() => matchMedia('(min-width: 1024px)').matches);
+  useEffect(() => {
+    const q = matchMedia('(min-width: 1024px)');
+    const on = e => setWide(e.matches);
+    q.addEventListener('change', on);
+    return () => q.removeEventListener('change', on);
+  }, []);
+  return wide;
+}
+
 export function Plan() {
   const v = view.value;
   const d = day.value;
   const now = nt.value;
+  const wide = useWide();
+  const mode = planView.value;
+  const showMap = wide || mode === 'map';
+  // 지도는 처음 볼 때 만들고, 그 뒤로는 타임라인으로 바꿔도 숨겨만 둠 (다시 열 때 바로 뜨게)
+  const [mapEver, setMapEver] = useState(showMap);
+  useEffect(() => { if (showMap) setMapEver(true); }, [showMap]);
   if (!d) return (
     <main class="screen plan">
       <TopBar><div class="ctx"><b>일정</b></div></TopBar>
@@ -106,15 +127,21 @@ export function Plan() {
     </main>
   );
   return (
-    <main class="screen plan">
+    <main class={'screen plan is-' + mode}>
       <TopBar><DayStrip v={v} cur={d} today={now.date} /></TopBar>
       <SyncLine />
-      <div class="scroll" key={d}>
-        <div class="plan-in">
-          <DaySign v={v} date={d} />
-          <DayTicket v={v} date={d} />
-          <Timeline date={d} focus={d === now.date} />
+      <div class="plan-split">
+        <div class="scroll plan-list" key={d}>
+          <div class="plan-in">
+            <DaySign v={v} date={d} />
+            <DayTicket v={v} date={d} />
+            <Timeline date={d} focus={d === now.date} />
+          </div>
         </div>
+        <div class="plan-map">{(mapEver || showMap) && <MapView date={d} active={showMap} />}</div>
+        <button type="button" class="viewfab" onClick={() => setPlanView(mode === 'map' ? 'list' : 'map')}>
+          <Icon name={mode === 'map' ? 'list' : 'map'} />{mode === 'map' ? '타임라인 보기' : '지도 보기'}
+        </button>
       </div>
     </main>
   );

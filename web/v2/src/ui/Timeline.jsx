@@ -1,7 +1,7 @@
 // 하루 타임라인. 오늘 화면(남은 일정)과 일정 화면이 같은 부품을 씀
 //  장소 줄 하나 = 시각 | 선 위의 점 | 이름·한 줄 설명 | 행동 하나. 누르면 펼쳐서 사진·영업시간·메모
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { view, nt as ntSig } from '../data/store.js';
+import { view, nt as ntSig, picked, pick } from '../data/store.js';
 import { toMin, hhmm, fmtDur } from '../lib/time.js';
 import {
   vk, placeOf, pname, dayPoints, stopStates, isVisited, arrivedAt, arrivalDiff, predictedMin, dayDelay,
@@ -34,7 +34,7 @@ function LineBadge({ line, color }) {
 }
 
 /* ── 장소 줄 ── */
-function Stop({ v, p, state, first, last, cIn, cOut, open, onToggle, compact }) {
+function Stop({ v, p, state, first, last, cIn, cOut, open, onToggle, compact, on }) {
   const pl = placeOf(v, p);
   const key = vk(p);
   const name = pname(v, p);
@@ -61,7 +61,7 @@ function Stop({ v, p, state, first, last, cIn, cOut, open, onToggle, compact }) 
   if (p.slack != null && !isNaN(p.slack)) facts.push(p.slack < 0 ? ['시간', Math.abs(p.slack) + '분 늦음', 'late'] : ['여유', p.slack + '분', 'ok']);
 
   return (
-    <li class={'stop is-' + state + (visited ? ' is-done' : '') + (first ? ' is-first' : '') + (last ? ' is-last' : '') + (open ? ' is-open' : '')}
+    <li class={'stop is-' + state + (visited ? ' is-done' : '') + (first ? ' is-first' : '') + (last ? ' is-last' : '') + (open ? ' is-open' : '') + (on ? ' is-picked' : '')}
       style={{ '--c-in': cIn, '--c-out': cOut }} data-key={key}>
       <div class="stop-rail" aria-hidden="true"><i class="dot">{visited && <Icon name="check" />}</i></div>
       <button type="button" class="stop-head" aria-expanded={open} aria-controls={'more-' + key} onClick={onToggle}>
@@ -230,6 +230,8 @@ function SunLine({ min, where }) {
   );
 }
 
+let handledPick = null;
+
 /**
  * @param date 날짜  @param fromOrder 이 순서 뒤부터만 (오늘 화면: 남은 일정)
  * @param focus 열릴 때 지금·다음 줄이 보이게 스크롤  @param compact 줄 안 행동 버튼 숨김
@@ -240,6 +242,18 @@ export function Timeline({ date, fromOrder, focus, compact }) {
   const [open, setOpen] = useState(() => new Set());
   const list = useRef(null);
   const toggle = k => setOpen(s => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n; });
+  const pk = picked.value;
+
+  // 지도에서 장소를 고르면 그 줄만 펼치고 그 줄로 감 (같은 선택에 두 번 반응하지 않게 기억)
+  useEffect(() => {
+    if (compact || !pk || pk.from !== 'map' || pk === handledPick || !list.current) return;
+    const el = list.current.querySelector('.stop[data-key="' + pk.key + '"]');
+    if (!el) return;
+    handledPick = pk;
+    setOpen(new Set([pk.key]));
+    const id = requestAnimationFrame(() => el.scrollIntoView({ block: 'center', behavior: 'smooth' }));
+    return () => cancelAnimationFrame(id);
+  }, [pk]);
 
   // 날짜가 바뀌면 펼친 것 접고, 오늘이면 지금·다음 줄로
   useEffect(() => {
@@ -276,7 +290,7 @@ export function Timeline({ date, fromOrder, focus, compact }) {
     items.push(
       <Stop key={key} v={v} p={p} state={state} first={i === 0} last={i === pts.length - 1 && !(over && fromOrder == null)}
         cIn={segLine(i === 0 ? null : sIn).c} cOut={segLine(sOut).c}
-        open={open.has(key)} onToggle={() => toggle(key)} compact={compact} />,
+        open={open.has(key)} onToggle={() => { toggle(key); pick(key, 'list'); }} compact={compact} on={!compact && !!pk && pk.key === key} />,
     );
 
     // 머무는 동안 해 짐: 장소 줄 바로 아래

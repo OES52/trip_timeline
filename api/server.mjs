@@ -455,7 +455,7 @@ async function mapGet(p) {
 }
 async function apiMap(req, res, sub) {
   const p = decodeURIComponent(sub || '');
-  if (!/^[a-zA-Z0-9_./,%\- ]+$/.test(p) || p.indexOf('..') !== -1 || p.length > 300) return fail(req, res, 400, '잘못된 지도 경로');
+  if (!/^[a-zA-Z0-9_./,%@\- ]+$/.test(p) || p.indexOf('..') !== -1 || p.length > 300) return fail(req, res, 400, '잘못된 지도 경로');
   if (limited('map|' + clientIp(req), 1200, 60000)) return fail(req, res, 429, '요청이 너무 많음');
   try {
     const r = await mapGet(p);
