@@ -48,8 +48,17 @@ export function registerSW() {
   if (!('serviceWorker' in navigator)) return;
   // 처음 설치될 때도 controllerchange가 오므로, 원래 서비스 워커가 있던 화면에서만, 그리고 지금 코드가 정말 예전일 때만 "새 버전"
   const hadController = !!navigator.serviceWorker.controller;
+  // controllerchange는 새 서비스 워커가 활성화를 "시작"할 때 옴 (sw.js가 새 목록을 적기 전). 활성화가 끝난 뒤에 비교
   navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (hadController) runningOld().then(old => { if (old) updateReady.value = true; });
+    if (!hadController) return;
+    const sw = navigator.serviceWorker.controller;
+    const check = () => runningOld().then(old => { if (old) updateReady.value = true; });
+    if (!sw || sw.state === 'activated') { check(); return; }
+    sw.addEventListener('statechange', function on() {
+      if (sw.state !== 'activated' && sw.state !== 'redundant') return;
+      sw.removeEventListener('statechange', on);
+      check();
+    });
   });
   navigator.serviceWorker.register('/v2/sw.js', { scope: '/v2/' })
     .then(reg => { swReg = reg; return navigator.serviceWorker.ready; })
