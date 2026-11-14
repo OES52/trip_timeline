@@ -127,3 +127,9 @@
 /* ── 기록 버튼 (도착·도장·지출) ── */
 .rec { display: flex; flex-wrap: wrap; gap: var(--s2); }
 .btn-seal { color: #fff; background: var(--seal); }   /* 찍은 도장: 인주색 */
+
+/* ── 일정 조정 (수정 권한 있는 사용자만) ── */
+.adj { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); padding-top: var(--s3); border-top: 1px dashed var(--hair-2); }
+.adj-h { width: 100%; font-size: var(--fs-meta); font-weight: 700; color: var(--ink-2); }
+.adj-busy { display: flex; align-items: center; gap: 6px; width: 100%; font-size: var(--fs-sub); color: var(--ink-2); }
+.adj-busy .ic { width: 16px; height: 16px; animation: blink 1.2s steps(2) infinite; }

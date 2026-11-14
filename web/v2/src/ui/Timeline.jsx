@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { view, nt as ntSig, picked, pick, user, openDialog } from '../data/store.js';
 import { recordArrivalNow, toggleVisit } from '../data/records.js';
+import { editing, canEdit, changeStay, skipStop, setTaxi } from '../data/edit.js';
 import { toMin, hhmm, fmtDur } from '../lib/time.js';
 import {
   vk, placeOf, pname, dayPoints, stopStates, isVisited, arrivedAt, arrivalDiff, predictedMin, dayDelay,
@@ -50,7 +51,8 @@ function Stop({ v, p, state, first, last, cIn, cOut, open, onToggle, compact, on
   const hf = pl ? hoursFor(pl.hours, p.date) : null;
   const sp = v.spend[key];
   const canNav = p.lat != null && p.lng != null;
-  const canRec = !!(user.value && user.value.canStamp);   // 보기 전용 사용자는 기록 버튼이 없음
+  const canRec = !!(user.value && user.value.canStamp);
+  const busy = editing.value;   // 보기 전용 사용자는 기록 버튼이 없음
 
   const facts = [];
   if (p.stay) facts.push(['체류', fmtDur(p.stay)]);
@@ -112,6 +114,15 @@ function Stop({ v, p, state, first, last, cIn, cOut, open, onToggle, compact, on
               <button type="button" class="btn btn-plate btn-sm" onClick={() => openDialog({ kind: 'spend', key })} aria-label={sp ? '지출 ' + YEN(sp.amount) + ', 고치기' : undefined}>
                 <Icon name="wallet" />{sp ? <>지출 <span class="num">{YEN(sp.amount)}</span></> : '지출 기록'}
               </button>
+            </div>
+          )}
+          {canEdit() && state !== 'past' && (
+            <div class="adj" role="group" aria-label="일정 조정">
+              <span class="adj-h">일정 조정</span>
+              <button type="button" class="btn btn-plate btn-sm" disabled={!!busy || !p.stay} onClick={() => changeStay(p, name, -15)} aria-label="체류 15분 줄이기">체류 −15분</button>
+              <button type="button" class="btn btn-plate btn-sm" disabled={!!busy} onClick={() => changeStay(p, name, 15)} aria-label="체류 15분 늘리기">체류 +15분</button>
+              <button type="button" class="btn btn-quiet btn-sm btn-danger" disabled={!!busy} onClick={() => skipStop(p, name)}>건너뛰기</button>
+              {busy && busy.key === key && <p class="adj-busy" role="status"><Icon name="hourglass" />경로 다시 계산 중. 10~30초 걸림</p>}
             </div>
           )}
           <div class="stop-btns">
@@ -179,6 +190,12 @@ function Move({ v, s, past, open, onToggle, fromName, toName, now, tail }) {
                 {s.taxi.saved > 0 ? ' (대중교통보다 ' + s.taxi.saved + '분 빠름)' : ''}{s.taxi.night ? ', 심야 할증' : ''}
               </span></p>
             )}
+            {s.taxi && canEdit() && !past && !tail && (
+              <button type="button" class="btn btn-plate btn-sm" disabled={!!editing.value} onClick={() => setTaxi(s, !taxiOn)}>
+                <Icon name={taxiOn ? 'train' : 'taxi'} />{taxiOn ? '원래 이동수단으로' : '택시로 가기'}
+              </button>
+            )}
+            {editing.value && editing.value.key === s.date + '#' + s.fromOrder && <p class="adj-busy" role="status"><Icon name="hourglass" />경로 다시 계산 중. 10~30초 걸림</p>}
             {!split && k !== 'walk' && summary && <p class="move-s">{summary}</p>}
             {approx && <p class="move-s">시간표는 같은 요일 기준 근사값</p>}
             {s.link && <a class="btn btn-plate btn-sm" href={s.link} target="_blank" rel="noopener"><Icon name="map" />구글 지도에서 경로 보기</a>}
