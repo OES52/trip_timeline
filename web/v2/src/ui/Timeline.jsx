@@ -1,7 +1,8 @@
 // 하루 타임라인. 오늘 화면(남은 일정)과 일정 화면이 같은 부품을 씀
 //  장소 줄 하나 = 시각 | 선 위의 점 | 이름·한 줄 설명 | 행동 하나. 누르면 펼쳐서 사진·영업시간·메모
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { view, nt as ntSig, picked, pick } from '../data/store.js';
+import { view, nt as ntSig, picked, pick, user, openDialog } from '../data/store.js';
+import { recordArrivalNow, toggleVisit } from '../data/records.js';
 import { toMin, hhmm, fmtDur } from '../lib/time.js';
 import {
   vk, placeOf, pname, dayPoints, stopStates, isVisited, arrivedAt, arrivalDiff, predictedMin, dayDelay,
@@ -49,6 +50,7 @@ function Stop({ v, p, state, first, last, cIn, cOut, open, onToggle, compact, on
   const hf = pl ? hoursFor(pl.hours, p.date) : null;
   const sp = v.spend[key];
   const canNav = p.lat != null && p.lng != null;
+  const canRec = !!(user.value && user.value.canStamp);   // 보기 전용 사용자는 기록 버튼이 없음
 
   const facts = [];
   if (p.stay) facts.push(['체류', fmtDur(p.stay)]);
@@ -91,8 +93,31 @@ function Stop({ v, p, state, first, last, cIn, cOut, open, onToggle, compact, on
           <a class="btn btn-exit btn-sm" href={navUrl(p.lat, p.lng)} target="_blank" rel="noopener"><Icon name="nav" />길찾기</a>
         </div>
       )}
+      {state === 'now' && canRec && !arr && (
+        <div class="stop-act">
+          <button type="button" class="btn btn-plate btn-sm" onClick={() => recordArrivalNow(p)}>도착 기록</button>
+        </div>
+      )}
       {open && (
         <div class="stop-more" id={'more-' + key}>
+          {/* 자주 누르는 것부터: 기록(도착·도장·지출), 그다음 길찾기 */}
+          {canRec && (
+            <div class="rec" role="group" aria-label="기록">
+              {arr
+                ? <button type="button" class="btn btn-plate btn-sm" onClick={() => openDialog({ kind: 'arrive', key })} aria-label={'도착 ' + arr + ', 시각 고치기'}><Icon name="clock" />도착 <span class="num">{arr}</span></button>
+                : <button type="button" class="btn btn-plate btn-sm" onClick={() => recordArrivalNow(p)}><Icon name="clock" />도착 기록</button>}
+              <button type="button" class={'btn btn-sm ' + (visited ? 'btn-seal' : 'btn-plate')} aria-pressed={visited} onClick={() => toggleVisit(p)}>
+                <Icon name="stamp" />{visited ? '도장 찍음' : '도장 찍기'}
+              </button>
+              <button type="button" class="btn btn-plate btn-sm" onClick={() => openDialog({ kind: 'spend', key })} aria-label={sp ? '지출 ' + YEN(sp.amount) + ', 고치기' : undefined}>
+                <Icon name="wallet" />{sp ? <>지출 <span class="num">{YEN(sp.amount)}</span></> : '지출 기록'}
+              </button>
+            </div>
+          )}
+          <div class="stop-btns">
+            {canNav && <a class={'btn btn-sm ' + (state === 'next' && !compact ? 'btn-plate' : 'btn-exit')} href={navUrl(p.lat, p.lng)} target="_blank" rel="noopener"><Icon name="nav" />길찾기</a>}
+            {pl && pl.link && <a class="btn btn-plate btn-sm" href={pl.link} target="_blank" rel="noopener"><Icon name="map" />지도에서 보기</a>}
+          </div>
           {pl && pl.photos && pl.photos[0] && <img class="stop-photo" src={photoUrl(pl.photos[0])} alt="" loading="lazy" onError={e => { e.currentTarget.hidden = true; }} />}
           {name !== p.place && <p class="stop-alt">{p.place}</p>}
           {facts.length > 0 && (
@@ -103,10 +128,6 @@ function Stop({ v, p, state, first, last, cIn, cOut, open, onToggle, compact, on
           {pl && pl.menu && pl.menu.length > 0 && <ul class="menu">{pl.menu.slice(0, 5).map((m, i) => <li key={i}>{m}</li>)}</ul>}
           {pl && pl.intro && <p class="stop-intro">{pl.intro}</p>}
           {p.memo && <p class="stop-memo">{p.memo}</p>}
-          <div class="stop-btns">
-            {canNav && <a class={'btn btn-sm ' + (state === 'next' && !compact ? 'btn-plate' : 'btn-exit')} href={navUrl(p.lat, p.lng)} target="_blank" rel="noopener"><Icon name="nav" />길찾기</a>}
-            {pl && pl.link && <a class="btn btn-plate btn-sm" href={pl.link} target="_blank" rel="noopener"><Icon name="map" />지도에서 보기</a>}
-          </div>
         </div>
       )}
     </li>

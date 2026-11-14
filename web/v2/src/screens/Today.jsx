@@ -1,8 +1,9 @@
 // 오늘: 여행 단계에 따라 바뀌는 첫 화면
 //  전: 전광판 카운트다운 + 날짜별 여정 / 중: 지금·다음 + 길찾기 + 오늘 남은 일정 / 후: 여정 돌아보기
-import { view, nt, nowMs, go } from '../data/store.js';
+import { view, nt, nowMs, go, user } from '../data/store.js';
+import { recordArrivalNow } from '../data/records.js';
 import { dayLabel, md, fmtDur, hhmm } from '../lib/time.js';
-import { phase, tripRange, nowNext, remainMin, predictedMin, pname, vk, dayCity, dayRoute, dayPoints, daySpend, segModeName, segRides, MODE_KEY } from '../lib/trip.js';
+import { phase, tripRange, nowNext, remainMin, predictedMin, pname, vk, arrivedAt, dayCity, dayRoute, dayPoints, daySpend, segModeName, segRides, MODE_KEY } from '../lib/trip.js';
 import { money } from '../lib/money.js';
 import { navUrl } from '../lib/geo.js';
 import { onColor } from '../lib/colors.js';
@@ -52,8 +53,11 @@ function NextUp({ v, now }) {
   const k = seg ? (seg.taxi && seg.taxi.on ? 'taxi' : MODE_KEY[seg.mode] || 'manual') : null;
   const rm = remainMin(v, next, now);
   const pr = next.date === now.date ? predictedMin(v, next) : null;
+  const arr = arrivedAt(v, next);
+  // 계획보다 일찍 닿았을 때도 여기서 바로 도착을 적을 수 있게 (보기 전용 사용자는 버튼 없음)
+  const showRec = !!(user.value && user.value.canStamp) && next.date === now.date && !arr;
   return (
-    <section class="nextup" aria-label="다음 장소로 가기">
+    <section class={'nextup' + (showRec ? ' has-rec' : '')} aria-label="다음 장소로 가기">
       <div class="nextup-t">
         <p class="nextup-n">{pname(v, next)}</p>
         <p class="nextup-s">
@@ -67,8 +71,12 @@ function NextUp({ v, now }) {
             {segRides(seg).slice(0, 2).map((r, i) => <span class="line" key={i} style={r.color ? { '--lc': r.color, '--lt': onColor(r.color) } : undefined}>{r.line}</span>)}
           </p>
         )}
+        {arr && <p class="nextup-s note-ok">실제 <span class="num">{arr}</span> 도착 기록함</p>}
       </div>
-      <a class="btn btn-exit" href={navUrl(next.lat, next.lng)} target="_blank" rel="noopener"><Icon name="nav" />길찾기</a>
+      <div class="nextup-act">
+        {showRec && <button type="button" class="btn btn-plate" onClick={() => recordArrivalNow(next)}><Icon name="clock" />도착 기록</button>}
+        <a class="btn btn-exit" href={navUrl(next.lat, next.lng)} target="_blank" rel="noopener"><Icon name="nav" />길찾기</a>
+      </div>
     </section>
   );
 }

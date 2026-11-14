@@ -8,6 +8,10 @@
 .nextup-n { font-size: var(--fs-name); font-weight: 700; line-height: 1.35; }
 .nextup-s { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; font-size: var(--fs-sub); color: var(--ink-2); }
 .nextup-s .ic { width: 16px; height: 16px; }
+/* 도착 기록 버튼이 같이 있을 땐 글 아래에 버튼 두 개를 나란히 */
+.nextup-act { display: flex; flex: none; gap: var(--s2); }
+.nextup.has-rec { flex-direction: column; align-items: stretch; padding-right: var(--s4); }
+.nextup.has-rec .nextup-act .btn { flex: 1; }
 
 .block { margin-top: var(--s5); }
 .block-h { padding: 0 var(--s4) var(--s2); font-size: var(--fs-sub); font-weight: 700; color: var(--ink-2); }

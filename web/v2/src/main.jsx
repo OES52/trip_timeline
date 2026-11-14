@@ -12,6 +12,8 @@ import './styles/screens.css';
 import './styles/map.css';
 import { App } from './app.jsx';
 import { load } from './data/store.js';
+import { loadOutbox } from './data/records.js';
 
 render(<App />, document.getElementById('app'));
 load();
+loadOutbox();

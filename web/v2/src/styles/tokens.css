@@ -87,7 +87,7 @@
   --t-base: 200ms;
 
   /* ── 쌓임 순서 ── */
-  --z-bar: 5; --z-sheet: 50; --z-toast: 60;
+  --z-bar: 5; --z-toast: 40; --z-sheet: 50;   /* 알림은 입력 창 아래 (창 내용을 가리지 않게) */
 
   --safe-t: env(safe-area-inset-top, 0px);
   --safe-b: env(safe-area-inset-bottom, 0px);

@@ -22,6 +22,12 @@ function tx(mode, fn) {
   }));
 }
 
+/** 폰 저장소에 글자 값 하나 넣고 꺼내기. 저장소를 못 쓰면 조용히 넘어감 */
+export const kv = {
+  async get(key) { try { return await tx('readonly', s => s.get(key)); } catch (e) { return null; } },
+  async set(key, value) { try { await tx('readwrite', s => s.put(value, key)); } catch (e) { /* 저장 공간 없으면 무시 */ } },
+};
+
 /** @returns {Promise<{savedAt:string, data:object}|null>} */
 export async function readCache() {
   try {

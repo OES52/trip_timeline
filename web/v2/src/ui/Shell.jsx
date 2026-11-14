@@ -1,6 +1,8 @@
 // 껍데기: 머리줄(흰 판), 탭(남색 안내판), 사용자 고르기, 연결 상태 줄
 import { useState } from 'preact/hooks';
-import { route, go, user, users, userId, chooseUser, sync, refresh, raw, unlock } from '../data/store.js';
+import { route, go, user, users, userId, chooseUser, sync, refresh, raw, unlock, ops, sendState, openDialog } from '../data/store.js';
+import { getPin, flush } from '../data/records.js';
+import { PinForm } from './Dialogs.jsx';
 import { userColor } from '../lib/colors.js';
 import { md } from '../lib/time.js';
 import { Icon } from './Icon.jsx';
@@ -52,6 +54,16 @@ export function TopBar({ children }) {
 /** 사용자 목록 (고르기) */
 export function UserList({ onPick }) {
   const r = raw.value;
+  const [ask, setAsk] = useState(null);   // PIN을 물어볼 사용자 id
+  const choose = id => { chooseUser(id); if (onPick) onPick(id); };
+  if (ask) {
+    return (
+      <div class="who-pin">
+        <p class="who-pin-h"><Avatar id={ask} size="lg" /><b>{ask}</b></p>
+        <PinForm id={ask} okLabel={ask + '(으)로 들어가기'} onDone={() => choose(ask)} onCancel={() => setAsk(null)} cancelLabel="다른 사용자 고르기" />
+      </div>
+    );
+  }
   return (
     <ul class="who">
       {users.value.map(u => {
@@ -59,7 +71,7 @@ export function UserList({ onPick }) {
         const on = userId.value === u.id;
         return (
           <li key={u.id}>
-            <button type="button" class="who-row" aria-pressed={on} onClick={() => { chooseUser(u.id); if (onPick) onPick(u.id); }}>
+            <button type="button" class="who-row" aria-pressed={on} onClick={() => (u.hasPin && !getPin(u.id) ? setAsk(u.id) : choose(u.id))}>
               <Avatar id={u.id} size="lg" />
               <span class="who-t">
                 <b>{u.id}</b>
@@ -115,14 +127,37 @@ export function FirstWho() {
 /** 연결이 안 돼 저장본을 보여주는 중일 때만 뜨는 한 줄 */
 export function SyncLine() {
   const s = sync.value;
-  if (s.kind !== 'stale') return null;
-  return (
-    <div class="syncline" role="status">
-      <Icon name="offline" />
-      <span>연결 안 됨. {s.savedAt ? s.savedAt + ' 저장본' : '저장본'}으로 보는 중</span>
-      <button type="button" class="btn btn-quiet btn-sm" onClick={() => refresh()}>다시 받기</button>
-    </div>
-  );
+  const n = ops.value.length, send = sendState.value;
+  // PIN을 넣어야 저장되는 기록이 있음
+  if (n && send === 'pin') {
+    return (
+      <div class="syncline" role="status">
+        <Icon name="lock" />
+        <span>PIN을 넣어야 기록 {n}건이 저장됨</span>
+        <button type="button" class="btn btn-quiet btn-sm" onClick={() => openDialog({ kind: 'pin', id: ops.value[0].user, error: '' })}>PIN 입력</button>
+      </div>
+    );
+  }
+  if (s.kind === 'stale') {
+    return (
+      <div class="syncline" role="status">
+        <Icon name="offline" />
+        <span>연결 안 됨. {s.savedAt ? s.savedAt + ' 저장본' : '저장본'}으로 보는 중{n ? ', 안 보낸 기록 ' + n + '건' : ''}</span>
+        <button type="button" class="btn btn-quiet btn-sm" onClick={() => { refresh(); flush(true); }}>다시 연결</button>
+      </div>
+    );
+  }
+  // 일정은 받았는데 기록만 못 보낸 상태
+  if (n && send === 'waiting') {
+    return (
+      <div class="syncline" role="status">
+        <Icon name="offline" />
+        <span>안 보낸 기록 {n}건. 연결되면 알아서 보냄</span>
+        <button type="button" class="btn btn-quiet btn-sm" onClick={() => flush(true)}>지금 보내기</button>
+      </div>
+    );
+  }
+  return null;
 }
 
 /** 처음 받는 중 */

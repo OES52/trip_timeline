@@ -3,6 +3,7 @@ import { signal, computed, effect } from '@preact/signals';
 import { fetchData, subscribe, login, ApiError } from './api.js';
 import { readCache, writeCache, local } from './cache.js';
 import { buildView } from '../lib/trip.js';
+import { overlayOf } from '../lib/ops.js';
 import { tokyoNow } from '../lib/time.js';
 
 const USER_KEY = 'trip-user-v1';   // v1과 같은 키 → 고른 사용자가 두 버전에서 이어짐
@@ -20,8 +21,25 @@ export const sync = signal({ kind: 'loading', savedAt: '', message: '' });
 
 export const users = computed(() => (raw.value && raw.value.users) || []);
 export const user = computed(() => users.value.find(u => u.id === userId.value) || null);
-/** 화면용 보기 (사용자 범위 날짜만 + 색인). 데이터 없으면 null */
-export const view = computed(() => (raw.value ? buildView(raw.value, user.value) : null));
+/**
+ * 아직 서버에 안 간 기록(도장·도착·지출). 보내는 중인 것도 여기 있다가 성공하면 빠짐
+ *  화면은 서버 데이터에 이걸 겹쳐 보여줘서, 누르는 즉시 바뀌고 연결이 없어도 그대로 보임. 보내는 일은 records.js
+ */
+export const ops = signal([]);
+/** 보내기 상태: 'idle' / 'sending' / 'waiting'(연결 안 돼 대기) / 'pin'(PIN을 넣어야 보냄) */
+export const sendState = signal('idle');
+/** 화면용 보기 (사용자 범위 날짜만 + 색인 + 안 보낸 기록). 데이터 없으면 null */
+export const view = computed(() => (raw.value ? buildView(raw.value, user.value, overlayOf(ops.value, userId.value)) : null));
+
+/** 알림 한 줄 (아래쪽에 잠깐). action = { label, fn } 이면 버튼 하나 (되돌리기 등) */
+export const toast = signal(null);
+let toastSeq = 0;
+export function showToast(text, action) { toast.value = { id: ++toastSeq, text, action: action || null }; }
+
+/** 떠 있는 입력 창: { kind:'spend'|'arrive', key } / { kind:'pin', id, error } / null */
+export const dialog = signal(null);
+export function openDialog(d) { dialog.value = d; }
+export function closeDialog() { dialog.value = null; }
 
 /** 일본 시각. 20초마다 갱신 (초 단위가 필요한 전광판은 따로 돎) */
 export const nt = signal(tokyoNow());
