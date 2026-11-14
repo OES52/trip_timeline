@@ -12,19 +12,13 @@ const T = { DATE: 1, TIME: 2, TEXT: 3, MEMO: 4, WHO: 5, DONE: 6, BY: 7 };
 const BOOK_HEADERS = ['날짜', '순서', '장소', '제목', '예약번호', '링크', '그림', '메모', '누구'];
 const K = { DATE: 1, ORDER: 2, PLACE: 3, TITLE: 4, NO: 5, LINK: 6, IMAGE: 7, MEMO: 8, WHO: 9 };
 
-// 메뉴: 할 일·예약 시트, 장소 시트 새 열, 설정 시트 비상 연락처 칸 (없는 것만 만듦)
-function setupExtraSheets() {
-  requireSheetUi_();
-  const ss = SpreadsheetApp.getActive();
+// 할 일·예약 시트가 없으면 만듦. 만든 시트 이름 목록 반환
+//  "시트 생성"·"시트 구조 업데이트"가 부름 (장소 시트 일본어 열은 ensurePlaceHeader_, 비상 연락처 칸은 ensureSettingsExtra_가 맡음)
+function ensureExtraSheets_(ss) {
   const made = [];
   if (!ss.getSheetByName(CONFIG.TODO_SHEET)) { buildTodoSheet_(ss.insertSheet(CONFIG.TODO_SHEET)); made.push(CONFIG.TODO_SHEET); }
   if (!ss.getSheetByName(CONFIG.BOOK_SHEET)) { buildBookSheet_(ss.insertSheet(CONFIG.BOOK_SHEET)); made.push(CONFIG.BOOK_SHEET); }
-  const pl = ss.getSheetByName(CONFIG.PLACE_SHEET);
-  if (pl) ensurePlaceHeader_(pl);
-  ensureSettingsExtra_(ss);
-  invalidateCache_();
-  alert_((made.length ? '만듦: ' + made.join(', ') : '"할 일"·"예약" 시트는 이미 있음') +
-    '\n장소 시트 "일본어 이름"·"주소" 열, 설정 시트 "비상 연락처" 칸도 확인함');
+  return made;
 }
 
 function headerRow_(sh, headers) {
@@ -156,7 +150,7 @@ function fillPlaceJa() {
   ensurePlaceHeader_(sh);
   const places = readPlaces_(sh);
   const col = places.length ? places[0].col : null;
-  if (!col || col.JA < 0 || col.ADDR < 0 || col.PID < 0) { ui.alert('장소 시트에 일본어 이름·주소·Place ID 열이 없음. 할 일·예약 시트 만들기 먼저'); return; }
+  if (!col || col.JA < 0 || col.ADDR < 0 || col.PID < 0) { ui.alert('장소 시트에 일본어 이름·주소·Place ID 열이 없음. 시트 구조 업데이트 먼저'); return; }
   const list = places.filter(p => p.pid !== 'none' && (!p.ja || !p.addr)).slice(0, 100);
   if (!list.length) { ui.alert('채울 장소 없음 (일본어 이름·주소가 다 있음)'); return; }
   const ok = ui.alert('장소 일본어 이름·주소 채우기',

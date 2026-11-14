@@ -25,7 +25,6 @@ function onOpen() {
     .addItem('홈랩 프록시 알림 트리거 설치', 'installProxyTrigger')
     .addItem('예산 통화 정리 (엔화·원화 나누기)', 'migrateBudgetCurrency')
     .addSeparator()
-    .addItem('할 일·예약 시트 만들기 (장소 일본어 열·비상 연락처 칸 포함)', 'setupExtraSheets')
     .addItem('장소 일본어 이름·주소 채우기 (Places API, 빈 칸만)', 'fillPlaceJa')
     .addItem('집 서버 감시 켜기 (30분 넘게 안 되면 메일 + 비상 주소)', 'installHomeMonitor')
     .addItem('집 서버 감시 끄기', 'removeHomeMonitor')
@@ -72,6 +71,7 @@ function setupSheets() {
     buildSpendSheet_(ss.insertSheet(CONFIG.SPEND_SHEET));
     created.push(CONFIG.SPEND_SHEET);
   }
+  ensureExtraSheets_(ss).forEach(n => created.push(n));   // 할 일·예약
 
   alert_(created.length
     ? '생성 완료: ' + created.join(', ')
@@ -121,9 +121,11 @@ function updateSheetStructure() {
   if (!ss.getSheetByName(CONFIG.PLACE_SHEET)) buildPlaceSheet_(ss.insertSheet(CONFIG.PLACE_SHEET));
   else ensurePlaceHeader_(ss.getSheetByName(CONFIG.PLACE_SHEET));
   if (!ss.getSheetByName(CONFIG.SPEND_SHEET)) buildSpendSheet_(ss.insertSheet(CONFIG.SPEND_SHEET));
+  const made = ensureExtraSheets_(ss);                               // 할 일·예약 (Extras.js)
   ensureColumns_(sh, PLAN_HEADERS.length);
   applyPlanFormat_(sh, false);
   alert_('업데이트 완료.' + (added.length ? '\n새 열 추가: ' + added.join(', ') : '') +
+    (made.length ? '\n새 시트: ' + made.join(', ') + ' (장소 시트 일본어 이름·주소 열, 설정 시트 비상 연락처 칸도 확인함)' : '') +
     '\n"경로 계산 (캐시 무시)"를 한 번 실행하면 이동(분)·요금이 다시 채워짐\n환율은 "설정" 시트 B1에서 확인·수정');
 }
 
