@@ -7,6 +7,6 @@ resources:
   - trip-api.yaml
 images:
   - name: ghcr.io/oes52/trip-web
-    newTag: aaa10d0cb90398088be12205f82f589bd4b8a746
+    newTag: f8715bc917d7276109fc6fbcc226cac590f73bfa
   - name: ghcr.io/oes52/trip-api
     newTag: c3ed0d088cad225ec78885eef1c32e33ded545df
