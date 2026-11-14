@@ -71,7 +71,7 @@
     let reloading = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => { if (!reloading) { reloading = true; location.reload(); } });
     addEventListener('load', () => {
-      navigator.serviceWorker.register('/sw.js').then(reg => {
+      navigator.serviceWorker.register((CFG.base || '/') + 'sw.js', { scope: CFG.base || '/' }).then(reg => {
         swReg = reg;
         const offer = w => {
           const el = bar('swUpdate');
@@ -612,7 +612,7 @@
     const pts = DATA.points.filter(p => p.date === date).sort((a, b) => a.order - b.order);
     if (!pts.length) return;
     const text = dayLabel(date) + ' 일정\n' + pts.map(p => (p.arrive || '  :  ') + ' ' + pname(p)).join('\n');
-    share(dayLabel(date) + ' 일정', text, location.origin + '/');
+    share(dayLabel(date) + ' 일정', text, location.origin + '/');   // 사이트 첫 주소 = 새 화면
   }
   const renderTimeline0 = renderTimeline;
   renderTimeline = function () {

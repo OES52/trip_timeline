@@ -23,9 +23,12 @@ if (!/^\/[a-z0-9/_-]*[a-z0-9]$/i.test(apiUrl) && !/^https:\/\/script\.google\.co
   process.exit(1);
 }
 const viaProxy = apiUrl.charAt(0) === '/';
+// 이 화면이 놓일 경로 (예전 화면은 /v1/, 새 화면 v2가 / 를 맡음). 환경변수 TRIP_BASE 또는 config.base
+const BASE = ((process.env.TRIP_BASE || config.base || '/').replace(/\/?$/, '/')).replace(/^(?!\/)/, '/');
 // 화면 코드에 넘길 설정 (사진 프록시는 프록시 경유일 때만 의미 있음)
 const clientCfg = {
   photoProxy: viaProxy && config.photoProxy !== false,
+  base: BASE,
 };
 const SRC = join(WEB, 'src');
 const src = name => readFileSync(join(SRC, name), 'utf8');
@@ -68,7 +71,7 @@ if (viaProxy) {
 html = html.replace(/<base target="_top">\s*/i, '');
 html = html.replace('<meta charset="utf-8">',
   '<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">\n<title>여행 타임라인</title>' +
-  (viaProxy ? '\n<link rel="manifest" href="/manifest.webmanifest">' +
+  (viaProxy ? '\n<link rel="manifest" href="' + BASE + 'manifest.webmanifest">' +
     '\n<meta name="theme-color" content="#1d2633">' +
     '\n<link rel="icon" href="/icons/icon-192.png">' +
     '\n<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">' +
@@ -85,16 +88,27 @@ rmSync(DIST, { recursive: true, force: true });
 mkdirSync(DIST, { recursive: true });
 writeFileSync(join(DIST, 'index.html'), html);
 if (existsSync(join(WEB, 'public'))) cpSync(join(WEB, 'public'), DIST, { recursive: true });
+// 매니페스트: 시작 주소·범위를 이 화면 경로로 (아이콘은 사이트 루트 /icons 를 같이 씀)
+{
+  const mf = JSON.parse(readFileSync(join(DIST, 'manifest.webmanifest'), 'utf8'));
+  Object.assign(mf, { id: BASE, start_url: BASE, scope: BASE });
+  if (BASE !== '/') mf.name = mf.name + ' (예전 화면)';
+  writeFileSync(join(DIST, 'manifest.webmanifest'), JSON.stringify(mf, null, 2) + '\n');
+}
 
 // 서비스 워커: 페이지가 바뀌면 버전도 바뀜 → 폰에 "새 버전 있음"
 if (viaProxy) {
   const cdn = Array.from(new Set((html.match(/(?:src|href)="(https:\/\/(?:cdn\.jsdelivr\.net|cdnjs\.cloudflare\.com|fonts\.googleapis\.com)\/[^"]+)"/g) || [])
     .map(m => m.replace(/^(?:src|href)="|"$/g, '').replace(/&amp;/g, '&'))));
-  const precache = ['/', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/badge-96.png', '/icons/apple-touch-icon.png'].concat(cdn);
-  precache.filter(u => u.charAt(0) === '/' && u !== '/').forEach(u => { if (!existsSync(join(DIST, u))) throw new Error('미리 저장 목록 파일 없음: ' + u); });
+  const precache = [BASE, BASE + 'manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/badge-96.png', '/icons/apple-touch-icon.png'].concat(cdn);
+  // 아이콘은 사이트 루트(/icons)에 따로 나감 → web/public 에서 확인
+  precache.filter(u => u.charAt(0) === '/' && u !== BASE).forEach(u => {
+    const f = u.indexOf(BASE) === 0 ? join(DIST, u.slice(BASE.length)) : join(WEB, 'public', u);
+    if (!existsSync(f)) throw new Error('미리 저장 목록 파일 없음: ' + u);
+  });
   const tpl = src('sw.js');
   const version = createHash('sha256').update(html).update(tpl).update(JSON.stringify(precache)).digest('hex').slice(0, 12);
-  writeFileSync(join(DIST, 'sw.js'), tpl.replace('__VERSION__', () => version).replace('__PRECACHE__', () => JSON.stringify(precache, null, 2)));
-  console.log('서비스 워커: 버전 ' + version + ', 미리 저장 ' + precache.length + '개');
+  writeFileSync(join(DIST, 'sw.js'), tpl.replace('__VERSION__', () => version).replace('__PRECACHE__', () => JSON.stringify(precache, null, 2)).replace(/__BASE__/g, () => BASE));
+  console.log('경로 ' + BASE + ', 서비스 워커: 버전 ' + version + ', 미리 저장 ' + precache.length + '개');
 }
 console.log('빌드 완료: web/dist/index.html (' + Math.round(html.length / 1024) + 'KB, 포함 ' + used.length + '개: ' + used.join(', ') + ')');

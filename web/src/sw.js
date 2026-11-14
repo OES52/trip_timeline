@@ -6,8 +6,9 @@
  *  - /api/* 나머지: 손대지 않음 (일정 데이터는 화면이 IndexedDB에 직접 저장)
  *  - 푸시: 출발 알림 표시, 누르면 앱 열기 */
 const VERSION = '__VERSION__';
+const BASE = '__BASE__';   // 이 화면 경로 (예전 화면은 /v1/)
 const PRECACHE = __PRECACHE__;
-const SHELL = 'trip-shell-' + VERSION;
+const SHELL = 'trip1-shell-' + VERSION;   // 루트(/)에 있던 예전 서비스 워커의 trip-shell-* 과 안 겹치게
 const RUNTIME = 'trip-runtime-v1';
 const PHOTOS = 'trip-photos-v1';
 const PHOTO_MAX = 600;   // 사진 캐시 최대 장수 (넘으면 오래된 것부터)
@@ -34,7 +35,7 @@ self.addEventListener('install', e => {
 self.addEventListener('activate', e => {
   e.waitUntil((async () => {
     const keys = await caches.keys();
-    await Promise.all(keys.filter(k => k.indexOf('trip-shell-') === 0 && k !== SHELL).map(k => caches.delete(k)));
+    await Promise.all(keys.filter(k => k.indexOf('trip1-shell-') === 0 && k !== SHELL).map(k => caches.delete(k)));
     await self.clients.claim();
   })());
 });
@@ -47,7 +48,7 @@ self.addEventListener('fetch', e => {
   const url = new URL(req.url);
   const same = url.origin === self.location.origin;
 
-  if (req.mode === 'navigate' && same) { e.respondWith(navigate(req)); return; }
+  if (req.mode === 'navigate' && same && url.pathname.indexOf(BASE) === 0) { e.respondWith(navigate(req)); return; }
   if (same && url.pathname === '/api/photo') { e.respondWith(photo(req)); return; }
   if (same && url.pathname.indexOf('/api/map/ofm/') === 0) { e.respondWith(mapTile(req)); return; }
   if (same && url.pathname.indexOf('/api/') === 0) return;
@@ -67,7 +68,7 @@ async function navigate(req) {
     if (res.ok) return res;
     throw new Error(String(res.status));
   } catch (err) {
-    return (await c.match('/index.html')) || (await c.match('/')) || Response.error();
+    return (await c.match(BASE + 'index.html')) || (await c.match(BASE)) || Response.error();
   }
 }
 
@@ -145,17 +146,17 @@ self.addEventListener('push', e => {
     renotify: true,
     icon: '/icons/icon-192.png',
     badge: '/icons/badge-96.png',
-    data: { url: d.url || '/' },
+    data: { url: BASE },
   }));
 });
 
 self.addEventListener('notificationclick', e => {
   e.notification.close();
-  const target = (e.notification.data && e.notification.data.url) || '/';
+  const target = (e.notification.data && e.notification.data.url) || BASE;
   e.waitUntil((async () => {
     const list = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     for (const w of list) {
-      if (new URL(w.url).origin === self.location.origin) { await w.focus(); return; }
+      if (new URL(w.url).pathname.indexOf(BASE) === 0) { await w.focus(); return; }
     }
     await self.clients.openWindow(target);
   })());

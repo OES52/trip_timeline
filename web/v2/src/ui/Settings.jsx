@@ -23,7 +23,7 @@ export function SettingsSheet({ onClose }) {
       <GeoSet />
       <OfflineSet />
       <SyncSet />
-      <a class="me-v1" href="/">예전 화면(v1) 열기<Icon name="out" /></a>
+      <a class="me-v1" href="/v1/">예전 화면(v1) 열기<Icon name="out" /></a>
     </Sheet>
   );
 }
