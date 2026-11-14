@@ -37,6 +37,14 @@ import rain from '@phosphor-icons/core/assets/fill/cloud-rain-fill.svg?raw';
 import snow from '@phosphor-icons/core/assets/fill/cloud-snow-fill.svg?raw';
 import storm from '@phosphor-icons/core/assets/fill/cloud-lightning-fill.svg?raw';
 import list from '@phosphor-icons/core/assets/fill/list-bullets-fill.svg?raw';
+import cube from '@phosphor-icons/core/assets/fill/cube-fill.svg?raw';
+import play from '@phosphor-icons/core/assets/fill/play-fill.svg?raw';
+import pause from '@phosphor-icons/core/assets/fill/pause-fill.svg?raw';
+import store from '@phosphor-icons/core/assets/fill/storefront-fill.svg?raw';
+import toilet from '@phosphor-icons/core/assets/fill/toilet-fill.svg?raw';
+import exit from '@phosphor-icons/core/assets/fill/door-open-fill.svg?raw';
+import globe from '@phosphor-icons/core/assets/fill/globe-hemisphere-east-fill.svg?raw';
+import layers from '@phosphor-icons/core/assets/fill/stack-fill.svg?raw';
 import fit from '@phosphor-icons/core/assets/bold/corners-out-bold.svg?raw';
 import down from '@phosphor-icons/core/assets/bold/caret-down-bold.svg?raw';
 import left from '@phosphor-icons/core/assets/bold/caret-left-bold.svg?raw';
@@ -50,6 +58,7 @@ export const ICONS = {
   clock, path, pin, stamp, nav, walk, train, subway, tram, bus, taxi, plane, boat, car, cable,
   bed, food, coffee, camera, bag, warn, moon, sunset, wallet, map, user, lock, ticket, offline, hourglass,
   sun, cloudSun, cloud, fog, rain, snow, storm, list, fit,
+  cube, play, pause, store, toilet, exit, globe, layers,
   down, left, right, check, close, reload, out,
 };
 

@@ -41,8 +41,9 @@
 .map .maplibregl-ctrl-group { border-radius: var(--r-plate); box-shadow: 0 0 0 1.5px rgba(27, 37, 54, .22); }
 .map .maplibregl-ctrl-group button { width: 44px; height: 44px; }
 .map .maplibregl-ctrl-top-right .maplibregl-ctrl { margin: var(--s3) var(--s3) 0 0; }
-.mapctl-fit { display: grid; place-items: center; color: #333; }
-.mapctl-fit svg { width: 22px; height: 22px; }
+.mapctl { display: grid; place-items: center; color: #333; }
+.mapctl svg { width: 22px; height: 22px; }
+.map .maplibregl-ctrl-group button.mapctl[aria-pressed="true"] { color: #fff; background: var(--ink); }
 @media (pointer: coarse) {
   .map .maplibregl-ctrl-zoom-in, .map .maplibregl-ctrl-zoom-out { display: none; }
 }
@@ -86,7 +87,35 @@
 .mapcard-act .btn-exit { flex: 1; }
 .btn-icon { width: var(--tap); padding: 0; }
 .btn:disabled { opacity: .4; cursor: default; }
-@media (min-width: 1024px) { .mapcard { display: none; } }
+@media (min-width: 1024px) { .mapcard:not(.rp):not(.mapall) { display: none; } .mapcard.rp, .mapcard.mapall { left: auto; width: 420px; } }
 
 /* 지도에서 고른 장소의 타임라인 줄 */
 .stop.is-picked { background: color-mix(in srgb, var(--info) 9%, var(--plate)); box-shadow: inset 4px 0 0 var(--info); }
+
+/* ── 여행 전체: 일차 번호 + 도시색 점 ── */
+.pinbox.is-day > .pin { min-width: 24px; height: 24px; font-size: var(--fs-meta); color: #fff; background: var(--c); border: 2px solid #fff; }
+.mapall p { padding: var(--s1) var(--s1) var(--s2); font-size: var(--fs-sub); color: var(--ink-2); }
+.mapall p b { color: var(--ink); }
+.mapall-l { display: flex; gap: var(--s2); overflow-x: auto; scrollbar-width: none; }
+.mapall-l button { display: inline-flex; align-items: center; gap: var(--s2); min-height: 40px; padding: 0 var(--s3) 0 var(--s1); font-size: var(--fs-sub); font-weight: 700; white-space: nowrap; background: var(--plate-2); border-radius: var(--r-round); }
+.mapall-l b { display: grid; place-items: center; width: 28px; height: 28px; color: #fff; background: var(--c); border-radius: 50%; }
+
+/* ── 시설 표시 고르기 ── */
+.mapmenu { position: absolute; z-index: 4; top: var(--s3); right: 68px; display: grid; gap: var(--s1); width: min(280px, calc(100% - 92px)); padding: var(--s3); background: var(--plate); border-radius: var(--r-plate); box-shadow: 0 0 0 1px var(--hair-2), 0 8px 24px rgba(13, 18, 26, .2); }
+.mapmenu-h { font-size: var(--fs-sub); font-weight: 700; }
+.mapmenu-h span { font-weight: 400; color: var(--ink-2); }
+.mapmenu .switch { min-height: 44px; }
+.mapmenu .switch span { display: inline-flex; align-items: center; gap: var(--s2); }
+.mapmenu-ic { display: grid; place-items: center; width: 22px; height: 22px; font-size: 11px; font-style: normal; font-weight: 700; color: #fff; border-radius: 5px; }
+.mapmenu .btn { justify-self: end; }
+
+/* ── 리플레이 ── */
+.rp-dot { display: block; width: 18px; height: 18px; background: #FF3B30; border: 3px solid #fff; border-radius: 50%; box-shadow: 0 0 0 6px rgba(255, 59, 48, .25), 0 2px 6px rgba(0, 0, 0, .35); }
+.rp, .mapall { padding: var(--s3); }
+.rp { display: grid; gap: var(--s2); }
+.rp-top { display: flex; align-items: center; gap: var(--s3); min-width: 0; }
+.rp-clock { flex: none; padding: 2px var(--s2); font-family: var(--font-led); font-size: var(--fs-time); line-height: 1.2; color: var(--led); background: var(--led-bg); border-radius: 4px; }
+.rp-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-body); font-weight: 700; }
+.rp-range { width: 100%; height: 32px; accent-color: #FF3B30; }
+.rp-ctrl { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); }
+.rp-ctrl .btn-quiet { margin-left: auto; }
