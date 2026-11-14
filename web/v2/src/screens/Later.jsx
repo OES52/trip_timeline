@@ -17,5 +17,4 @@ function Later({ title, what }) {
   );
 }
 
-export const Places = () => <Later title="장소" what="추천 가이드와 도감을 하나로 합쳐 옮길 예정. 그동안은 예전 화면에서 보면 됨" />;
 export const Records = () => <Later title="기록" what="여권 도장, 지출·영수증, 리플레이를 여기로 옮길 예정. 그동안은 예전 화면에서 보면 됨" />;

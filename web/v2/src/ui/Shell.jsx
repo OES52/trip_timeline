@@ -1,12 +1,13 @@
 // 껍데기: 머리줄(흰 판), 탭(남색 안내판), 사용자 고르기, 연결 상태 줄
-import { useState } from 'preact/hooks';
-import { route, go, user, users, userId, chooseUser, sync, refresh, raw, unlock, ops, sendState, openDialog } from '../data/store.js';
+import { useState, useEffect } from 'preact/hooks';
+import { route, go, user, users, userId, chooseUser, sync, refresh, raw, unlock, ops, sendState, openDialog, showToast } from '../data/store.js';
 import { getPin, flush } from '../data/records.js';
 import { PinForm } from './Dialogs.jsx';
 import { userColor } from '../lib/colors.js';
 import { md } from '../lib/time.js';
 import { Icon } from './Icon.jsx';
 import { Sheet } from './Sheet.jsx';
+import { appSaved, storage, prep, prepared, readStorage, countPrepared, runPrep, stopPrep } from '../data/offline.js';
 
 const TABS = [
   { id: 'today', label: '오늘', icon: 'clock' },
@@ -106,8 +107,51 @@ function MeSheet({ onClose }) {
           <Icon name="reload" />{busy ? '받는 중' : '다시 받기'}
         </button>
       </div>
+      <OfflinePrep />
       <a class="me-v1" href="/">예전 화면(v1) 열기<Icon name="out" /></a>
     </Sheet>
+  );
+}
+
+const mb = b => (b == null ? '?' : b >= 1024 * 1024 * 1024 ? (b / 1024 / 1024 / 1024).toFixed(1) + 'GB' : Math.round(b / 1024 / 1024) + 'MB');
+
+/** 인터넷 없이 보기: 앱 화면 저장 상태 + 지도·사진 미리 받기 */
+function OfflinePrep() {
+  useEffect(() => { readStorage(); countPrepared(); }, []);
+  const p = prep.value, c = prepared.value, st = storage.value;
+  const start = async () => {
+    const r = await runPrep();
+    if (!r) return;
+    showToast(r.stopped ? '미리 받기를 멈춤. 다시 누르면 받은 곳부터 이어 받음'
+      : r.fail ? '미리 받기 끝. ' + r.fail + '개는 못 받음. 다시 누르면 그것만 다시 받음'
+      : '미리 받기 끝. 인터넷 없이도 지도와 사진이 보임');
+  };
+  const all = c && c.map === c.mapAll && c.photo === c.photoAll;
+  return (
+    <section class="off" aria-labelledby="off-h">
+      <h3 id="off-h" class="off-h">인터넷 없이 보기</h3>
+      <dl class="off-l">
+        <div><dt>일정·기록</dt><dd>이 폰에 저장됨</dd></div>
+        <div><dt>앱 화면</dt><dd>{appSaved.value ? '이 폰에 저장됨' : '저장 안 됨 (이 브라우저는 못 함)'}</dd></div>
+        <div><dt>지도</dt><dd>{c ? <><span class="num">{c.map} / {c.mapAll}</span>{c.map < c.mapAll ? ' · 다 받으면 약 ' + c.estMB + 'MB' : ' · 다 받음'}</> : '세는 중'}</dd></div>
+        <div><dt>장소 사진</dt><dd>{c ? <><span class="num">{c.photo} / {c.photoAll}</span>{c.photo < c.photoAll ? '' : ' · 다 받음'}</> : '세는 중'}</dd></div>
+        {st && st.usage != null && <div><dt>저장 공간</dt><dd><span class="num">{mb(st.usage)}</span> 사용{st.quota ? ' · 남은 곳 ' + mb(st.quota - st.usage) : ''}{st.persisted ? ' · 안 지워지게 잡아 둠' : ''}</dd></div>}
+      </dl>
+      {p ? (
+        <div class="off-run" role="status">
+          <div class="off-bar" aria-hidden="true"><i style={{ width: Math.round((p.done / Math.max(1, p.total)) * 100) + '%' }} /></div>
+          <span class="num">{p.done} / {p.total}{p.fail ? ' · 못 받음 ' + p.fail : ''}</span>
+          <button type="button" class="btn btn-plate btn-sm" disabled={p.stop} onClick={stopPrep}>{p.stop ? '멈추는 중' : '멈추기'}</button>
+        </div>
+      ) : (
+        <>
+          <p class="off-note">일정 주변 지도와 장소 사진을 미리 받아 둠. 와이파이에서 받기</p>
+          <button type="button" class={'btn btn-sm ' + (all ? 'btn-plate' : 'btn-exit')} disabled={!('caches' in window)} onClick={start}>
+            <Icon name="down" />{all ? '다시 확인하기' : '지도·사진 미리 받기'}
+          </button>
+        </>
+      )}
+    </section>
   );
 }
 

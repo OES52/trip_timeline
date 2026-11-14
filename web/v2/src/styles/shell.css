@@ -117,3 +117,16 @@
 .btn-danger:hover { color: var(--late); background: var(--late-bg); }
 .who-pin { display: grid; gap: var(--s3); }
 .who-pin-h { display: flex; align-items: center; gap: var(--s3); font-size: var(--fs-name); }
+
+/* 인터넷 없이 보기 (사용자 시트 안) */
+.off { margin-top: var(--s4); padding-top: var(--s3); border-top: 1px solid var(--hair); }
+.off-h { font-size: var(--fs-sub); font-weight: 700; margin-bottom: var(--s2); }
+.off-l { display: grid; gap: var(--s1); margin-bottom: var(--s3); font-size: var(--fs-sub); }
+.off-l > div { display: flex; gap: var(--s3); }
+.off-l dt { flex: 0 0 5.5em; color: var(--ink-2); }
+.off-l dd { margin: 0; min-width: 0; }
+.off-note { font-size: var(--fs-meta); color: var(--ink-2); margin-bottom: var(--s2); }
+.off-run { display: flex; align-items: center; gap: var(--s3); font-size: var(--fs-sub); }
+.off-bar { flex: 1; height: 8px; border-radius: var(--r-round); background: var(--plate-2); overflow: hidden; }
+.off-bar > i { display: block; height: 100%; background: var(--ink); transition: width var(--t-base) var(--ease); }
+@media (prefers-reduced-motion: reduce) { .off-bar > i { transition: none; } }

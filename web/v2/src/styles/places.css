@@ -1,0 +1,90 @@
+/* 장소 화면 */
+.places-in { max-width: 960px; margin: 0 auto; padding-bottom: var(--s6); }
+
+/* 머리줄 도시 띠 */
+.strip-city .strip-c {
+  position: relative; flex: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  min-width: 56px; height: 48px; padding: 0 var(--s3); line-height: 1; border-radius: var(--r-plate);
+}
+.strip-c b { font-size: var(--fs-body); white-space: nowrap; }
+.strip-c span { font-size: var(--fs-meta); color: var(--ink-2); }
+.strip-c::after { content: ""; position: absolute; left: 8px; right: 8px; bottom: 2px; height: 4px; border-radius: 2px; background: var(--c); }
+.strip-c[aria-pressed="true"] { color: var(--plate); background: var(--ink); }
+.strip-c[aria-pressed="true"] span { color: inherit; opacity: .8; }
+
+/* 찾기·거르기 */
+.pfind { display: grid; gap: var(--s2); padding: var(--s4) var(--s4) var(--s2); }
+.pfind-q input {
+  width: 100%; min-height: var(--tap); padding: 0 var(--s3); font-size: var(--fs-body);
+  background: var(--plate); border: 1.5px solid var(--hair-2); border-radius: var(--r-plate);
+}
+.chips { display: flex; gap: var(--s2); overflow-x: auto; scrollbar-width: none; margin: 0 calc(var(--s4) * -1); padding: 0 var(--s4); }
+.chips::-webkit-scrollbar { display: none; }
+.chip {
+  flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 var(--s3);
+  font-size: var(--fs-sub); font-weight: 700; white-space: nowrap; color: var(--ink-2);
+  background: var(--plate); border-radius: var(--r-round); box-shadow: inset 0 0 0 1.5px var(--hair-2);
+}
+.chip .ic { width: 16px; height: 16px; }
+.chip[aria-pressed="true"] { color: var(--plate); background: var(--ink); box-shadow: none; }
+@media (pointer: coarse) { .chip { min-height: 44px; } }
+.pfind-n { font-size: var(--fs-sub); color: var(--ink-2); }
+
+/* 도시 → 구역 */
+.pcity { margin-top: var(--s4); }
+.pcity-h { position: relative; padding: 0 var(--s4) var(--s2) calc(var(--s4) + 14px); font-size: var(--fs-name); }
+.pcity-h::before { content: ""; position: absolute; left: var(--s4); top: 4px; bottom: 12px; width: 6px; border-radius: 2px; background: var(--c); }
+.parea + .parea { margin-top: var(--s3); }
+.parea-h { padding: var(--s1) var(--s4) var(--s2); font-size: var(--fs-sub); font-weight: 700; color: var(--ink-2); }
+.plist { background: var(--plate); border-block: 1px solid var(--hair); }
+.plist li + li { border-top: 1px solid var(--hair); }
+
+/* 장소 줄 */
+.prow { display: flex; align-items: center; gap: var(--s3); width: 100%; min-height: 80px; padding: var(--s2) var(--s3) var(--s2) var(--s4); }
+.prow:hover { background: var(--plate-2); }
+.prow > .ic { width: 16px; height: 16px; color: var(--ink-3); flex: none; }
+.prow-ph { position: relative; flex: none; display: grid; place-items: center; width: 64px; height: 64px; overflow: hidden; color: var(--ink-3); background: var(--plate-2); border-radius: var(--r-plate); }
+.prow-ph img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.prow-ph > .ic { width: 28px; height: 28px; }
+.prow-seal { position: absolute; right: 3px; bottom: 3px; display: grid; place-items: center; width: 22px; height: 22px; color: #fff; background: var(--seal); border-radius: var(--r-round); transform: rotate(-8deg); }
+.prow-seal .ic { width: 12px; height: 12px; }
+.prow-t { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.prow-t b { font-size: var(--fs-body); line-height: 1.35; }
+.prow-m { display: flex; align-items: center; gap: 6px; overflow: hidden; font-size: var(--fs-sub); color: var(--ink-2); text-overflow: ellipsis; white-space: nowrap; }
+.prow-m .ic { width: 14px; height: 14px; flex: none; color: var(--ink-3); }
+.prow-v { display: flex; flex-wrap: wrap; gap: 4px; }
+.prow-v em { padding: 0 6px; font-size: var(--fs-meta); font-style: normal; font-weight: 700; line-height: 20px; color: var(--ink-2); border-radius: 4px; box-shadow: inset 0 0 0 1px var(--hair-2); }
+.prow-v em.is-done { color: #fff; background: var(--seal); box-shadow: none; }
+.prow-v em.is-extra { color: var(--ink-2); background: var(--plate-2); box-shadow: none; font-weight: 400; }
+.prow.is-extra .prow-t b { font-weight: 700; color: var(--ink); }
+
+@media (min-width: 640px) {
+  .plist { margin: 0 var(--s4); border: 0; border-radius: var(--r-plate); box-shadow: inset 0 0 0 1.5px var(--hair-2); overflow: hidden; }
+}
+@media (min-width: 1024px) {
+  .plist { display: grid; grid-template-columns: 1fr 1fr; }
+  .plist li + li { border-top: 0; }
+  .plist li { border-bottom: 1px solid var(--hair); }
+  .plist li:nth-child(odd) { border-right: 1px solid var(--hair); }
+}
+
+/* 장소 시트 */
+.psheet { display: grid; gap: var(--s4); }
+.psheet-ph { display: flex; gap: var(--s2); overflow-x: auto; scroll-snap-type: x mandatory; margin: 0 calc(var(--s4) * -1); padding: 0 var(--s4); scrollbar-width: none; }
+.psheet-ph::-webkit-scrollbar { display: none; }
+.psheet-ph img { flex: none; width: 86%; aspect-ratio: 4 / 3; object-fit: cover; scroll-snap-align: center; background: var(--plate-2); border-radius: var(--r-plate); }
+.psheet-ph img:only-child { width: 100%; }
+.psheet-m { display: flex; align-items: center; gap: 6px; font-size: var(--fs-sub); color: var(--ink-2); }
+.psheet-m .ic { width: 16px; height: 16px; }
+.psheet-h { margin-bottom: var(--s2); font-size: var(--fs-sub); font-weight: 700; color: var(--ink-2); }
+.psheet-v { display: grid; gap: var(--s2); }
+.psheet-v button {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px var(--s2); width: 100%; min-height: var(--tap); padding: var(--s2) var(--s3);
+  font-size: var(--fs-sub); background: var(--plate); border-radius: var(--r-plate); box-shadow: inset 0 0 0 1.5px var(--hair-2);
+}
+.psheet-v button:hover { background: var(--plate-2); }
+.psheet-v button b { font-size: var(--fs-body); }
+.psheet-go { display: inline-flex; align-items: center; gap: 2px; margin-left: auto; font-weight: 700; color: var(--info); }
+.psheet-go .ic { width: 14px; height: 14px; }
+.tag-seal { margin-left: 0; color: #fff; background: var(--seal); }
+.psheet-none { font-size: var(--fs-sub); color: var(--ink-2); }

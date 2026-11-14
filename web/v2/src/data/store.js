@@ -105,17 +105,24 @@ export function chooseUser(id) {
   local.set(USER_KEY, id);
 }
 
-/* ── 지금 보는 곳 (탭·날짜). 주소 #탭/날짜 와 맞춤 → 새로고침·뒤로 가기에 그대로 ── */
+/* ── 지금 보는 곳 (탭·날짜). 주소 #탭/날짜 와 맞춤 → 새로고침·뒤로 가기에 그대로
+ *  주소에 없으면(홈 화면 아이콘으로 열 때 등) 마지막에 보던 탭·날짜로 ── */
 const TABS = ['today', 'plan', 'places', 'records'];
-function parseHash() {
-  const [t, d] = location.hash.replace(/^#\/?/, '').split('/');
-  return { tab: TABS.includes(t) ? t : 'today', day: /^\d{4}-\d{2}-\d{2}$/.test(d || '') ? d : null };
+const ROUTE_KEY = 'trip2-route';
+function parse(text) {
+  const [t, d] = String(text || '').replace(/^#\/?/, '').split('/');
+  return TABS.includes(t) ? { tab: t, day: /^\d{4}-\d{2}-\d{2}$/.test(d || '') ? d : null } : null;
 }
-export const route = signal(parseHash());
+const hashOf = r => '#' + r.tab + (r.day ? '/' + r.day : '');
+function parseHash() { return parse(location.hash) || { tab: 'today', day: null }; }
+const first = parse(location.hash) || parse(local.get(ROUTE_KEY)) || { tab: 'today', day: null };
+if (!parse(location.hash) && first.tab !== 'today') history.replaceState(null, '', hashOf(first));
+export const route = signal(first);
 addEventListener('hashchange', () => { route.value = parseHash(); });
+effect(() => { local.set(ROUTE_KEY, hashOf(route.value)); });
 export function go(tab, day) {
   const next = { tab, day: day === undefined ? route.value.day : day };
-  const hash = '#' + next.tab + (next.day ? '/' + next.day : '');
+  const hash = hashOf(next);
   // 같은 탭 안에서 날짜만 바꾸는 건 기록에 안 쌓음 (뒤로 가기가 날짜를 하나씩 되짚지 않게)
   if (next.tab === route.value.tab) { history.replaceState(null, '', hash); route.value = next; }
   else location.hash = hash;
@@ -132,6 +139,20 @@ export function setPlanView(v) { planView.value = v; local.set(PLAN_VIEW_KEY, v)
  */
 export const picked = signal(null);
 export function pick(key, from) { picked.value = key ? { key, from } : null; }
+
+/* ── 장소 탭: 거르기 (마지막 선택 기억) ── */
+const PLACES_KEY = 'trip2-places';
+function readPlaces() {
+  try { const j = JSON.parse(local.get(PLACES_KEY) || 'null'); if (j) return { city: j.city || '', type: j.type || '', scope: j.scope || 'all', q: '' }; } catch (e) { /* 무시 */ }
+  return { city: '', type: '', scope: 'all', q: '' };
+}
+/** { city, type, scope:'all'|'plan'|'extra', q } (검색어는 기억 안 함) */
+export const placeFilter = signal(readPlaces());
+export function setPlaceFilter(patch) {
+  placeFilter.value = Object.assign({}, placeFilter.value, patch);
+  const f = placeFilter.value;
+  local.set(PLACES_KEY, JSON.stringify({ city: f.city, type: f.type, scope: f.scope }));
+}
 
 /** 일정 탭에서 보는 날짜: 주소에 있으면 그날, 없으면 오늘(여행 중) 또는 첫날 */
 export const day = computed(() => {
