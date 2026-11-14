@@ -41,6 +41,11 @@ export const dialog = signal(null);
 export function openDialog(d) { dialog.value = d; }
 export function closeDialog() { dialog.value = null; }
 
+/** 도장 찍히는 장면: 방금 도장 찍은 일정 점 키 ("날짜#순서") 또는 null */
+export const stampFx = signal(null);
+/** 장소 탭에서 열어 둘 장소 시트 (장소 키) */
+export const placeOpen = signal(null);
+
 /** 일본 시각. 20초마다 갱신 (초 단위가 필요한 전광판은 따로 돎) */
 export const nt = signal(tokyoNow());
 export const nowMs = signal(Date.now());

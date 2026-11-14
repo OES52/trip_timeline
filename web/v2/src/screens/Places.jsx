@@ -1,7 +1,6 @@
 // 장소: 일정에 있는 곳 + 추천 장소를 한 목록으로 (v1의 추천 가이드와 도감을 합침)
 //  머리줄 = 도시 띠 / 본문 = 찾기·거르기 + 도시 → 구역별 목록. 누르면 장소 시트
-import { useState } from 'preact/hooks';
-import { view, nt, go, pick, placeFilter, setPlaceFilter } from '../data/store.js';
+import { view, nt, go, pick, placeFilter, setPlaceFilter, placeOpen } from '../data/store.js';
 import { dayLabel, fmtDur } from '../lib/time.js';
 import { vk, isVisited } from '../lib/trip.js';
 import { hoursFor, closedOn } from '../lib/hours.js';
@@ -130,7 +129,8 @@ function PlaceSheet({ v, pl, onClose }) {
 export function Places() {
   const v = view.value;
   const f = placeFilter.value;
-  const [openKey, setOpenKey] = useState(null);
+  const openKey = placeOpen.value;
+  const setOpenKey = k => { placeOpen.value = k; };
   const list = filterPlaces(v, f);
   const groups = groupPlaces(v, list);
   const types = TYPE_ORDER.filter(t => v.allPlaces.some(p => (p.type || '기타') === t && (!f.city || p.city === f.city)));

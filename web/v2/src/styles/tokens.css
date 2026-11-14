@@ -54,6 +54,14 @@
   --paper-ink-2: #6B6253;
   --paper-line: rgba(42, 38, 32, .26);
 
+  /* ── 여권 (밝은·어두운 화면 모두 같은 종이: 도장 잉크 색이 그대로 보이게) ── */
+  --pass: #F5EFDF;
+  --pass-ink: #2A2620;
+  --pass-ink-2: #5F574A;
+  --pass-line: rgba(42, 38, 32, .24);
+  --pass-cover: #1F3556;        /* 여권 표지 남색 */
+  --pass-gold: #E3B54A;
+
   /* ── 글자 ── */
   --font-ui: "LINE Seed KR", "Pretendard JP Variable", system-ui, -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
   --font-num: "Barlow Semi Condensed", "LINE Seed KR", system-ui, sans-serif;   /* 시각·금액·번호 */

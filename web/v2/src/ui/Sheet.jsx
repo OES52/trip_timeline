@@ -14,6 +14,7 @@ export function Sheet({ title, onClose, children, locked }) {
     const first = el.querySelector('[data-autofocus]') || focusables()[0];
     if (first) first.focus();
     const key = e => {
+      if (!el.contains(document.activeElement)) return;   // 시트 위에 다른 시트가 떠 있으면 위의 것만 반응
       if (e.key === 'Escape' && !locked) { e.preventDefault(); onClose(); return; }
       if (e.key !== 'Tab') return;
       const f = focusables();

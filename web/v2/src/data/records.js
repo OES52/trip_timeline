@@ -2,7 +2,7 @@
 //  누르면 바로 화면에 반영(ops에 넣음)하고 뒤에서 차례로 서버에 보냄. 연결이 안 되면 폰에 뒀다가 연결되면 보냄
 //  PIN은 폰에만 두고(v1과 같은 키) 보낼 때 붙임. 대기열에는 PIN을 넣지 않음
 import { batch } from '@preact/signals';
-import { ops, raw, user, users, view, sendState, dialog, showToast, nt } from './store.js';
+import { ops, raw, user, users, view, sendState, dialog, showToast, nt, stampFx } from './store.js';
 import { call, ApiError } from './api.js';
 import { kv, local } from './cache.js';
 import { nextBatch, applyResult, failureKind, clockNow } from '../lib/ops.js';
@@ -110,6 +110,7 @@ export function toggleVisit(p) {
   if (!canRecord()) return;
   const key = vk(p), on = !isVisited(view.value, p), name = pname(view.value, p);
   push([{ kind: 'visit', user: me(), key, value: on ? 1 : 0 }]);
+  if (on) stampFx.value = key;
   showToast(name + (on ? ' 도장 찍음' : ' 도장 지움'), { label: '되돌리기', fn: () => push([{ kind: 'visit', user: me(), key, value: on ? 0 : 1 }]) });
 }
 
@@ -121,11 +122,21 @@ export function recordArrivalNow(p) {
   const list = [{ kind: 'arrive', user: me(), key, value: t }];
   if (!had) list.unshift({ kind: 'visit', user: me(), key, value: 1 });
   push(list);
+  if (!had) stampFx.value = key;
   showToast(pname(v, p) + ' 도착 ' + t + ' 기록' + (had ? '' : ', 도장 찍음'), {
     label: '되돌리기',
     fn: () => push([{ kind: 'arrive', user: me(), key, value: prev }].concat(had ? [] : [{ kind: 'visit', user: me(), key, value: 0 }])),
   });
   nt.value = tokyoNow();   // 지연 예측이 바로 다시 계산되게
+}
+
+/** 한 장소의 도장을 모두 지움 (같은 장소를 여러 번 들렀으면 다) */
+export function clearStamps(points, name) {
+  if (!canRecord()) return;
+  const keys = points.filter(p => isVisited(view.value, p)).map(vk);
+  if (!keys.length) return;
+  push(keys.map(key => ({ kind: 'visit', user: me(), key, value: 0 })));
+  showToast(name + ' 도장 지움', { label: '되돌리기', fn: () => push(keys.map(key => ({ kind: 'visit', user: me(), key, value: 1 }))) });
 }
 
 /** 도착 시각 고치기 ("HH:MM") 또는 지우기 ('') */

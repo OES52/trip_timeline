@@ -3,7 +3,8 @@ import { TabBar, FirstWho, Booting, LoadError, Locked } from './ui/Shell.jsx';
 import { Today } from './screens/Today.jsx';
 import { Plan } from './screens/Plan.jsx';
 import { Places } from './screens/Places.jsx';
-import { Records } from './screens/Later.jsx';
+import { Records } from './screens/Records.jsx';
+import { StampFx } from './ui/StampFx.jsx';
 import { Toast } from './ui/Toast.jsx';
 import { Dialogs } from './ui/Dialogs.jsx';
 import { ArriveAsk } from './ui/ArriveAsk.jsx';
@@ -25,6 +26,7 @@ export function App() {
       <TabBar />
       <Dialogs />
       <ArriveAsk />
+      <StampFx />
       <Toast />
     </div>
   );

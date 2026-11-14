@@ -11,6 +11,7 @@ import './styles/timeline.css';
 import './styles/screens.css';
 import './styles/map.css';
 import './styles/places.css';
+import './styles/records.css';
 import { App } from './app.jsx';
 import { load } from './data/store.js';
 import { loadOutbox } from './data/records.js';
