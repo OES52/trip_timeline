@@ -3,6 +3,7 @@ import { signal, effect, untracked } from '@preact/signals';
 import { view, user, userId, nt } from './store.js';
 import { local } from './cache.js';
 import { arrivalCandidate, dwell } from '../lib/geofence.js';
+import { tripClock } from '../lib/trip.js';
 import { tokyoNow } from '../lib/time.js';
 
 const ASK_KEY = 'trip-geo-ask';            // v1과 같은 키: '1'이면 근처 오면 도착 물어봄 (기본 꺼짐)
@@ -61,7 +62,7 @@ let stay = null;
 function check() {
   const v = view.value, u = user.value;
   if (!askOn.value || !v || !u || !u.canStamp || arriveAsk.value) return;
-  const r = dwell(stay, arrivalCandidate(v, pos.value, tokyoNow(), asked()), Date.now());
+  const r = dwell(stay, arrivalCandidate(v, pos.value, tripClock(v, tokyoNow()), asked()), Date.now());
   stay = r.state;
   if (r.ask) {
     arriveAsk.value = r.ask;

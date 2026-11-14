@@ -22,6 +22,9 @@ const CONFIG = {
   SETTINGS_SHEET: '설정',
   PLACE_SHEET: '장소',
   SPEND_SHEET: '지출',
+  TODO_SHEET: '할 일',          // 출발 전 할 일 (웹앱 오늘 화면·알림)
+  BOOK_SHEET: '예약',           // 예약번호·티켓 그림 (웹앱 일정 줄에 붙음)
+  HOME_URL: 'https://japan2026.oesgame.xyz/',   // 홈랩 웹앱 주소 (지도 열기·집 서버 감시)
   PLACE_MATCH_M: 40,            // 좌표가 이 거리(m) 안이면 같은 장소로 봄
   PLACES_DAILY_CAP: 150,        // 영업시간 채우기: 하루 최대 유료 호출 수 (장소 상세 Enterprise)
   PLACES_SKIP_TYPES: ['교통', '숙소'],  // 영업시간 채우기에서 기본으로 건너뛸 종류
@@ -146,11 +149,11 @@ const curOf_ = v => String(v || '').trim() === CUR_YEN ? CUR_YEN : CUR_WON;
 // 도시·구역: 웹앱 가이드 탭에서 도시 → 구역(동네)으로 묶어 보여줌. 예전 "지역" 열은 시트 구조 업데이트 때 "구역"으로 바뀜
 const G = {
   KEY: 1, NAME: 2, ALIAS: 3, TYPE: 4, CITY: 5, AREA: 6, COST_MIN: 7, COST_MAX: 8, HOURS: 9, CLOSED: 10,
-  MENU: 11, INTRO: 12, MEMO: 13, LINK: 14, COORD: 15, PHOTO: 16, WEB: 17, PID: 18,
+  MENU: 11, INTRO: 12, MEMO: 13, LINK: 14, COORD: 15, PHOTO: 16, WEB: 17, PID: 18, JA: 19, ADDR: 20,
 };
 const PLACE_HEADERS = [
   '장소 키', '이름', '별칭', '종류', '도시', '구역', '비용 최소(¥)', '비용 최대(¥)', '영업시간', '휴무',
-  '대표 메뉴', '한 줄 소개', '메모', '지도 링크', '좌표', '사진 URL', '웹사이트', 'Place ID',
+  '대표 메뉴', '한 줄 소개', '메모', '지도 링크', '좌표', '사진 URL', '웹사이트', 'Place ID', '일본어 이름', '주소',
 ];
 const PLACE_TYPES = ['숙소', '식당', '카페', '관광지', '쇼핑', '교통', '기타'];
 

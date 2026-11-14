@@ -1,6 +1,6 @@
 // 여행 데이터 모델. 서버가 준 원본(raw)을 사용자별 화면용 보기(view)로 만들고,
 //  그 보기에서 "지금·다음", 지연 예측, 하루 요약 같은 걸 계산함. 화면 코드는 여기 함수만 부름
-import { toMin, hhmm, toDateTime, tokyoNow } from './time.js';
+import { toMin, hhmm, toDateTime, tokyoNow, addDays, fmtHM } from './time.js';
 import { cityColor, lineColor } from './colors.js';
 
 /** 일정 점의 키 "날짜#순서" (도장·도착·지출 기록이 이 키로 저장됨) */
@@ -36,6 +36,10 @@ export function buildView(raw, user, pending) {
     visited: Object.assign({}, user && raw.visitedBy ? raw.visitedBy[user.id] : null, pending && pending.visited),
     arrived: Object.assign({}, user && raw.arrivedBy ? raw.arrivedBy[user.id] : null, pending && pending.arrived),
     spend: Object.assign({}, raw.spend, pending && pending.spend),
+    // 할 일: 안 보낸 끝냄 체크를 겹침. 예약·비상 연락처는 그대로 (예전 서버면 빈 목록)
+    todos: (raw.todos || []).map(t => (pending && pending.todo && t.key in pending.todo ? Object.assign({}, t, { done: pending.todo[t.key] }) : t)),
+    bookings: raw.bookings || [],
+    emergency: raw.emergency || [],
   });
   // 대기 중인 "지움"은 null로 들어옴 → 키째 뺌
   ['visited', 'arrived', 'spend'].forEach(k => Object.keys(v[k]).forEach(x => { if (v[k][x] == null || v[k][x] === 0 || v[k][x] === '') delete v[k][x]; }));
@@ -132,6 +136,37 @@ export function arrivalDiff(v, p) {
 }
 
 /* ── 지금 / 다음 ── */
+
+/** 그날 일정이 끝나는 시각(분). 자정을 넘긴 일정은 24시 넘는 값 ("25:40" → 1540). 일정이 없으면 null */
+export function dayEndMin(v, date) {
+  let end = null;
+  dayPoints(v, date).forEach(p => {
+    const m = toMin(p.depart) != null ? toMin(p.depart) : toMin(p.arrive);
+    if (m != null && (end == null || m > end)) end = m;
+  });
+  return end;
+}
+
+/**
+ * 일정 기준 "지금". 전날 일정이 자정을 넘겨 아직 이어지는 동안은 전날 날짜에 24시를 넘긴 분으로 봄
+ *  (12/31 일정이 25:40까지면 1/1 0:30 → { date: '2026-12-31', min: 1470 }). 그 밖엔 받은 그대로
+ *  지금·다음, 남은 시간, 환승 단계, 막차, 도착 제안이 모두 이 값을 씀
+ * @param nt tokyoNow() 결과
+ */
+export function tripClock(v, nt) {
+  if (!v || !nt) return nt;
+  const prev = addDays(nt.date, -1);
+  const end = dayEndMin(v, prev);
+  return end != null && end >= 1440 && nt.min + 1440 <= end ? { date: prev, min: nt.min + 1440 } : nt;
+}
+
+/** 밤새 타고 가는 교통(야간버스 등)을 "교통 장소에 자정 넘겨 3시간 넘게 머묾"으로 적은 곳인지 */
+export function nightRide(v, p) {
+  const a = toMin(p.arrive), d = toMin(p.depart);
+  if (a == null || d == null || d < 1440 || d - a < 180) return false;
+  const pl = placeOf(v, p);
+  return pl ? pl.type === '교통' : /버스|bus|夜行|야간|페리|フェリー/i.test(p.place || '');
+}
 
 /**
  * 지금 머무는 곳(cur), 다음 갈 곳(next), 그다음(after). 오늘 일정이 없으면 다가오는 일정에서 찾음
@@ -256,6 +291,7 @@ export function segRides(s) {
 
 /**
  * 막차 안내. 서버가 구간마다 last("23:42" / "0:15 (+1)" / "지남" / "-")를 줌
+ * @param nt 일정 기준 지금 (tripClock). 자정 넘어 전날 일정이 이어지는 중이면 min이 24시를 넘김
  * @returns {{level:'over'|'tight'|'info', text:string}|null}
  */
 export function lastTrain(s, nt = tokyoNow()) {
@@ -267,9 +303,9 @@ export function lastTrain(s, nt = tokyoNow()) {
   if (/\(\+1\)/.test(val)) lm += 1440;
   let dep = toMin(s.dep);
   if (dep != null && (/\(\+1\)/.test(String(s.dep)) || dep < 4 * 60)) dep += 1440;
-  const hm = val.replace(/\s*\(\+1\)/, '');
+  const hm = fmtHM(val);   // "0:15 (+1)" → "익일 0:15"
   if (s.date === nt.date) {
-    const now = nt.min < 4 * 60 ? nt.min + 1440 : nt.min;
+    const now = nt.min;
     if (now > lm) return { level: 'over', text: '막차 출발(' + hm + ') 지남' };
     if (lm - now <= 60) return { level: 'tight', text: '막차까지 ' + (lm - now) + '분 (' + hm + '까지 출발)' };
   }

@@ -2,7 +2,7 @@
 import { signal, computed, effect } from '@preact/signals';
 import { fetchData, subscribe, login, ApiError } from './api.js';
 import { readCache, writeCache, local } from './cache.js';
-import { buildView } from '../lib/trip.js';
+import { buildView, tripClock } from '../lib/trip.js';
 import { overlayOf } from '../lib/ops.js';
 import { tokyoNow } from '../lib/time.js';
 
@@ -36,6 +36,9 @@ export const toast = signal(null);
 let toastSeq = 0;
 export function showToast(text, action) { toast.value = { id: ++toastSeq, text, action: action || null }; }
 
+/** 설정 시트가 열려 있는지 (머리줄 내 동그라미, 연결 줄의 "보기"가 엶) */
+export const settingsOpen = signal(false);
+
 /** 떠 있는 입력 창: { kind:'spend'|'arrive', key } / { kind:'pin', id, error } / null */
 export const dialog = signal(null);
 export function openDialog(d) { dialog.value = d; }
@@ -45,10 +48,16 @@ export function closeDialog() { dialog.value = null; }
 export const stampFx = signal(null);
 /** 장소 탭에서 열어 둘 장소 시트 (장소 키) */
 export const placeOpen = signal(null);
+/** 열어 둔 예약 시트 (예약 키) */
+export const bookingOpen = signal(null);
+/** 보여주기 카드 (장소 키): 일본어 이름·주소를 크게 */
+export const showPlace = signal(null);
 
 /** 일본 시각. 20초마다 갱신 (초 단위가 필요한 전광판은 따로 돎) */
 export const nt = signal(tokyoNow());
 export const nowMs = signal(Date.now());
+/** 일정 기준 지금: 전날 일정이 자정을 넘겨 이어지는 동안은 전날 + 24시 넘긴 분 (lib/trip.js tripClock). 지금·다음 계산은 이걸 씀 */
+export const tn = computed(() => (view.value ? tripClock(view.value, nt.value) : nt.value));
 function tick() { nt.value = tokyoNow(); nowMs.value = Date.now(); }
 setInterval(tick, 20000);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { tick(); refresh(); } });
@@ -165,7 +174,7 @@ export const day = computed(() => {
   if (!v || !v.dates.length) return null;
   const d = route.value.day;
   if (d && v.dates.includes(d)) return d;
-  return v.dates.includes(nt.value.date) ? nt.value.date : v.dates[0];
+  return v.dates.includes(tn.value.date) ? tn.value.date : v.dates[0];
 });
 
 export { effect };

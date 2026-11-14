@@ -5,6 +5,7 @@ import { verifyPin, flush, saveSpend, saveArrival } from '../data/records.js';
 import { vk, pname, arrivedAt } from '../lib/trip.js';
 import { parseAmount } from '../lib/ops.js';
 import { YEN } from '../lib/money.js';
+import { fmtHM } from '../lib/time.js';
 import { Sheet } from './Sheet.jsx';
 
 /** PIN 입력. 맞으면 폰에 저장하고 onDone */
@@ -101,7 +102,7 @@ function ArriveSheet({ v, p }) {
             onInput={e => { setT(e.currentTarget.value); setErr(''); }} />
         </label>
         <p class="field-err" id="arr-err" role="alert">{err}</p>
-        {p.arrive && <p class="field-hint">계획한 도착 <span class="num">{p.arrive}</span></p>}
+        {p.arrive && <p class="field-hint">계획한 도착 <span class="num">{fmtHM(p.arrive)}</span></p>}
         <button type="submit" class="btn btn-exit btn-block">도착 시각 저장</button>
         {cur && <button type="button" class="btn btn-quiet btn-block btn-danger" onClick={() => { saveArrival(p, ''); closeDialog(); }}>도착 기록 지우기</button>}
       </form>

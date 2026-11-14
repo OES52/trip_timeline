@@ -37,6 +37,15 @@ function ensureSettingsExtra_(ss) {
     sh.getRange(h, 1).setNote('패스 쓰는 날. 이런 형식 가능 (쉼표로 여러 개):\n2026-12-26 2일 → 2일권 (26, 27일)\n2026-12-26~12-27 → 기간\n2026-12-26, 2026-12-27 → 날짜 나열\n이 날의 대중교통 구간이 전부 패스 노선이면 교통비 0원\n일부만 패스 노선이면 요금 그대로 두고 경로 시트 "패스" 열에 표시\n비우면 패스 적용 안 함');
     sh.getRange(h + 1, 1).setNote('패스로 탈 수 있는 노선·회사 이름 (정규식, | 로 구분)\n구글 경로 결과의 노선 이름·회사 이름과 비교\n비우면 스크립트 기본값');
   }
+  // 비상 연락처: 사용자 표 바로 위에 한 줄 끼워 넣음 (웹앱 설정의 비상 연락처에 같이 나옴)
+  a = labels();
+  if (a.indexOf(hn_('비상 연락처')) === -1) {
+    const h = a.indexOf(hn_('사용자')) + 1;
+    sh.insertRowsBefore(h, 2);
+    sh.getRange(h, 1, 1, 2).setValues([['비상 연락처', '']]);
+    sh.getRange(h, 1).setFontWeight('bold').setNote('웹앱 설정 → 비상 연락처에 나옴. 한 줄에 하나 (칸 안 줄바꿈: Ctrl+Enter)\n예: 여행자 보험 OO화재 24시간 +82-2-0000-0000\n전화번호가 있으면 눌러서 바로 걺');
+    sh.getRange(h, 2).setNumberFormat('@').setWrap(true).setBackground('#fff3bf');
+  }
 }
 
 // 주유패스 날짜 칸 → ['2026-12-26', '2026-12-27']
@@ -88,6 +97,7 @@ function readSettings_() {
     users: CONFIG.USERS.map(u => Object.assign({ pin: '' }, u)),
     passDays: [],
     passLines: CONFIG.PASS_LINES,
+    emergency: [],
   };
   const sh = SpreadsheetApp.getActive().getSheetByName(CONFIG.SETTINGS_SHEET);
   if (sh && sh.getLastRow() >= 3) {
@@ -101,6 +111,7 @@ function readSettings_() {
       if (k === hn_('새 예산 기본 인원수') && Number(r[1]) > 0) out.defaultPeople = Number(r[1]);
       if (k === hn_('주유패스 날짜')) out.passDays = expandPassDays_(r[1]);
       if (k === hn_('주유패스 노선') && String(r[1]).trim()) out.passLines = String(r[1]).trim();
+      if (k === hn_('비상 연락처')) out.emergency = String(r[1]).split(/\n+/).map(x => x.trim()).filter(Boolean);
     });
     const h = vals.findIndex(r => hn_(r[0]) === '사용자');
     if (h >= 0) {
@@ -137,7 +148,7 @@ function checkPin(user, pin) { authUser_(user, pin, ''); return true; }
 
 /* ── 웹앱 데이터 캐시: 시트 내용은 10분 캐시, 도장·도착·지출은 매번 새로 ── */
 // 웹앱 데이터 모양이 바뀌면 버전 올리기 (새 코드 배포 직후 예전 캐시가 보이지 않게)
-const MAP_CACHE_ = 'mapbase:v2';
+const MAP_CACHE_ = 'mapbase:v3';   // v3: 장소 일본어 이름·주소
 function cacheGet_() {
   try {
     const c = CacheService.getScriptCache();

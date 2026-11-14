@@ -2,7 +2,7 @@
 //  머리줄 = 날짜 띠(도시색 밑줄) / 본문 = 날짜 표지판(역명판) + 하루 승차권(돈·걷기) + 타임라인
 //  지도: 넓은 화면은 타임라인 옆에 나란히, 좁은 화면은 떠 있는 버튼으로 타임라인과 바꿔 봄
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { view, nt, day, go, planView, setPlanView } from '../data/store.js';
+import { view, tn, day, go, planView, setPlanView } from '../data/store.js';
 import { WEEK, dow, md, dayLabel } from '../lib/time.js';
 import { dayCity, dayRoute, dayPoints, daySpend, dayFare, dayActual, dayWalk, isVisited } from '../lib/trip.js';
 import { money, YEN, WON } from '../lib/money.js';
@@ -113,7 +113,7 @@ function useWide() {
 export function Plan() {
   const v = view.value;
   const d = day.value;
-  const now = nt.value;
+  const now = tn.value;
   const wide = useWide();
   const mode = planView.value;
   const showMap = wide || mode === 'map';

@@ -1,0 +1,65 @@
+/* 할 일 · 예약·티켓 · 보여주기 카드 · 비상 연락처 */
+
+/* ── 할 일 (오늘 화면) ── */
+.todos { background: var(--plate); border-block: 1px solid var(--hair); }
+.todo { display: grid; grid-template-columns: var(--tap) minmax(0, 1fr); align-items: start; padding: var(--s1) var(--s4) var(--s2) var(--s1); }
+.todo + .todo { border-top: 1px solid var(--hair); }
+.todo-ck { display: grid; place-items: center; width: var(--tap); height: var(--tap); color: transparent; }
+.todo-ck .ic { width: 26px; height: 26px; padding: 4px; border-radius: var(--r-plate); box-shadow: inset 0 0 0 2px var(--hair-2); background: var(--plate); }
+.todo-ck[aria-checked="true"] .ic { color: #fff; background: var(--ok); box-shadow: none; }
+.todo-ck:disabled { cursor: default; }
+.todo-t { min-width: 0; padding-top: 10px; }
+.todo-n { font-size: var(--fs-body); font-weight: 700; line-height: 1.45; }
+.todo.is-done .todo-n { color: var(--ink-2); text-decoration: line-through; font-weight: 400; }
+.todo-m { display: flex; flex-wrap: wrap; align-items: center; gap: 2px var(--s2); margin-top: 2px; font-size: var(--fs-sub); color: var(--ink-2); }
+.todo-d { padding: 0 6px; font-size: var(--fs-meta); line-height: 20px; border-radius: 4px; color: var(--ink); background: var(--plate-2); box-shadow: inset 0 0 0 1px var(--hair-2); }
+.todo-d.is-today { color: var(--exit-ink); background: var(--exit); box-shadow: none; }
+.todo.is-late .todo-d { color: var(--late); background: var(--late-bg); box-shadow: none; }
+.todo-memo { margin-top: var(--s1); font-size: var(--fs-sub); color: var(--ink-2); }
+.todo-more { margin: var(--s1) var(--s2) 0; }
+.todo-none { padding: 0 var(--s4) var(--s2); font-size: var(--fs-sub); color: var(--ink-2); }
+
+/* ── 예약·티켓 목록 ── */
+.books { background: var(--plate); border-block: 1px solid var(--hair); }
+.books li + li { border-top: 1px solid var(--hair); }
+.book-row { display: grid; grid-template-columns: 24px minmax(0, 1fr) 16px; align-items: center; column-gap: var(--s3); width: 100%; min-height: 60px; padding: var(--s2) var(--s3) var(--s2) var(--s4); }
+.book-row:hover { background: var(--plate-2); }
+.book-row > .ic:first-child { width: 22px; height: 22px; color: var(--ink-2); }
+.book-row > .ic:last-child { width: 16px; height: 16px; color: var(--ink-3); }
+.book-t { display: flex; flex-direction: column; min-width: 0; }
+.book-t b { font-size: var(--fs-body); line-height: 1.4; }
+.book-t span { overflow: hidden; font-size: var(--fs-sub); color: var(--ink-2); text-overflow: ellipsis; white-space: nowrap; }
+
+@media (min-width: 640px) {
+  .todos, .books { margin: 0 var(--s4); border: 0; border-radius: var(--r-plate); box-shadow: inset 0 0 0 1.5px var(--hair-2); overflow: hidden; }
+}
+
+/* ── 예약 시트 ── */
+.bsheet { display: grid; gap: var(--s3); }
+.bsheet-m { font-size: var(--fs-sub); color: var(--ink-2); }
+.bsheet-no { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 2px var(--s3); padding: var(--s3) var(--s3) var(--s3) var(--s4); background: var(--plate-2); border-radius: var(--r-plate); }
+.bsheet-no span { grid-column: 1; font-size: var(--fs-meta); color: var(--ink-2); }
+.bsheet-no b { grid-column: 1; font-size: var(--fs-time); font-weight: 600; line-height: 1.2; letter-spacing: .04em; user-select: all; overflow-wrap: anywhere; }
+.bsheet-no .btn { grid-column: 2; grid-row: 1 / span 2; }
+/* 티켓 그림: 흰 바탕에 꽉 차게 (QR 읽기 쉽게) */
+.bsheet-img { width: 100%; height: auto; background: #fff; border-radius: var(--r-plate); box-shadow: inset 0 0 0 1px var(--hair); }
+
+/* ── 다음 장소 카드·장소 시트에 붙는 줄 ── */
+.nextup { flex-wrap: wrap; }
+.nextup-more { display: flex; flex-wrap: wrap; gap: var(--s2); flex-basis: 100%; }
+.psheet-ja { font-size: var(--fs-sub); color: var(--ink-2); }
+
+/* ── 보여주기 카드: 화면 가득, 큰 글자 (택시 기사·역무원에게 그대로) ── */
+.sheet-wrap.is-full { align-items: stretch; }
+.sheet-wrap.is-full .sheet { max-width: none; max-height: none; height: 100dvh; border-radius: 0; }
+.show { display: grid; align-content: center; gap: var(--s4); min-height: calc(100dvh - 120px); padding: var(--s4) 0 var(--s6); text-align: center; }
+.show-lead { font-size: var(--fs-name); color: var(--ink-2); }
+.show-ja { font-size: clamp(32px, 9vw, 56px); font-weight: 700; line-height: 1.25; word-break: break-all; }
+.show-addr { font-size: clamp(20px, 5.4vw, 30px); font-weight: 700; line-height: 1.45; word-break: break-all; }
+.show-ko { font-size: var(--fs-sub); color: var(--ink-2); }
+.show .stop-btns { justify-content: center; }
+
+/* ── 비상 연락처 (설정) ── */
+.sos { display: grid; gap: var(--s1); margin-bottom: var(--s3); }
+.sos a, .sos span { display: flex; align-items: center; gap: var(--s2); min-height: var(--tap); padding: 0 var(--s3); font-size: var(--fs-sub); color: var(--ink); background: var(--plate-2); border-radius: var(--r-plate); }
+.sos a .ic { width: 18px; height: 18px; color: var(--ok); }

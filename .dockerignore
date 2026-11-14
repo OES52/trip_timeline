@@ -3,8 +3,6 @@
 k8s
 api
 *.js
-!web/*.mjs
-!web/src/*.js
 !web/v2/**
 node_modules
 **/node_modules

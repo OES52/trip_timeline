@@ -8,6 +8,7 @@ import { StampFx } from './ui/StampFx.jsx';
 import { Toast } from './ui/Toast.jsx';
 import { Dialogs } from './ui/Dialogs.jsx';
 import { ArriveAsk } from './ui/ArriveAsk.jsx';
+import { BookingSheet, ShowCard } from './ui/Extras.jsx';
 
 const SCREENS = { today: Today, plan: Plan, places: Places, records: Records };
 
@@ -25,6 +26,8 @@ export function App() {
       <Screen />
       <TabBar />
       <Dialogs />
+      <BookingSheet />
+      <ShowCard />
       <ArriveAsk />
       <StampFx />
       <Toast />

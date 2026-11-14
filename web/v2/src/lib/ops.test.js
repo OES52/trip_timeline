@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { overlayOf, nextBatch, applyResult, failureKind, clockNow, parseAmount } from './ops.js';
+import { overlayOf, nextBatch, applyResult, failureKind, retryDelay, clockNow, parseAmount } from './ops.js';
 import { buildView, isVisited, arrivedAt } from './trip.js';
 
 const op = (id, kind, user, key, value, place) => ({ id, kind, user, key, value, place });
@@ -10,12 +10,23 @@ test('overlayOf: 도장·도착은 내 것만, 지출은 전부, 지움은 null,
     op('1', 'visit', 'A', 'd#1', 1), op('2', 'visit', 'B', 'd#2', 1), op('3', 'visit', 'A', 'd#1', 0),
     op('4', 'arrive', 'A', 'd#3', '14:17'), op('5', 'arrive', 'A', 'd#4', ''),
     op('6', 'spend', 'B', 'd#5', { amount: '1200', memo: '라멘' }), op('7', 'spend', 'A', 'd#6', null),
+    op('8', 'todo', 'B', 'T1', 1), op('9', 'todo', 'A', 'T2', 0),
   ];
   assert.deepEqual(overlayOf(ops, 'A'), {
     visited: { 'd#1': null }, arrived: { 'd#3': '14:17', 'd#4': null },
     spend: { 'd#5': { amount: 1200, memo: '라멘' }, 'd#6': null },
+    todo: { T1: true, T2: false },   // 할 일은 모두가 같이 씀 (다른 사람이 끝낸 것도)
   });
-  assert.deepEqual(overlayOf([], 'A'), { visited: {}, arrived: {}, spend: {} });
+  assert.deepEqual(overlayOf([], 'A'), { visited: {}, arrived: {}, spend: {}, todo: {} });
+});
+
+test('할 일: 끝냄 체크는 setTodo 한 번, 결과로 목록 바꿈, 화면엔 바로 겹침', () => {
+  assert.deepEqual(nextBatch([{ id: '1', kind: 'todo', user: 'A', key: 'T1', value: 1 }]), { fn: 'setTodo', args: ['T1', 1], user: 'A', ids: ['1'] });
+  const raw0 = { todos: [{ key: 'T1', text: 'x', done: false }] };
+  assert.deepEqual(applyResult(raw0, 'setTodo', 'A', [{ key: 'T1', text: 'x', done: true }]).todos[0].done, true);
+  const v = buildView({ dates: [], points: [], segments: [], overnight: [], places: [], todos: [{ key: 'T1', text: 'x', done: false }] }, null, overlayOf([{ kind: 'todo', user: 'B', key: 'T1', value: 1 }], 'A'));
+  assert.equal(v.todos[0].done, true);
+  assert.deepEqual(v.bookings, []);
 });
 
 test('overlayOf + buildView: 누르는 즉시 화면 데이터에 반영', () => {
@@ -54,13 +65,20 @@ test('applyResult: 결과로 그 사용자 기록만 바꾸고 원본은 안 건
   assert.equal(applyResult(raw, 'setSpend', 'A', null), raw);
 });
 
-test('failureKind: PIN / 다시 시도 / 버림', () => {
+test('failureKind: PIN / 접속 코드 / 다시 시도 / 못 보냄', () => {
   assert.equal(failureKind(403, 'PIN이 틀림'), 'pin');
   assert.equal(failureKind(403, 'Guest는 기록할 수 없음 (보기 전용)'), 'drop');
+  assert.equal(failureKind(401, '접속 코드 필요'), 'auth');
   assert.equal(failureKind(0, '연결 안 됨'), 'retry');
   assert.equal(failureKind(429, '요청이 너무 많음'), 'retry');
   assert.equal(failureKind(502, 'x'), 'retry');
   assert.equal(failureKind(400, 'x'), 'drop');
+});
+
+test('retryDelay: 서버 오류는 두 배씩 늘려 최대 5분, 버리지 않음', () => {
+  assert.equal(retryDelay(0, 0), 8000);
+  assert.equal(retryDelay(429, 3), 30000);
+  assert.deepEqual([1, 2, 3, 4, 5, 6, 7, 20].map(n => retryDelay(502, n)), [8000, 16000, 32000, 64000, 128000, 256000, 300000, 300000]);
 });
 
 test('clockNow·parseAmount', () => {

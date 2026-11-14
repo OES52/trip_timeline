@@ -53,13 +53,14 @@ import check from '@phosphor-icons/core/assets/bold/check-bold.svg?raw';
 import close from '@phosphor-icons/core/assets/bold/x-bold.svg?raw';
 import reload from '@phosphor-icons/core/assets/bold/arrows-clockwise-bold.svg?raw';
 import out from '@phosphor-icons/core/assets/bold/arrow-up-right-bold.svg?raw';
+import phone from '@phosphor-icons/core/assets/fill/phone-fill.svg?raw';
 
 export const ICONS = {
   clock, path, pin, stamp, nav, walk, train, subway, tram, bus, taxi, plane, boat, car, cable,
   bed, food, coffee, camera, bag, warn, moon, sunset, wallet, map, user, lock, ticket, offline, hourglass,
   sun, cloudSun, cloud, fog, rain, snow, storm, list, fit,
   cube, play, pause, store, toilet, exit, globe, layers,
-  down, left, right, check, close, reload, out,
+  down, left, right, check, close, reload, out, phone,
 };
 
 /** 장소 종류 → 아이콘 이름 */

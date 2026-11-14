@@ -24,6 +24,13 @@ function onOpen() {
     .addItem('웹앱 캐시 비우기', 'clearWebCache')
     .addItem('홈랩 프록시 알림 트리거 설치', 'installProxyTrigger')
     .addItem('예산 통화 정리 (엔화·원화 나누기)', 'migrateBudgetCurrency')
+    .addSeparator()
+    .addItem('할 일·예약 시트 만들기 (장소 일본어 열·비상 연락처 칸 포함)', 'setupExtraSheets')
+    .addItem('장소 일본어 이름·주소 채우기 (Places API, 빈 칸만)', 'fillPlaceJa')
+    .addItem('집 서버 감시 켜기 (30분 넘게 안 되면 메일 + 비상 주소)', 'installHomeMonitor')
+    .addItem('집 서버 감시 끄기', 'removeHomeMonitor')
+    .addItem('비상 주소 접속 코드 설정', 'setFallbackCode')
+    .addItem('비상 주소 직접 열기·닫기', 'toggleFallback')
     .addToUi();
 }
 

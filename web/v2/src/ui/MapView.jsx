@@ -1,11 +1,12 @@
 // 지도: 하루치 경로와 번호 핀. 지도 라이브러리(MapLibre)는 지도를 처음 열 때만 받음
 //  선 색 = 노선 색(타임라인 선과 같음), 핀 번호 = 그날 순서. 핀을 누르면 아래 카드(좁은 화면)나 타임라인(넓은 화면)에 그 장소
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { view, nt, picked, pick, setPlanView, go } from '../data/store.js';
+import { view, tn, picked, pick, setPlanView, go } from '../data/store.js';
 import { local } from '../data/cache.js';
 import { dayLines, pinGroups, pinState, boundsOf } from '../lib/route.js';
 import { stopStates, dayPoints, pname, placeOf, vk, dayCity } from '../lib/trip.js';
 import { navUrl } from '../lib/geo.js';
+import { fmtHM } from '../lib/time.js';
 import { Icon } from './Icon.jsx';
 import { ICONS } from './icons.js';
 import { ReplayPanel } from './Replay.jsx';
@@ -143,7 +144,7 @@ function decorate(map, dark) {
  */
 export function MapView({ date, active }) {
   const v = view.value;
-  const now = nt.value;
+  const now = tn.value;
   const pk = picked.value;
   const box = useRef(null);
   const card = useRef(null);
@@ -284,7 +285,7 @@ export function MapView({ date, active }) {
       const el = document.createElement('button');
       el.type = 'button';
       el.className = 'pinbox is-' + pinState(v, g, states);
-      el.setAttribute('aria-label', g.points.map(p => p.order + '번 ' + pname(v, p) + (p.arrive ? ' ' + p.arrive : '')).join(', '));
+      el.setAttribute('aria-label', g.points.map(p => p.order + '번 ' + pname(v, p) + (p.arrive ? ' ' + fmtHM(p.arrive) : '')).join(', '));
       const dot = document.createElement('span');
       dot.className = 'pin';
       dot.textContent = g.label;
@@ -401,7 +402,7 @@ export function MapView({ date, active }) {
             <span class="mapcard-n num" aria-hidden="true">{cur.order}</span>
             <span class="mapcard-t">
               <b>{pname(v, cur)}</b>
-              <span><span class="num">{cur.arrive || ''}{cur.depart && cur.depart !== cur.arrive ? '~' + cur.depart : ''}</span>{sub ? ' · ' + sub : ''}</span>
+              <span><span class="num">{fmtHM(cur.arrive)}{cur.depart && cur.depart !== cur.arrive ? '~' + fmtHM(cur.depart) : ''}</span>{sub ? ' · ' + sub : ''}</span>
             </span>
             <Icon name="right" />
           </button>

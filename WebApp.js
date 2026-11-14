@@ -18,6 +18,9 @@ function doGet(e) {
       throw new Error('알 수 없는 api: ' + p.api);
     });
   }
+  // 예전 화면(v1)은 집 서버가 죽었을 때 쓰는 비상 주소. 평소엔 닫아 둠 (Extras.js)
+  const gate = fallbackGate_(p);
+  if (gate) return gate;
   const t = HtmlService.createTemplateFromFile('Index');
   t.bootUsers = bootUsersJson_();
   return t.evaluate()
@@ -47,6 +50,7 @@ const API_FNS_ = {
   setVisitedMany: (changes, user, pin) => setVisitedMany(changes, user, pin),
   setArrived: (key, hhmm, user, pin) => setArrived(key, hhmm, user, pin),
   editPlan: (key, op, value, user, pin) => editPlan(key, op, value, user, pin),
+  setTodo: (key, done, user, pin) => setTodo(key, done, user, pin),
 };
 
 // POST 본문: {"fn":"setSpend","args":[...]}
@@ -97,7 +101,7 @@ function include(name) {
 // CONFIG.WEBAPP_URL 우선. 비어 있을 때만 스크립트가 아는 주소 (예전 배포가 나올 수 있음)
 function showMapLink() {
   requireSheetUi_();
-  const url = CONFIG.WEBAPP_URL || ScriptApp.getService().getUrl();
+  const url = CONFIG.HOME_URL || CONFIG.WEBAPP_URL || ScriptApp.getService().getUrl();
   if (!url) {
     alert_('웹앱이 아직 배포되지 않음.\nApps Script 편집기 → 배포 → 새 배포 → 유형: 웹 앱 으로 먼저 배포할 것');
     return;
@@ -124,6 +128,9 @@ function getMapData() {
     visitedBy: getVisitedBy_(),
     arrivedBy: getArrivedBy_(),
     spend: readSpend_(),
+    todos: readTodos_().map(noRow_),       // 할 일 (웹앱에서 끝냄 체크)
+    bookings: readBookings_(),             // 예약번호·티켓 그림
+    emergency: readSettings_().emergency,  // 설정 시트 비상 연락처 (줄마다)
   });
 }
 
@@ -285,7 +292,7 @@ function buildMapBase_() {
     places: places.map(p => ({
       key: p.key, name: p.name, alias: p.alias, type: p.type, city: p.city, area: p.area, costMin: p.costMin, costMax: p.costMax,
       hours: p.hours, closed: p.closed, menu: p.menu, intro: p.intro, memo: p.memo,
-      link: p.link, lat: p.lat, lng: p.lng, photos: p.photos, web: p.web,
+      link: p.link, lat: p.lat, lng: p.lng, photos: p.photos, web: p.web, ja: p.ja, addr: p.addr,
     })),
   };
 }

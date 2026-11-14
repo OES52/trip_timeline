@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { toMin, hhmm, tokyoNow, toDateTime, dayLabel, fmtDur, splitSec } from './time.js';
+import { toMin, hhmm, tokyoNow, toDateTime, dayLabel, fmtDur, splitSec, hmParts, fmtHM, fmtMin, addDays } from './time.js';
 
 test('toMin: 시각 글자를 분으로', () => {
   assert.equal(toMin('9:30'), 570);
@@ -37,4 +37,18 @@ test('dayLabel·fmtDur·splitSec', () => {
   assert.equal(fmtDur(60), '1시간');
   assert.equal(fmtDur(85), '1시간 25분');
   assert.deepEqual(splitSec(90061), { d: 1, h: 1, m: 1, s: 1 });
+});
+
+test('익일 표기: 24시 넘긴 시각과 (+1)', () => {
+  assert.deepEqual(hmParts('25:10'), { t: '1:10', nd: true });
+  assert.deepEqual(hmParts('31:00'), { t: '7:00', nd: true });
+  assert.deepEqual(hmParts('0:15 (+1)'), { t: '0:15', nd: true });
+  assert.deepEqual(hmParts('9:30'), { t: '9:30', nd: false });
+  assert.deepEqual(hmParts(''), { t: '', nd: false });
+  assert.equal(fmtHM('25:10'), '익일 1:10');
+  assert.equal(fmtHM('07:00'), '07:00');
+  assert.equal(fmtMin(1470), '익일 0:30');
+  assert.equal(fmtMin(570), '9:30');
+  assert.equal(addDays('2026-12-31', 1), '2027-01-01');
+  assert.equal(addDays('2027-01-01', -1), '2026-12-31');
 });

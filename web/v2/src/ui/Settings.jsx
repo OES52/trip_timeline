@@ -1,10 +1,14 @@
 // 설정 시트 (머리줄 오른쪽 내 동그라미): 보는 사람, 출발 알림, 위치·도착 제안, 인터넷 없이 보기, 연결 상태
 import { useState, useEffect } from 'preact/hooks';
-import { sync, refresh, user, showToast } from '../data/store.js';
+import { sync, refresh, user, view, showToast } from '../data/store.js';
+import { failed, retryFailed, clearFailed } from '../data/records.js';
+import { vk, pname } from '../lib/trip.js';
+import { YEN } from '../lib/money.js';
 import { appSaved, storage, prep, prepared, readStorage, countPrepared, runPrep, stopPrep } from '../data/offline.js';
 import { pushState, pushInfo, readPush, pushOn, pushOff, pushTest } from '../data/push.js';
 import { geoState, askOn, setAskOn, startGeo } from '../data/location.js';
 import { UserList } from './Shell.jsx';
+import { EmergencySet } from './Extras.jsx';
 import { Sheet } from './Sheet.jsx';
 import { Icon } from './Icon.jsx';
 
@@ -19,12 +23,43 @@ export function SettingsSheet({ onClose }) {
         <p class="set-note">고른 사람에 맞춰 일정이 보이고, 도장은 사람마다 따로 모임</p>
         <UserList onPick={onClose} />
       </section>
+      <FailedSet />
+      <EmergencySet />
       <PushSet />
       <GeoSet />
       <OfflineSet />
       <SyncSet />
-      <a class="me-v1" href="/v1/">예전 화면(v1) 열기<Icon name="out" /></a>
     </Sheet>
+  );
+}
+
+/** 기록 한 건을 사람이 읽는 글로 */
+function opText(v, o) {
+  const p = v ? v.points.find(x => vk(x) === o.key) : null;
+  const name = p ? pname(v, p) : o.place || o.key;
+  if (o.kind === 'visit') return name + (o.value ? ' 도장' : ' 도장 지움');
+  if (o.kind === 'arrive') return name + (o.value ? ' 도착 ' + o.value : ' 도착 기록 지움');
+  if (o.kind === 'spend') return name + (o.value ? ' 지출 ' + YEN(o.value.amount) : ' 지출 지움');
+  return name;
+}
+
+/** 서버가 받지 않은 기록 (있을 때만): 다시 보내기 / 지우기 */
+function FailedSet() {
+  const list = failed.value;
+  if (!list.length) return null;
+  const v = view.value;
+  return (
+    <section class="set" aria-labelledby="set-failed">
+      <h3 id="set-failed" class="set-h">못 보낸 기록 <em class="tag tag-late">{list.length}건</em></h3>
+      <p class="set-note">서버가 받지 않아 따로 둔 기록. 이유를 보고 다시 보내거나 지움</p>
+      <ul class="failed-l">
+        {list.map(o => <li key={o.id}><b>{o.user}</b> {opText(v, o)}<span>{o.error}</span></li>)}
+      </ul>
+      <div class="set-btns">
+        <button type="button" class="btn btn-plate btn-sm" onClick={retryFailed}><Icon name="reload" />다시 보내기</button>
+        <button type="button" class="btn btn-quiet btn-sm btn-danger" onClick={clearFailed}>지우기</button>
+      </div>
+    </section>
   );
 }
 
@@ -139,10 +174,11 @@ function SyncSet() {
   const [busy, setBusy] = useState(false);
   const text = s.kind === 'fresh' ? '최신 (' + s.savedAt + ' 받음)'
     : s.kind === 'stale' ? '연결 안 됨. ' + (s.savedAt ? s.savedAt + ' 저장본을 보는 중' : '저장본을 보는 중')
+    : s.kind === 'locked' ? '접속 코드 필요. ' + (s.savedAt ? s.savedAt + ' 저장본을 보는 중' : '저장본을 보는 중')
     : '받는 중';
   return (
     <div class="me-sync">
-      <span class={'me-state' + (s.kind === 'stale' ? ' is-stale' : '')}>{s.kind === 'stale' && <Icon name="offline" />}{text}</span>
+      <span class={'me-state' + (s.kind === 'stale' || s.kind === 'locked' ? ' is-stale' : '')}>{s.kind === 'stale' && <Icon name="offline" />}{s.kind === 'locked' && <Icon name="lock" />}{text}</span>
       <button type="button" class="btn btn-plate btn-sm" disabled={busy} onClick={async () => { setBusy(true); await refresh(); setBusy(false); }}>
         <Icon name="reload" />{busy ? '받는 중' : '다시 받기'}
       </button>

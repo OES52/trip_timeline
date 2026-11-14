@@ -64,6 +64,13 @@ a.btn { text-decoration: none; }
   border-radius: 4px; background: var(--lc, var(--ink)); color: var(--lt, #fff);
 }
 
+/* ── 익일 딱지: 24시를 넘긴 일정 시각 앞 ("25:10" → [익일] 1:10) ── */
+.nd {
+  display: inline-block; margin-right: 3px; padding: 0 3px;
+  font-family: var(--font-ui); font-size: var(--fs-meta); font-weight: 700; line-height: 16px; letter-spacing: 0;
+  color: var(--ink-2); border-radius: 3px; box-shadow: inset 0 0 0 1px var(--hair-2); vertical-align: 2px;
+}
+
 /* ── 상태 글 ── */
 .note-late { color: var(--late); }
 .note-ok { color: var(--ok); }

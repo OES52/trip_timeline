@@ -1,11 +1,11 @@
 // 기록: 여권(장소마다 도장)과 돈(여행 전체 지출·하루 영수증)
 //  머리줄 = 여권 / 돈 전환. 여권 칸을 누르면 도장 찍기(빈칸) 또는 도장 시트, 돈은 날짜를 누르면 그날 영수증
 import { useState } from 'preact/hooks';
-import { view, nt, user, go, placeOpen, openDialog, showToast } from '../data/store.js';
+import { view, tn, user, go, placeOpen, openDialog, showToast } from '../data/store.js';
 import { local } from '../data/cache.js';
 import { toggleVisit, clearStamps, canRecord } from '../data/records.js';
 import { passport, receipt, moneySummary } from '../lib/passport.js';
-import { dayLabel, md } from '../lib/time.js';
+import { dayLabel, md, fmtHM } from '../lib/time.js';
 import { dayCity, vk } from '../lib/trip.js';
 import { YEN } from '../lib/money.js';
 import { TopBar, SyncLine } from '../ui/Shell.jsx';
@@ -13,6 +13,7 @@ import { Sheet } from '../ui/Sheet.jsx';
 import { Stamp } from '../ui/Stamp.jsx';
 import { Icon } from '../ui/Icon.jsx';
 import { saveReceiptImage, SHOP, SHOP_EN } from '../ui/receiptImage.js';
+import { Hm } from '../ui/Hm.jsx';
 
 const VIEW_KEY = 'trip2-records-view';
 const when = p => p.date.slice(5).replace('-', '.');
@@ -73,7 +74,7 @@ function StampSheet({ v, s, onClose }) {
         <div class="ssheet-st"><Stamp name={s.name} type={s.type} sub={when(s.visits[0])} seed={s.key} rare={s.rare} /></div>
         {s.rare && <p class="ssheet-rare">금박 도장 · {s.rare}</p>}
         <ul class="ssheet-v">
-          {s.visits.map(p => <li key={vk(p)}><b>{dayLabel(p.date)}</b> <span class="num">{v.arrived[vk(p)] || p.arrive}</span>{v.arrived[vk(p)] ? ' 도착' : ' (계획)'}</li>)}
+          {s.visits.map(p => <li key={vk(p)}><b>{dayLabel(p.date)}</b> <span class="num">{v.arrived[vk(p)] || fmtHM(p.arrive)}</span>{v.arrived[vk(p)] ? ' 도착' : ' (계획)'}</li>)}
         </ul>
         <div class="stop-btns">
           {s.place && <button type="button" class="btn btn-plate btn-sm" onClick={() => { onClose(); placeOpen.value = s.place.key; go('places'); }}><Icon name="pin" />장소 보기</button>}
@@ -125,7 +126,7 @@ function Receipt({ r }) {
         {r.items.map(x => (
           <li key={x.key} class={x.done || x.amount != null ? 'is-done' : ''}>
             <button type="button" disabled={!can} onClick={() => openDialog({ kind: 'spend', key: x.key })} aria-label={x.name + (x.amount != null ? ' 지출 ' + YEN(x.amount) + ', 고치기' : ' 지출 적기')}>
-              <span class="rc-t num">{x.time}</span>
+              <span class="rc-t num"><Hm s={x.time} /></span>
               <span class="rc-n">{x.name}{x.memo && <i> {x.memo}</i>}</span>
               <b class="num">{x.amount != null ? YEN(x.amount) : x.done ? '✓' : ''}</b>
             </button>
@@ -145,7 +146,7 @@ function Receipt({ r }) {
 }
 
 function ReceiptSheet({ v, date, onClose }) {
-  const r = receipt(v, date, nt.value, user.value ? user.value.id : '');
+  const r = receipt(v, date, tn.value, user.value ? user.value.id : '');
   const [busy, setBusy] = useState(false);
   const save = async () => {
     setBusy(true);
@@ -169,7 +170,7 @@ function Money({ v }) {
   const [open, setOpen] = useState(null);
   const total = m.spent + m.fare;
   const max = Math.max(1, ...m.days.map(d => Math.max(d.spent + d.fare, d.plan)));
-  const today = nt.value.date;
+  const today = tn.value.date;
   return (
     <div class="rec-in">
       <section class="msum" aria-label="여행 전체 돈">

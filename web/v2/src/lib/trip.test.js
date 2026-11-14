@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildView, pname, tripRange, phase, dayCity, dayRoute, dayDelay, predictedMin, nowNext, remainMin, stopStates, daySpend, dayFare, lastTrain } from './trip.js';
+import { buildView, pname, tripRange, phase, dayCity, dayRoute, dayDelay, predictedMin, nowNext, remainMin, stopStates, daySpend, dayFare, lastTrain, tripClock, dayEndMin, nightRide } from './trip.js';
 
 // 이틀짜리 작은 여행
 const raw = () => ({
@@ -109,4 +109,62 @@ test('lastTrain: 여유 30분 미만이면 빠듯, 오늘이면 남은 시간', 
   assert.equal(lastTrain(seg, { date: '2026-12-25', min: 23 * 60 + 50 }).level, 'over');
   assert.equal(lastTrain({ date: '2026-12-25', dep: '20:00', last: '-' }), null);
   assert.equal(lastTrain({ date: '2026-12-25', dep: '20:00', last: '0:15 (+1)' }, { date: '2026-12-24', min: 0 }).level, 'info');
+});
+
+// 12/31 밤 새해 참배 → 숙소 (자정 넘김), 12/27 야간버스 (교통 장소에 밤새 머묾으로 적음)
+const lateRaw = () => ({
+  dates: ['2026-12-27', '2026-12-28', '2026-12-31', '2027-01-01'],
+  places: [
+    { key: 'B', name: '윌러 버스터미널', type: '교통', city: '오사카' },
+    { key: 'S', name: '신주쿠 터미널', type: '교통', city: '도쿄' },
+    { key: 'J', name: '메이지 신궁', type: '관광지', city: '도쿄' },
+    { key: 'H', name: '숙소', type: '숙소', city: '도쿄' },
+  ],
+  points: [
+    { placeKey: 'B', date: '2026-12-27', order: 1, place: '윌러 버스터미널', arrive: '20:50', depart: '31:00', stay: 570 },
+    { placeKey: 'S', date: '2026-12-28', order: 1, place: '신주쿠 터미널', arrive: '7:40', depart: '7:50' },
+    { placeKey: 'H', date: '2026-12-31', order: 1, place: '숙소', arrive: '21:00', depart: '23:20' },
+    { placeKey: 'J', date: '2026-12-31', order: 2, place: '메이지 신궁', arrive: '24:00', depart: '25:00' },
+    { placeKey: 'H', date: '2026-12-31', order: 3, place: '숙소', arrive: '25:40', depart: '25:40' },
+    { placeKey: 'H', date: '2027-01-01', order: 1, place: '숙소', arrive: '10:00', depart: '10:30' },
+  ],
+  segments: [], overnight: [], users: [], visitedBy: {}, arrivedBy: {}, spend: {},
+});
+
+test('tripClock: 전날 일정이 자정을 넘겨 이어지는 동안은 전날 + 24시 넘긴 분', () => {
+  const v = buildView(lateRaw(), null);
+  assert.equal(dayEndMin(v, '2026-12-31'), 1540);
+  assert.deepEqual(tripClock(v, { date: '2027-01-01', min: 30 }), { date: '2026-12-31', min: 1470 });
+  assert.deepEqual(tripClock(v, { date: '2027-01-01', min: 100 }), { date: '2026-12-31', min: 1540 });   // 1:40 숙소 도착까지
+  assert.deepEqual(tripClock(v, { date: '2027-01-01', min: 101 }), { date: '2027-01-01', min: 101 });
+  assert.deepEqual(tripClock(v, { date: '2026-12-31', min: 600 }), { date: '2026-12-31', min: 600 });
+  // 1/1 0:30: 지금은 참배 중, 다음은 숙소, 12/31 줄은 아직 안 지남
+  const t = tripClock(v, { date: '2027-01-01', min: 30 });
+  const nn = nowNext(v, t);
+  assert.equal(nn.cur.place, '메이지 신궁');
+  assert.equal(nn.next.place, '숙소');
+  assert.equal(nn.next.order, 3);
+  const st = stopStates(v, '2026-12-31', t);
+  assert.deepEqual([st.get(1), st.get(2), st.get(3)], ['past', 'now', 'next']);
+  assert.equal(remainMin(v, nn.next, t), 70);
+});
+
+test('야간버스: 12/28 1:00은 전날(12/27) 버스 타는 중', () => {
+  const v = buildView(lateRaw(), null);
+  const t = tripClock(v, { date: '2026-12-28', min: 60 });
+  assert.deepEqual(t, { date: '2026-12-27', min: 1500 });
+  const nn = nowNext(v, t);
+  assert.equal(nn.cur.place, '윌러 버스터미널');
+  assert.equal(nn.next.place, '신주쿠 터미널');
+  assert.equal(nightRide(v, nn.cur), true);
+  assert.equal(nightRide(v, v.points.find(p => p.placeKey === 'J')), false);
+  // 7:01부터는 그날(12/28)
+  assert.deepEqual(tripClock(v, { date: '2026-12-28', min: 421 }), { date: '2026-12-28', min: 421 });
+});
+
+test('lastTrain: 자정 넘어 전날 일정이 이어지는 중이면 막차 경고도 이어짐', () => {
+  const seg = { date: '2026-12-31', dep: '23:30', last: '0:15 (+1)' };
+  assert.match(lastTrain(seg, { date: '2026-12-31', min: 1445 }).text, /막차까지 10분 \(익일 0:15까지 출발\)/);
+  assert.equal(lastTrain(seg, { date: '2026-12-31', min: 1460 }).level, 'over');
+  assert.match(lastTrain(seg, { date: '2026-12-30', min: 0 }).text, /막차 타려면 익일 0:15까지 출발, 여유 45분/);
 });

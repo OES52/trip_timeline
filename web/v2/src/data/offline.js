@@ -1,6 +1,6 @@
 // 오프라인: 서비스 워커 등록, 저장 공간, "오프라인 준비"(지도·사진 미리 받기)
 import { signal } from '@preact/signals';
-import { view } from './store.js';
+import { view, dialog } from './store.js';
 import { tripTiles, glyphPaths } from '../lib/tiles.js';
 import { photoUrl, PHOTO_THUMB, PHOTO_FULL } from '../lib/geo.js';
 
@@ -18,12 +18,29 @@ export const prep = signal(null);
 /** 지난번 확인한 미리 받은 개수 { map, mapAll, photo, photoAll } */
 export const prepared = signal(null);
 
+/** 새 버전을 받아 둠 (열려 있는 화면은 아직 예전 코드). 다시 열면 새 버전 */
+export const updateReady = signal(false);
+
+let swReg = null, checkedAt = Date.now(), hiddenAt = 0;
+const CHECK_EVERY = 30 * 60000;   // 앱으로 돌아올 때 새 버전 확인 간격
+const AWAY_RELOAD = 60000;        // 이만큼 넘게 나가 있다 돌아오면 새 버전으로 바로 다시 엶
+
 export function registerSW() {
   if (!('serviceWorker' in navigator)) return;
+  // 처음 설치될 때도 controllerchange가 오므로, 원래 서비스 워커가 있던 화면에서만 "새 버전"으로 봄
+  const hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController) updateReady.value = true; });
   navigator.serviceWorker.register('/v2/sw.js', { scope: '/v2/' })
-    .then(() => navigator.serviceWorker.ready)
+    .then(reg => { swReg = reg; return navigator.serviceWorker.ready; })
     .then(() => { appSaved.value = true; })
     .catch(() => { appSaved.value = false; });
+  // 홈 화면 앱은 며칠씩 안 닫혀서 브라우저가 새 버전을 잘 안 찾음 → 앱으로 돌아올 때 직접 확인
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') { hiddenAt = Date.now(); return; }
+    // 받아 둔 새 버전이 있고 한동안 나가 있었으면, 입력 중인 창이 없을 때 바로 새 버전으로 (보던 탭·날짜는 주소에 있음)
+    if (updateReady.value && hiddenAt && Date.now() - hiddenAt > AWAY_RELOAD && !dialog.value) { location.reload(); return; }
+    if (swReg && Date.now() - checkedAt > CHECK_EVERY) { checkedAt = Date.now(); swReg.update().catch(() => null); }
+  });
 }
 
 export async function readStorage() {
@@ -52,7 +69,8 @@ async function plan() {
   } catch (e) { tpl = null; }
   const tiles = tpl ? tripTiles(v).map(t => { const [z, x, y] = t.split('/'); return tpl.replace('{z}', z).replace('{x}', x).replace('{y}', y); }) : [];
   // 화면이 쓰는 그대로: 첫 장은 목록 썸네일과 카드, 나머지는 장소 시트
-  const photos = Array.from(new Set(v.allPlaces.flatMap(pl => (pl.photos || []).flatMap((u, i) => (i === 0 ? [photoUrl(u, PHOTO_THUMB), photoUrl(u, PHOTO_FULL)] : [photoUrl(u, PHOTO_FULL)])))));
+  const photos = Array.from(new Set(v.allPlaces.flatMap(pl => (pl.photos || []).flatMap((u, i) => (i === 0 ? [photoUrl(u, PHOTO_THUMB), photoUrl(u, PHOTO_FULL)] : [photoUrl(u, PHOTO_FULL)])))
+    .concat((v.bookings || []).flatMap(b => (b.images || []).map(u => photoUrl(u))))));   // 예약 티켓 그림은 원본 (QR이 뭉개지지 않게)
   return { map: map.concat(tiles), photos, tileCount: tiles.length, tplOk: !!tpl };
 }
 

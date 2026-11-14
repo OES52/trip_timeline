@@ -99,3 +99,4 @@
 .rc-n i { font-style: normal; color: var(--paper-ink-2); }
 .rc-t { font-family: var(--font-led); font-size: var(--fs-meta); }
 .rc-thanks { margin-top: var(--s3); text-align: center; font-size: var(--fs-meta); color: var(--paper-ink-2); padding-bottom: var(--s2); }
+.rc-t .nd { display: block; margin: 0; padding: 0; font-size: 10px; line-height: 1.1; color: inherit; box-shadow: none; }

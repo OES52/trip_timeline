@@ -5,9 +5,6 @@ on:
   push:
     branches: [main]
     paths:
-      - 'Index.html'
-      - 'App_*.html'
-      - 'Style_*.html'
       - 'web/**'
       - '.github/workflows/web.yml'
   workflow_dispatch:

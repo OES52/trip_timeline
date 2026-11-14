@@ -10,9 +10,10 @@
  *  도장·도착은 그 사용자 것만, 지출은 모두가 같이 쓰는 값이라 전부. 지움은 null
  */
 export function overlayOf(ops, userId) {
-  const out = { visited: {}, arrived: {}, spend: {} };
+  const out = { visited: {}, arrived: {}, spend: {}, todo: {} };
   (ops || []).forEach(o => {
     if (o.kind === 'spend') out.spend[o.key] = o.value ? { amount: Number(o.value.amount), memo: o.value.memo || '' } : null;
+    else if (o.kind === 'todo') out.todo[o.key] = !!o.value;   // 할 일도 모두가 같이 씀
     else if (o.user !== userId) return;
     else if (o.kind === 'visit') out.visited[o.key] = o.value ? 1 : null;
     else if (o.kind === 'arrive') out.arrived[o.key] = o.value || null;
@@ -37,6 +38,7 @@ export function nextBatch(ops) {
     return { fn: 'setVisitedMany', args: [changes], user: head.user, ids };
   }
   if (head.kind === 'arrive') return { fn: 'setArrived', args: [head.key, head.value || ''], user: head.user, ids: [head.id] };
+  if (head.kind === 'todo') return { fn: 'setTodo', args: [head.key, head.value ? 1 : 0], user: head.user, ids: [head.id] };
   const v = head.value;
   return { fn: 'setSpend', args: [head.key, head.place || '', v ? Number(v.amount) : '', v ? v.memo || '' : ''], user: head.user, ids: [head.id] };
 }
@@ -47,14 +49,28 @@ export function applyResult(raw, fn, user, result) {
   if (fn === 'setVisitedMany' || fn === 'setVisited') return Object.assign({}, raw, { visitedBy: Object.assign({}, raw.visitedBy, { [user]: result }) });
   if (fn === 'setArrived') return Object.assign({}, raw, { arrivedBy: Object.assign({}, raw.arrivedBy, { [user]: result }) });
   if (fn === 'setSpend') return Object.assign({}, raw, { spend: result });
+  if (fn === 'setTodo' && Array.isArray(result)) return Object.assign({}, raw, { todos: result });
   return raw;
 }
 
-/** 실패한 호출을 어떻게 할지: 'pin' PIN 다시 / 'retry' 뒀다가 다시 / 'drop' 버림 */
+/**
+ * 실패한 호출을 어떻게 할지
+ *  'pin'   PIN 다시 넣어야 함 / 'auth' 접속 코드 다시 넣어야 함 (대기열 그대로)
+ *  'retry' 연결 없음·너무 많음·서버 오류: 대기열에 두고 다시 (버리지 않음)
+ *  'drop'  서버가 받지 않음 (권한 없음 등): 대기열에서 빼서 "못 보낸 기록"으로
+ */
 export function failureKind(status, message) {
   if (status === 403 && /PIN/.test(message || '')) return 'pin';
+  if (status === 401) return 'auth';
   if (status == null || status === 0 || status === 429 || status >= 500) return 'retry';
   return 'drop';
+}
+
+/** 다시 보낼 때까지 기다릴 시간(ms): 연결 없음 8초, 너무 많음 30초, 서버 오류는 8초부터 두 배씩 최대 5분 */
+export function retryDelay(status, tries) {
+  if (status === 429) return 30000;
+  if (!status) return 8000;
+  return Math.min(300000, 8000 * 2 ** Math.max(0, (tries || 1) - 1));
 }
 
 /** 지금 일본 시각을 그 날짜 기준 "HH:MM"으로 (자정을 넘겼어도 시각만 적음) */

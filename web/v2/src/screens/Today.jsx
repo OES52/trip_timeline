@@ -1,9 +1,9 @@
 // 오늘: 여행 단계에 따라 바뀌는 첫 화면
 //  전: 전광판 카운트다운 + 날짜별 여정 / 중: 지금·다음 + 길찾기 + 오늘 남은 일정 / 후: 여정 돌아보기
-import { view, nt, nowMs, go, user } from '../data/store.js';
+import { view, tn, nowMs, go, user } from '../data/store.js';
 import { recordArrivalNow } from '../data/records.js';
 import { dayLabel, md, fmtDur, hhmm, toMin } from '../lib/time.js';
-import { phase, tripRange, nowNext, remainMin, predictedMin, pname, vk, arrivedAt, dayCity, dayRoute, dayPoints, daySpend, segModeName, segRides, MODE_KEY } from '../lib/trip.js';
+import { phase, tripRange, nowNext, remainMin, predictedMin, pname, placeOf, vk, arrivedAt, dayCity, dayRoute, dayPoints, daySpend, segModeName, segRides, MODE_KEY } from '../lib/trip.js';
 import { money } from '../lib/money.js';
 import { stepNow } from '../lib/steps.js';
 import { navUrl, haversine, fmtDist, walkMin } from '../lib/geo.js';
@@ -14,6 +14,9 @@ import { Board } from '../ui/Board.jsx';
 import { Timeline } from '../ui/Timeline.jsx';
 import { Icon } from '../ui/Icon.jsx';
 import { MODE_ICON } from '../ui/icons.js';
+import { Hm } from '../ui/Hm.jsx';
+import { TodoBlock, BookingBlock, BookingButtons, ShowButton } from '../ui/Extras.jsx';
+import { bookingsFor } from '../lib/extras.js';
 
 const dayDiff = (a, b) => Math.round((Date.parse(b + 'T00:00:00Z') - Date.parse(a + 'T00:00:00Z')) / 864e5);
 
@@ -56,6 +59,9 @@ function NextUp({ v, now }) {
   const rm = remainMin(v, next, now);
   const pr = next.date === now.date ? predictedMin(v, next) : null;
   const arr = arrivedAt(v, next);
+  const pl = placeOf(v, next);
+  const books = bookingsFor(v, next, user.value ? user.value.id : '');
+  const canShow = !!(pl && (pl.ja || pl.addr));
   // 계획보다 일찍 닿았을 때도 여기서 바로 도착을 적을 수 있게 (보기 전용 사용자는 버튼 없음)
   const showRec = !!(user.value && user.value.canStamp) && next.date === now.date && !arr;
   return (
@@ -64,8 +70,8 @@ function NextUp({ v, now }) {
         <p class="nextup-n">{pname(v, next)}</p>
         <p class="nextup-s">
           {next.date === now.date
-            ? <><span class="num">{pr != null ? hhmm(pr) : next.arrive}</span> 도착{rm != null && rm > 0 ? ', ' + fmtDur(rm) + ' 남음' : ''}</>
-            : <>{dayLabel(next.date)} <span class="num">{next.arrive}</span></>}
+            ? <><span class="num">{pr != null ? <Hm min={pr} /> : <Hm s={next.arrive} />}</span> 도착{rm != null && rm > 0 ? ', ' + fmtDur(rm) + ' 남음' : ''}</>
+            : <>{dayLabel(next.date)} <span class="num"><Hm s={next.arrive} /></span></>}
         </p>
         {seg && (
           <p class="nextup-s">
@@ -81,6 +87,12 @@ function NextUp({ v, now }) {
         {showRec && <button type="button" class="btn btn-plate" onClick={() => recordArrivalNow(next)}><Icon name="clock" />도착 기록</button>}
         <a class="btn btn-exit" href={navUrl(next.lat, next.lng)} target="_blank" rel="noopener"><Icon name="nav" />길찾기</a>
       </div>
+      {(books.length > 0 || canShow) && (
+        <div class="nextup-more">
+          <BookingButtons list={books} />
+          <ShowButton pl={pl} />
+        </div>
+      )}
     </section>
   );
 }
@@ -166,7 +178,7 @@ function TripDays({ v, now }) {
 
 export function Today() {
   const v = view.value;
-  const now = nt.value;
+  const now = tn.value;   // 자정 넘어 전날 일정이 이어지는 중이면 전날 기준
   const ph = phase(v, new Date(nowMs.value));
   const nn = ph === 'during' ? nowNext(v, now) : null;
   // 여행 중엔 지금 있는 곳(없으면 다음 갈 곳)부터 보여줌
@@ -188,6 +200,8 @@ export function Today() {
               <Timeline date={now.date} fromOrder={from.order - 1} compact />
             </section>
           )}
+          {(ph === 'before' || ph === 'during') && <TodoBlock v={v} today={now.date} />}
+          {(ph === 'before' || ph === 'during') && <BookingBlock v={v} today={now.date} />}
           <TripDays v={v} now={now} />
         </div>
       </div>

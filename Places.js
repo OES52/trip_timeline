@@ -89,7 +89,18 @@ function ensurePlaceHeader_(sh) {
     sh.insertColumnBefore(areaCol);
     setInputHeader_(sh, areaCol, '도시', NOTE_CITY_, 80);
   }
+  // 택시 기사에게 보여주는 카드용 (웹앱 "보여주기"). 맨 끝에 붙임
+  [['일본어 이름', NOTE_JA_, 180], ['주소', NOTE_ADDR_, 260]].forEach(([name, note, w]) => {
+    h = headN();
+    if (h.indexOf(hn_(name)) !== -1) return;
+    const row = sh.getRange(1, 1, 1, sh.getMaxColumns()).getDisplayValues()[0];
+    const last = row.reduce((m, v, i) => v !== '' ? i + 1 : m, 0);
+    ensureColumns_(sh, last + 1);
+    setInputHeader_(sh, last + 1, name, note, w);
+  });
 }
+const NOTE_JA_ = '일본어 이름 (택시·역무원에게 보여주는 카드). "장소 일본어 이름·주소 채우기"가 빈 칸을 채움';
+const NOTE_ADDR_ = '일본어 주소 (택시 카드). 숙소는 예약 메일의 주소와 대조하기';
 
 // 메뉴: 일정에 나온 장소 중 장소 시트에 없는 것만 추가
 function refreshPlaceGuide() {
@@ -248,6 +259,8 @@ function readPlaces_(sh) {
       photos: parsePhotos_(get('PHOTO')),
       web: String(get('WEB')).trim(),
       pid: String(get('PID')).trim(),
+      ja: String(get('JA')).trim(),
+      addr: String(get('ADDR')).trim(),
       col: idx,   // 열 위치 (쓰기용, 0부터)
     });
   });

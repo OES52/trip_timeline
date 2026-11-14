@@ -23,6 +23,34 @@ export function tokyoNow(d = new Date()) {
   return { date: g('year') + '-' + g('month') + '-' + g('day'), min: (Number(g('hour')) % 24) * 60 + Number(g('minute')) };
 }
 
+/**
+ * 일정 시각 글자 → { t: 보일 시각, nd: 익일인지 }
+ *  24시를 넘긴 시각("25:10")과 "(+1)"이 붙은 시각("0:15 (+1)")은 익일: { t: "1:10", nd: true }
+ */
+export function hmParts(s) {
+  const raw = String(s == null ? '' : s).trim();
+  const m = toMin(raw);
+  if (m == null) return { t: raw, nd: false };
+  if (m >= 1440 || /\(\+1\)/.test(raw)) return { t: hhmm(m), nd: true };
+  return { t: raw, nd: false };
+}
+
+/** 일정 시각을 글자 하나로: "25:10" → "익일 1:10", "9:30" → "9:30" */
+export function fmtHM(s) {
+  const p = hmParts(s);
+  return p.nd ? '익일 ' + p.t : p.t;
+}
+
+/** 분 → "익일 1:10" (24시 넘으면) / "9:30" */
+export function fmtMin(min) {
+  return (min >= 1440 ? '익일 ' : '') + hhmm(min);
+}
+
+/** 날짜 더하기: ("2026-12-31", 1) → "2027-01-01" */
+export function addDays(date, n) {
+  return new Date(Date.parse(date + 'T00:00:00Z') + n * 864e5).toISOString().slice(0, 10);
+}
+
 /** 일본 시계 "14:05:09" */
 export function tokyoClock(d = new Date()) {
   return new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(d);

@@ -1,6 +1,6 @@
 // 하루 영수증을 그림(PNG)으로: 캔버스에 직접 그림 → 폰은 공유 창(사진에 저장), 안 되면 내려받기
 import { YEN } from '../lib/money.js';
-import { dayLabel } from '../lib/time.js';
+import { dayLabel, fmtHM } from '../lib/time.js';
 
 export const SHOP = '오잇트립', SHOP_EN = 'TRAVEL RECEIPT';
 
@@ -35,7 +35,7 @@ export async function saveReceiptImage(r) {
   if (r.route) row('구간', fit(r.route, W - P * 2 - 80, '700 14px ' + sans));
   sep();
   r.items.forEach(x => add(22, y => {
-    text(x.time, P, y + 16, '15px ' + mono, '#4A4033');
+    text(fmtHM(x.time), P, y + 16, '15px ' + mono, '#4A4033');
     text(fit(x.name + (x.memo ? ' (' + x.memo + ')' : ''), W - P * 2 - 130, '14px ' + sans), P + 56, y + 16, '14px ' + sans, x.done || x.amount != null ? null : ink2);
     text(x.amount != null ? YEN(x.amount) : x.done ? '✓' : '', W - P, y + 16, '700 14px ' + sans, null, 'right');
   }));

@@ -40,6 +40,8 @@
 .dest .mq.scroll { padding-left: 100%; animation: mq var(--dur, 8s) linear infinite; }
 @keyframes mq { to { transform: translateX(-100%); } }
 .brow .rem { font-size: 14px; color: var(--led-g); text-align: right; white-space: nowrap; text-shadow: none; }
+/* 익일: 시각 칸 아래 작은 글자 (칸 너비는 그대로) */
+.board .nd { display: block; margin: 2px 0 0; padding: 0; font-family: var(--font-led); font-size: 11px; font-weight: 400; line-height: 1; color: var(--led-b); box-shadow: none; text-shadow: none; }
 .bsub { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 0 0 136px; font-size: 13px; color: #C9C9C9; }
 .bsub .ln { color: var(--led-b); }
 @media (max-width: 639px) {

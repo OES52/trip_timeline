@@ -2,8 +2,8 @@
 //  여행 전: 출발 카운트다운 + 첫날 행선지 / 여행 중: 今·次·その次 (남은 일정은 바로 아래 타임라인이 보여줌) / 여행 뒤: 인사
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { view, go } from '../data/store.js';
-import { tokyoNow, tokyoClock, toMin, hhmm, dayLabel, splitSec } from '../lib/time.js';
-import { tripRange, nowNext, remainMin, predictedMin, pname, placeOf, dayPoints, isVisited, segModeName, segRides } from '../lib/trip.js';
+import { tokyoNow, tokyoClock, toMin, hhmm, dayLabel, splitSec, hmParts, fmtHM, fmtDur, addDays } from '../lib/time.js';
+import { tripRange, tripClock, nightRide, nowNext, remainMin, predictedMin, pname, placeOf, dayPoints, isVisited, segModeName, segRides } from '../lib/trip.js';
 import { weatherInfo } from './icons.js';
 import { Icon } from './Icon.jsx';
 
@@ -71,9 +71,10 @@ function BoardDay({ v, date, title, fromOrder, max }) {
         const pl = placeOf(v, p);
         const done = isVisited(v, p);
         const ty = pl && pl.type ? pl.type : '';
+        const tp = hmParts(p.arrive || p.depart || '');
         return (
           <div class={'drow' + (done ? ' done' : '')} key={p.order}>
-            <span class="t">{p.arrive || p.depart || ''}</span>
+            <span class="t">{tp.t}{tp.nd && <i class="nd">익일</i>}</span>
             <Dest text={pname(v, p)} stagger={first ? 160 + i * 80 : 0} />
             <span class="ty" style={{ color: done ? 'var(--led-dim)' : LED_TYPE[ty] || '#C9C9C9' }}>{done ? '済' : ty}</span>
           </div>
@@ -121,7 +122,7 @@ export function Board() {
             <Flap text={String(c.m).padStart(2, '0')} /><span class="count-unit">분</span>
             <Flap text={String(c.s).padStart(2, '0')} /><span class="count-unit">초</span>
           </p>
-          <p class="count-sub">{dayLabel(first.date)} {first.arrive || ''} {pname(v, first)}에서 출발</p>
+          <p class="count-sub">{dayLabel(first.date)} {fmtHM(first.arrive)} {pname(v, first)}에서 출발</p>
         </div>
         <BoardDay v={v} date={v.dates[0]} title={'初日 · 첫날 ' + dayLabel(v.dates[0])} max={6} />
       </section>
@@ -141,12 +142,24 @@ export function Board() {
     );
   }
 
-  // 여행 중: 지금 / 다음 / 그다음
-  const nt = tokyoNow(now);
+  // 여행 중: 지금 / 다음 / 그다음. 자정 넘어 전날 일정이 이어지는 중이면 전날 기준 (tripClock)
+  const nt = tripClock(v, tokyoNow(now));
   const { cur, next, after } = nowNext(v, nt);
   const seg = next ? v.segTo.get(next.date + '#' + next.order) : null;
   const npr = next && next.date === nt.date ? predictedMin(v, next) : null;
   const left = cur ? toMin(cur.depart) - nt.min : null;
+  const ride = !!cur && nightRide(v, cur);   // 야간버스처럼 밤새 타고 가는 중: 끝나는 시각 = 도착
+  const cp = cur ? hmParts(cur.depart) : null;
+  const np = next ? (npr != null ? { t: hhmm(npr), nd: npr >= 1440 } : hmParts(next.arrive)) : null;
+  const ap = after ? hmParts(after.arrive) : null;
+  // 다음 장소까지: 같은 날이면 남은 시간, 다음 날 아침이 12시간 안이면(밤 사이) 남은 시간, 아니면 날짜
+  let nrem = '';
+  if (next) {
+    const rm = remainMin(v, next, nt);
+    const tm = toMin(next.arrive);
+    const over = next.date === addDays(nt.date, 1) && tm != null ? tm + 1440 - nt.min : null;
+    nrem = rm != null ? ato(rm) : over != null && over <= 720 ? ato(over) : dayLabel(next.date);
+  }
   return (
     <section class="board" aria-label="지금과 다음 일정">
       <div class="b-main">
@@ -154,17 +167,17 @@ export function Board() {
         {cur && (
           <div class="brow glow">
             <span class="kind now">今</span>
-            <span class="t"><Flap text={'~' + cur.depart} /></span>
+            <span class="t"><Flap text={'~' + cp.t} />{cp.nd && <i class="nd">익일</i>}</span>
             <Dest text={pname(v, cur)} />
-            <span class="rem"><Flap text={left > 0 ? '출발까지 ' + left + '분' : '출발'} /></span>
+            <span class="rem"><Flap text={left > 0 ? (ride ? '도착까지 ' : '출발까지 ') + fmtDur(left) : ride ? '도착' : '출발'} /></span>
           </div>
         )}
         {next && (
           <div class="brow glow">
             <span class="kind next">次</span>
-            <span class="t"><Flap text={next.date === nt.date ? (npr != null ? hhmm(npr) : next.arrive || '') : next.arrive || ''} /></span>
+            <span class="t"><Flap text={np.t} />{np.nd && <i class="nd">익일</i>}</span>
             <Dest text={pname(v, next)} />
-            <span class="rem"><Flap text={next.date === nt.date ? ato(remainMin(v, next, nt)) : dayLabel(next.date)} /></span>
+            <span class="rem"><Flap text={nrem} /></span>
           </div>
         )}
         {seg && (
@@ -176,7 +189,7 @@ export function Board() {
         {after && (
           <div class="brow glow">
             <span class="kind after">その次</span>
-            <span class="t"><Flap text={after.arrive || ''} /></span>
+            <span class="t"><Flap text={ap.t} />{ap.nd && <i class="nd">익일</i>}</span>
             <Dest text={pname(v, after)} />
             <span class="rem" />
           </div>

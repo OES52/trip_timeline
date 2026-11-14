@@ -1,11 +1,11 @@
 // 기록 쓰기: 방문 도장, 실제 도착 시각, 실제 지출
 //  누르면 바로 화면에 반영(ops에 넣음)하고 뒤에서 차례로 서버에 보냄. 연결이 안 되면 폰에 뒀다가 연결되면 보냄
 //  PIN은 폰에만 두고(v1과 같은 키) 보낼 때 붙임. 대기열에는 PIN을 넣지 않음
-import { batch } from '@preact/signals';
-import { ops, raw, user, users, view, sendState, dialog, showToast, nt, stampFx } from './store.js';
+import { batch, signal, effect, untracked } from '@preact/signals';
+import { ops, raw, user, users, view, sync, sendState, dialog, showToast, nt, stampFx } from './store.js';
 import { call, ApiError } from './api.js';
 import { kv, local } from './cache.js';
-import { nextBatch, applyResult, failureKind, clockNow } from '../lib/ops.js';
+import { nextBatch, applyResult, failureKind, retryDelay, clockNow } from '../lib/ops.js';
 import { vk, pname, isVisited, arrivedAt } from '../lib/trip.js';
 import { tokyoNow } from '../lib/time.js';
 import { YEN } from '../lib/money.js';
@@ -13,7 +13,13 @@ import { stampable } from '../lib/passport.js';
 import { preview } from '../preview.js';
 
 const OUTBOX_KEY = 'trip2-outbox-v1';
-const MAX_TRIES = 8;   // 서버 오류가 이만큼 이어지면 그 기록은 버림 (연결이 없는 건 세지 않음)
+const FAILED_KEY = 'trip2-failed-v1';
+// 연결 없음·서버 오류는 몇 번이든 다시 보냄 (간격만 늘림). 서버가 아예 받지 않는 기록(권한 없음 등)만 "못 보낸 기록"으로 옮김
+
+/** 서버가 받지 않은 기록 { ...op, error }. 버리지 않고 남겨서 설정에서 다시 보내거나 지움 */
+export const failed = signal([]);
+/** 서버 오류로 다시 보내는 중이면 { status, message } (연결 줄에 이유 표시). 연결이 없는 거면 null */
+export const sendError = signal(null);
 
 export const getPin = id => local.get('trip-pin-' + id) || '';
 export const setPin = (id, v) => local.set('trip-pin-' + id, v || null);
@@ -38,6 +44,7 @@ export async function verifyPin(id, pin) {
 /* ── 대기열 ── */
 let seq = 0, busy = false, timer = 0;
 const persist = () => kv.set(OUTBOX_KEY, JSON.stringify(ops.value));
+const persistFailed = () => kv.set(FAILED_KEY, JSON.stringify(failed.value));
 function push(list) {
   const at = Date.now();
   ops.value = ops.value.concat(list.map(o => Object.assign({ id: at + '-' + (++seq), at, tries: 0 }, o)));
@@ -71,6 +78,7 @@ export async function flush(ask) {
         batch(() => {
           if (raw.value) raw.value = applyResult(raw.value, b.fn, b.user, result);
           drop(b.ids);
+          sendError.value = null;
         });
         persist();
       } catch (e) {
@@ -82,18 +90,31 @@ export async function flush(ask) {
           if (ask === true) dialog.value = { kind: 'pin', id: b.user, error: 'PIN이 바뀐 것 같음. 다시 입력' };
           return;
         }
-        const head = ops.value[0];
-        if (kind === 'retry' && (status === 0 || (head && head.tries < MAX_TRIES))) {
-          if (status !== 0 && head) { ops.value = [Object.assign({}, head, { tries: head.tries + 1 })].concat(ops.value.slice(1)); persist(); }
-          sendState.value = 'waiting';
-          later(status === 429 ? 30000 : 8000);
+        if (kind === 'auth') {
+          // 접속 코드가 바뀌었거나 세션이 끝남: 기록은 그대로 두고, 코드를 다시 넣으면 이어서 보냄
+          sendState.value = 'locked';
+          if (sync.value.kind !== 'locked') sync.value = Object.assign({}, sync.value, { kind: 'locked' });
           return;
         }
+        if (kind === 'retry') {
+          const head = ops.value[0];
+          let tries = head ? head.tries : 0;
+          if (status !== 0 && head) { tries = head.tries + 1; ops.value = [Object.assign({}, head, { tries })].concat(ops.value.slice(1)); persist(); }
+          sendError.value = status ? { status, message: e.message } : null;
+          sendState.value = 'waiting';
+          later(retryDelay(status, tries));
+          return;
+        }
+        // 서버가 받지 않음 (권한 없음 등): 지우지 않고 "못 보낸 기록"으로
+        const ids = new Set(b.ids);
+        failed.value = failed.value.concat(ops.value.filter(o => ids.has(o.id)).map(o => Object.assign({}, o, { error: e.message })));
+        persistFailed();
         drop(b.ids);
         persist();
-        showToast('기록 ' + b.ids.length + '건을 저장 못 함: ' + e.message);
+        showToast('기록 ' + b.ids.length + '건을 서버가 안 받음 (' + e.message + '). 설정에서 다시 보내거나 지울 수 있음');
       }
     }
+    sendError.value = null;
     sendState.value = 'idle';
   } finally {
     busy = false;
@@ -102,14 +123,45 @@ export async function flush(ask) {
 
 /** 앱을 켤 때: 지난번에 못 보낸 기록을 꺼내 이어서 보냄 */
 export async function loadOutbox() {
-  let saved = [];
+  let saved = [], bad = [];
   try { saved = JSON.parse((await kv.get(OUTBOX_KEY)) || '[]') || []; } catch (e) { saved = []; }
+  try { bad = JSON.parse((await kv.get(FAILED_KEY)) || '[]') || []; } catch (e) { bad = []; }
   if (Array.isArray(saved) && saved.length) ops.value = saved.concat(ops.value);
+  if (Array.isArray(bad) && bad.length) failed.value = bad.concat(failed.value);
   flush();
 }
 addEventListener('online', () => flush());
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') flush(); });
-setInterval(() => flush(), 30000);
+// 30초마다 다시 보내 봄. 단 서버 오류로 기다리는 중이면 정해 둔 간격대로, 접속 코드가 필요하면 코드를 넣을 때까지 쉼
+setInterval(() => {
+  if (sendState.value === 'locked' || (sendState.value === 'waiting' && sendError.value)) return;
+  flush();
+}, 30000);
+// 접속 코드를 다시 넣어 최신을 받으면 밀린 기록도 바로 보냄
+effect(() => {
+  if (sync.value.kind !== 'fresh') return;
+  untracked(() => { if (ops.value.length && (sendState.value === 'locked' || sendState.value === 'waiting')) flush(true); });
+});
+
+/** 못 보낸 기록을 다시 대기열에 넣어 보냄 */
+export function retryFailed() {
+  if (!failed.value.length) return;
+  const list = failed.value.map(o => { const c = Object.assign({}, o, { tries: 0 }); delete c.error; return c; });
+  failed.value = [];
+  persistFailed();
+  ops.value = ops.value.concat(list);
+  persist();
+  flush(true);
+}
+
+/** 못 보낸 기록 지우기. 되돌리기로 살림 */
+export function clearFailed() {
+  const keep = failed.value;
+  if (!keep.length) return;
+  failed.value = [];
+  persistFailed();
+  showToast('못 보낸 기록 ' + keep.length + '건 지움', { label: '되돌리기', fn: () => { failed.value = keep.concat(failed.value); persistFailed(); } });
+}
 
 /* ── 기록 남기기 (화면에서 부르는 것). 전부 되돌리기 가능 ── */
 const me = () => user.value.id;
@@ -156,6 +208,14 @@ export function saveArrival(p, hhmm) {
   if (prev === (hhmm || '')) return;
   push([{ kind: 'arrive', user: me(), key, value: hhmm || '' }]);
   showToast(pname(v, p) + (hhmm ? ' 도착 시각 ' + hhmm + ' 저장' : ' 도착 기록 지움'), { label: '되돌리기', fn: () => push([{ kind: 'arrive', user: me(), key, value: prev }]) });
+}
+
+/** 할 일 끝냄/되돌림 (모두가 같이 보는 체크) */
+export function toggleTodo(t) {
+  if (!canRecord() || previewBlocks()) return;
+  const on = !t.done;
+  push([{ kind: 'todo', user: me(), key: t.key, value: on ? 1 : 0 }]);
+  showToast(t.text + (on ? ' 끝냄' : ' 다시 할 일로'), { label: '되돌리기', fn: () => push([{ kind: 'todo', user: me(), key: t.key, value: on ? 0 : 1 }]) });
 }
 
 /** 실제 지출 저장 (amount 숫자) 또는 지우기 (amount null) */

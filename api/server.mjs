@@ -225,6 +225,7 @@ const FNS = {
   setVisitedMany: [1, 2, true],
   setArrived: [2, 3, true],
   editPlan: [3, 4, true],
+  setTodo: [2, 3, true],
 };
 
 async function apiCall(req, res) {
@@ -256,7 +257,8 @@ async function apiCall(req, res) {
     ok(req, res, result);
   } catch (e) {
     if (/PIN/.test(e.message)) { pinFailed(ip, user); refreshSoon('PIN 불일치'); }   // 설정 시트에서 PIN 바뀐 경우
-    fail(req, res, /PIN|권한|보기 전용|수정할 수 없음|없는 사용자/.test(e.message) ? 403 : 502, e.message);
+    // 403·409는 다시 보내도 안 되는 것 (화면이 "못 보낸 기록"으로 옮김), 502는 화면이 간격 두고 다시 보냄
+    fail(req, res, /PIN|권한|보기 전용|수정할 수 없음|없는 사용자/.test(e.message) ? 403 : /^할 일이/.test(e.message) ? 409 : 502, e.message);
   }
 }
 
@@ -267,6 +269,7 @@ function patchRecords(fn, user, result) {
   if (fn === 'setVisitedMany' || fn === 'setVisited') d.visitedBy = Object.assign({}, d.visitedBy, { [user]: result });
   else if (fn === 'setArrived') d.arrivedBy = Object.assign({}, d.arrivedBy, { [user]: result });
   else if (fn === 'setSpend') d.spend = result;
+  else if (fn === 'setTodo') d.todos = result;
   else return;
   setData(d);
 }
@@ -729,6 +732,23 @@ async function pushTick() {
       }
     }
   }
+  // 할 일 알림: 할 일 시트의 날짜·시각(비우면 9:00)에, 그 사람(누구가 비면 모두) 구독으로. 끝낸 일은 안 보냄
+  for (const t of (data.todos || [])) {
+    if (t.done || !t.date) continue;
+    const m = toMin(t.time);
+    const at = dayStart(t.date, tz) + (m != null ? m : 540) * 60000;
+    if (now < at || now > at + 10 * 60000) continue;
+    for (const [id, s] of Object.entries(push.subs)) {
+      if (t.who && t.who.length && t.who.indexOf(s.user) === -1) continue;
+      const key = id + '|todo|' + t.key;
+      if (push.sent[key]) continue;
+      push.sent[key] = now;
+      savePush();
+      sendPush(id, { title: '할 일 · ' + t.text, body: t.memo || '오늘 할 일. 앱에서 끝냄 체크', tag: 'todo-' + t.key, url: '/v2/#today' })
+        .then(() => log('할 일 알림', s.user, t.date, t.text), e => log('알림 실패', s.user, e.statusCode || e.message));
+    }
+  }
+
   // 3일 지난 기록 정리
   let pruned = false;
   for (const [k, t] of Object.entries(push.sent)) if (now - t > 3 * 86400000) { delete push.sent[k]; pruned = true; }

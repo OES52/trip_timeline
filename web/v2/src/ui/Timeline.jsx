@@ -1,14 +1,17 @@
 // 하루 타임라인. 오늘 화면(남은 일정)과 일정 화면이 같은 부품을 씀
 //  장소 줄 하나 = 시각 | 선 위의 점 | 이름·한 줄 설명 | 행동 하나. 누르면 펼쳐서 사진·영업시간·메모
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { view, nt as ntSig, picked, pick, user, openDialog } from '../data/store.js';
+import { view, tn, picked, pick, user, openDialog } from '../data/store.js';
 import { recordArrivalNow, toggleVisit } from '../data/records.js';
 import { editing, canEdit, changeStay, skipStop, setTaxi } from '../data/edit.js';
-import { toMin, hhmm, fmtDur } from '../lib/time.js';
+import { toMin, hhmm, fmtDur, hmParts, fmtHM } from '../lib/time.js';
 import {
   vk, placeOf, pname, dayPoints, stopStates, isVisited, arrivedAt, arrivalDiff, predictedMin, dayDelay,
-  MODE_KEY, segModeName, segRides, lastTrain,
+  MODE_KEY, segModeName, segRides, lastTrain, nightRide,
 } from '../lib/trip.js';
+import { Hm } from './Hm.jsx';
+import { BookingButtons, ShowButton } from './Extras.jsx';
+import { bookingsFor } from '../lib/extras.js';
 import { hoursFor, warnings } from '../lib/hours.js';
 import { sunsetMin } from '../lib/sun.js';
 import { canSplit, stepRows } from '../lib/steps.js';
@@ -53,6 +56,8 @@ function Stop({ v, p, state, first, last, cIn, cOut, open, onToggle, compact, on
   const canNav = p.lat != null && p.lng != null;
   const canRec = !!(user.value && user.value.canStamp);
   const busy = editing.value;   // 보기 전용 사용자는 기록 버튼이 없음
+  const ap = hmParts(p.arrive), dp = hmParts(p.depart);   // 24시 넘긴 시각은 "익일"
+  const ride = nightRide(v, p);   // 야간버스처럼 밤새 타고 가는 곳
 
   const facts = [];
   if (p.stay) facts.push(['체류', fmtDur(p.stay)]);
@@ -70,18 +75,20 @@ function Stop({ v, p, state, first, last, cIn, cOut, open, onToggle, compact, on
       <div class="stop-rail" aria-hidden="true"><i class="dot">{visited && <Icon name="check" />}</i></div>
       <button type="button" class="stop-head" aria-expanded={open} aria-controls={'more-' + key} onClick={onToggle}>
         <span class="stop-time">
-          <b class="num">{p.arrive || ''}</b>
-          {p.depart && p.depart !== p.arrive && <span class="num">~{p.depart}</span>}
+          {ap.nd && <span class="nd">익일</span>}
+          <b class="num">{ap.t}</b>
+          {p.depart && p.depart !== p.arrive && dp.nd && !ap.nd && <span class="nd">익일</span>}
+          {p.depart && p.depart !== p.arrive && <span class="num">~{dp.t}</span>}
           {arr
             ? <span class={'stop-real ' + (diff > 0 ? 'note-late' : 'note-ok')}>실제 <span class="num">{arr}</span>{diff ? ' (' + sgn(diff) + ')' : ''}</span>
             : pred != null && delay && delay.delay
-              ? <span class={'stop-real ' + (delay.delay > 0 ? 'note-late' : 'note-ok')}>예상 <span class="num">{hhmm(pred)}</span></span>
+              ? <span class={'stop-real ' + (delay.delay > 0 ? 'note-late' : 'note-ok')}>예상 <span class="num"><Hm min={pred} /></span></span>
               : null}
         </span>
         <span class="stop-body">
           <span class="stop-n">
             {name}
-            {state === 'now' && <em class="tag tag-now">지금</em>}
+            {state === 'now' && <em class="tag tag-now">{ride ? '타는 중' : '지금'}</em>}
             {state === 'next' && <em class="tag tag-next">다음</em>}
           </span>
           {sub && <span class="stop-m">{type && <Icon name={placeIcon(type, name)} label={type} />}<span>{sub}</span></span>}
@@ -128,6 +135,8 @@ function Stop({ v, p, state, first, last, cIn, cOut, open, onToggle, compact, on
           <div class="stop-btns">
             {canNav && <a class={'btn btn-sm ' + (state === 'next' && !compact ? 'btn-plate' : 'btn-exit')} href={navUrl(p.lat, p.lng)} target="_blank" rel="noopener"><Icon name="nav" />길찾기</a>}
             {pl && pl.link && <a class="btn btn-plate btn-sm" href={pl.link} target="_blank" rel="noopener"><Icon name="map" />지도에서 보기</a>}
+            <ShowButton pl={pl} />
+            <BookingButtons list={bookingsFor(v, p, user.value ? user.value.id : '')} />
           </div>
           {pl && pl.photos && pl.photos[0] && <img class="stop-photo" src={photoUrl(pl.photos[0], PHOTO_FULL)} alt="" loading="lazy" onError={e => { e.currentTarget.hidden = true; }} />}
           {name !== p.place && <p class="stop-alt">{p.place}</p>}
@@ -179,7 +188,7 @@ function Move({ v, s, past, open, onToggle, fromName, toName, now, tail }) {
         )}
         {open && (
           <div class="move-more" id={'mv-' + key}>
-            <p class="num move-t">{s.dep} 출발, {s.arr} 도착</p>
+            <p class="num move-t">{fmtHM(s.dep)} 출발, {fmtHM(s.arr)} 도착</p>
             {lt && lt.level === 'info' && <p class="move-i"><Icon name="moon" /><span>{lt.text}</span></p>}
             {s.walkHint && <p class="move-i note-ok"><Icon name="walk" /><span>걸어도 됨: {s.walkHint}</span></p>}
             {s.pass === '주유패스' && <p class="move-i"><Icon name="ticket" /><span>주유패스 사용{s.passFare > 0 ? ' (원래 ' + YEN(s.passFare) + ')' : ''}</span></p>}
@@ -212,7 +221,7 @@ function Step({ r }) {
   if (r.type === 'station') {
     return (
       <li class="step step-st" style={{ '--c1': r.c1, '--c2': r.c2 }}>
-        <span class="step-time num">{r.time}{r.time2 && <small>{r.time2} 출발</small>}</span>
+        <span class="step-time num">{r.nd && <span class="nd">익일</span>}{r.time}{r.time2 && <small>{r.nd2 && !r.nd ? '익일 ' : ''}{r.time2} 출발</small>}</span>
         <div class="step-rail" aria-hidden="true"><i /></div>
         <p class="step-b"><b>{r.name}</b>{r.ja && <span class="ja">{r.ja}</span>}<span class="step-k">{r.kind}</span></p>
       </li>
@@ -276,7 +285,7 @@ let handledPick = null;
  */
 export function Timeline({ date, fromOrder, focus, compact }) {
   const v = view.value;
-  const now = ntSig.value;
+  const now = tn.value;   // 자정 넘어 전날 일정이 이어지는 중이면 전날 기준 (그날 줄이 '지남'으로 안 바뀜)
   const [open, setOpen] = useState(() => new Set());
   const list = useRef(null);
   const toggle = k => setOpen(s => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n; });

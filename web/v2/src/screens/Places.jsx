@@ -1,6 +1,6 @@
 // 장소: 일정에 있는 곳 + 추천 장소를 한 목록으로 (v1의 추천 가이드와 도감을 합침)
 //  머리줄 = 도시 띠 / 본문 = 찾기·거르기 + 도시 → 구역별 목록. 누르면 장소 시트
-import { view, nt, go, pick, placeFilter, setPlaceFilter, placeOpen } from '../data/store.js';
+import { view, tn, go, pick, placeFilter, setPlaceFilter, placeOpen } from '../data/store.js';
 import { dayLabel, fmtDur } from '../lib/time.js';
 import { vk, isVisited } from '../lib/trip.js';
 import { hoursFor, closedOn } from '../lib/hours.js';
@@ -11,6 +11,8 @@ import { TopBar, SyncLine } from '../ui/Shell.jsx';
 import { Sheet } from '../ui/Sheet.jsx';
 import { Icon } from '../ui/Icon.jsx';
 import { placeIcon } from '../ui/icons.js';
+import { Hm } from '../ui/Hm.jsx';
+import { ShowButton } from '../ui/Extras.jsx';
 
 /** 머리줄 도시 띠: 전체 + 첫 방문 순 도시 */
 function CityStrip({ v, cur }) {
@@ -58,7 +60,7 @@ function Row({ v, pl, onOpen, today }) {
           <span class="prow-m"><Icon name={placeIcon(pl.type, pl.name)} label={pl.type || '기타'} />{pl.type || '기타'}{hl ? ' · ' + hl : ''}</span>
           <span class="prow-v">
             {vs.length
-              ? vs.slice(0, 3).map(p => <em key={vk(p)} class={isVisited(v, p) ? 'is-done' : ''}>{dayLabel(p.date)} <span class="num">{p.arrive}</span></em>)
+              ? vs.slice(0, 3).map(p => <em key={vk(p)} class={isVisited(v, p) ? 'is-done' : ''}>{dayLabel(p.date)} <span class="num"><Hm s={p.arrive} /></span></em>)
               : <em class="is-extra">추천 · 일정에 없음</em>}
             {vs.length > 3 && <em>외 {vs.length - 3}번</em>}
           </span>
@@ -72,7 +74,7 @@ function Row({ v, pl, onOpen, today }) {
 /** 장소 시트: 사진, 들르는 때, 영업·비용·메뉴·소개·메모, 길찾기 */
 function PlaceSheet({ v, pl, onClose }) {
   const vs = visitsOf(v, pl.key);
-  const today = nt.value.date;
+  const today = tn.value.date;
   const date = (vs.find(p => p.date >= today) || vs[0] || {}).date || null;
   const h = date ? hoursFor(pl.hours, date) : null;
   const cost = costText(pl);
@@ -97,7 +99,7 @@ function PlaceSheet({ v, pl, onClose }) {
               {vs.map(p => (
                 <li key={vk(p)}>
                   <button type="button" onClick={() => { onClose(); pick(vk(p), 'map'); go('plan', p.date); }}>
-                    <span><b>{dayLabel(p.date)}</b> <span class="num">{p.arrive}{p.depart && p.depart !== p.arrive ? '~' + p.depart : ''}</span>{p.stay ? ' · ' + fmtDur(p.stay) : ''}</span>
+                    <span><b>{dayLabel(p.date)}</b> <span class="num"><Hm s={p.arrive} />{p.depart && p.depart !== p.arrive ? <>~<Hm s={p.depart} /></> : ''}</span>{p.stay ? ' · ' + fmtDur(p.stay) : ''}</span>
                     {isVisited(v, p) && <em class="tag tag-seal">다녀옴</em>}
                     <span class="psheet-go">일정에서 보기<Icon name="right" /></span>
                   </button>
@@ -120,7 +122,9 @@ function PlaceSheet({ v, pl, onClose }) {
           {pl.lat != null && <a class="btn btn-exit btn-sm" href={navUrl(pl.lat, pl.lng)} target="_blank" rel="noopener"><Icon name="nav" />길찾기</a>}
           {pl.link && <a class="btn btn-plate btn-sm" href={pl.link} target="_blank" rel="noopener"><Icon name="map" />지도에서 보기</a>}
           {pl.web && <a class="btn btn-plate btn-sm" href={pl.web} target="_blank" rel="noopener"><Icon name="out" />웹사이트</a>}
+          <ShowButton pl={pl} />
         </div>
+        {(pl.ja || pl.addr) && <p class="psheet-ja" lang="ja">{pl.ja}{pl.ja && pl.addr ? ' · ' : ''}{pl.addr}</p>}
       </div>
     </Sheet>
   );
@@ -177,7 +181,7 @@ export function Places() {
               {g.areas.map(a => (
                 <div key={a.area} class="parea">
                   <h3 class="parea-h">{a.area}</h3>
-                  <ul class="plist">{a.places.map(pl => <Row key={pl.key} v={v} pl={pl} onOpen={setOpenKey} today={nt.value.date} />)}</ul>
+                  <ul class="plist">{a.places.map(pl => <Row key={pl.key} v={v} pl={pl} onOpen={setOpenKey} today={tn.value.date} />)}</ul>
                 </div>
               ))}
             </section>
