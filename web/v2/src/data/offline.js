@@ -25,11 +25,32 @@ let swReg = null, checkedAt = Date.now(), hiddenAt = 0;
 const CHECK_EVERY = 30 * 60000;   // 앱으로 돌아올 때 새 버전 확인 간격
 const AWAY_RELOAD = 60000;        // 이만큼 넘게 나가 있다 돌아오면 새 버전으로 바로 다시 엶
 
+/**
+ * 지금 열린 화면이 새 서비스 워커보다 예전 코드인지: 새 미리 저장 목록(sw.js가 활성화 때 적어 둠)에 지금 앱 파일이 없으면 예전
+ *  배포 직후 처음 여는 화면은 이미 새 코드를 받아서 열리는데 서비스 워커도 그때 바뀌므로, 그땐 알리지 않게
+ *  판단할 수 없으면(개발 서버 등) false
+ */
+async function runningOld() {
+  try {
+    const el = document.querySelector('script[type="module"][src*="/assets/"]');
+    if (!el) return false;
+    const me = new URL(el.src).pathname;
+    const m = await (await caches.open('trip2-assets')).match('/v2/__precache.json');
+    if (!m) return false;
+    const list = await m.json();
+    return Array.isArray(list) && list.indexOf(me) === -1;
+  } catch (e) {
+    return false;
+  }
+}
+
 export function registerSW() {
   if (!('serviceWorker' in navigator)) return;
-  // 처음 설치될 때도 controllerchange가 오므로, 원래 서비스 워커가 있던 화면에서만 "새 버전"으로 봄
+  // 처음 설치될 때도 controllerchange가 오므로, 원래 서비스 워커가 있던 화면에서만, 그리고 지금 코드가 정말 예전일 때만 "새 버전"
   const hadController = !!navigator.serviceWorker.controller;
-  navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController) updateReady.value = true; });
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (hadController) runningOld().then(old => { if (old) updateReady.value = true; });
+  });
   navigator.serviceWorker.register('/v2/sw.js', { scope: '/v2/' })
     .then(reg => { swReg = reg; return navigator.serviceWorker.ready; })
     .then(() => { appSaved.value = true; })
