@@ -6,6 +6,7 @@ import { Places } from './screens/Places.jsx';
 import { Records } from './screens/Later.jsx';
 import { Toast } from './ui/Toast.jsx';
 import { Dialogs } from './ui/Dialogs.jsx';
+import { ArriveAsk } from './ui/ArriveAsk.jsx';
 
 const SCREENS = { today: Today, plan: Plan, places: Places, records: Records };
 
@@ -23,6 +24,7 @@ export function App() {
       <Screen />
       <TabBar />
       <Dialogs />
+      <ArriveAsk />
       <Toast />
     </div>
   );

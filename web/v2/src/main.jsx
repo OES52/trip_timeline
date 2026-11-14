@@ -15,8 +15,10 @@ import { App } from './app.jsx';
 import { load } from './data/store.js';
 import { loadOutbox } from './data/records.js';
 import { registerSW } from './data/offline.js';
+import { resumeGeo } from './data/location.js';
 
 render(<App />, document.getElementById('app'));
 load();
 loadOutbox();
 registerSW();
+resumeGeo();

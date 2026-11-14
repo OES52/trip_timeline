@@ -92,3 +92,29 @@ async function trim(c, max) {
   const keys = await c.keys();   // 넣은 순서 → 오래된 것부터 지움
   for (let i = 0; i < keys.length - max; i++) await c.delete(keys[i]);
 }
+
+/* ── 출발 알림 ── 서버(pushTick)가 { title, body, tag } 를 보냄. tag 'dep-날짜-순서' 면 그날 일정으로 엶 */
+self.addEventListener('push', e => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; } catch (err) { d = { title: '여행 타임라인', body: e.data ? e.data.text() : '' }; }
+  const m = /^dep-(\d{4}-\d{2}-\d{2})-/.exec(d.tag || '');
+  e.waitUntil(self.registration.showNotification(d.title || '여행 타임라인', {
+    body: d.body || '',
+    tag: d.tag || 'trip',
+    renotify: true,
+    icon: '/icons/icon-192.png',
+    badge: '/icons/badge-96.png',
+    data: { url: d.url || (m ? '/v2/#today' : '/v2/') },
+  }));
+});
+
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  const target = new URL((e.notification.data && e.notification.data.url) || '/v2/', self.location.origin).href;
+  e.waitUntil((async () => {
+    const list = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const w = list.find(c => new URL(c.url).pathname.indexOf('/v2') === 0);
+    if (w) { await w.focus(); if ('navigate' in w) await w.navigate(target).catch(() => null); return; }
+    await self.clients.openWindow(target);
+  })());
+});

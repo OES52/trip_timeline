@@ -118,15 +118,36 @@
 .who-pin { display: grid; gap: var(--s3); }
 .who-pin-h { display: flex; align-items: center; gap: var(--s3); font-size: var(--fs-name); }
 
-/* 인터넷 없이 보기 (사용자 시트 안) */
-.off { margin-top: var(--s4); padding-top: var(--s3); border-top: 1px solid var(--hair); }
-.off-h { font-size: var(--fs-sub); font-weight: 700; margin-bottom: var(--s2); }
-.off-l { display: grid; gap: var(--s1); margin-bottom: var(--s3); font-size: var(--fs-sub); }
+/* ── 설정 시트 ── */
+.set + .set, .set + .me-sync { margin-top: var(--s4); padding-top: var(--s3); border-top: 1px solid var(--hair); }
+.set-h { display: flex; align-items: center; font-size: var(--fs-body); font-weight: 700; margin-bottom: var(--s1); }
+.set-h .tag { vertical-align: 0; }
+.set-note { font-size: var(--fs-sub); color: var(--ink-2); margin-bottom: var(--s3); }
+.set-warn { font-size: var(--fs-sub); color: var(--late); padding: var(--s2) var(--s3); background: var(--late-bg); border-radius: var(--r-plate); }
+.set-btns { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); }
+.set .chips { flex-wrap: wrap; overflow: visible; margin: 0 0 var(--s2); padding: 0; }
+.tag-ok { color: var(--ok); background: var(--ok-bg); }
+.switch { display: flex; align-items: center; gap: var(--s3); min-height: var(--tap); font-size: var(--fs-sub); cursor: pointer; flex: 1 1 100%; }
+.switch input { appearance: none; flex: none; position: relative; width: 44px; height: 26px; margin: 0; background: var(--hair-2); border-radius: var(--r-round); transition: background var(--t-fast) var(--ease); cursor: pointer; }
+.switch input::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; background: #fff; border-radius: 50%; box-shadow: 0 1px 2px rgba(0,0,0,.25); transition: transform var(--t-fast) var(--ease); }
+.switch input:checked { background: var(--ok); }
+.switch input:checked::after { transform: translateX(18px); }
+.switch input:disabled { opacity: .5; cursor: default; }
+.off-l { display: grid; gap: var(--s1); margin: var(--s2) 0 var(--s3); font-size: var(--fs-sub); }
 .off-l > div { display: flex; gap: var(--s3); }
 .off-l dt { flex: 0 0 5.5em; color: var(--ink-2); }
 .off-l dd { margin: 0; min-width: 0; }
-.off-note { font-size: var(--fs-meta); color: var(--ink-2); margin-bottom: var(--s2); }
 .off-run { display: flex; align-items: center; gap: var(--s3); font-size: var(--fs-sub); }
 .off-bar { flex: 1; height: 8px; border-radius: var(--r-round); background: var(--plate-2); overflow: hidden; }
 .off-bar > i { display: block; height: 100%; background: var(--ink); transition: width var(--t-base) var(--ease); }
-@media (prefers-reduced-motion: reduce) { .off-bar > i { transition: none; } }
+
+/* ── 도착 제안 (장소 근처에 1분 넘게 있으면). 알림 한 줄과 같은 자리, 답할 때까지 둠 ── */
+.ask-wrap { position: fixed; z-index: var(--z-toast); left: var(--s3); right: var(--s3); bottom: calc(var(--bar-tab) + var(--safe-b) + var(--s3)); display: flex; justify-content: center; }
+.ask { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: var(--s2); width: 100%; max-width: 520px; padding: var(--s2) var(--s2) var(--s2) var(--s4); background: var(--plate); border-radius: var(--r-plate); box-shadow: inset 4px 0 0 var(--c, var(--ink)), 0 0 0 1px var(--hair-2), 0 8px 24px rgba(13, 18, 26, .18); animation: rise var(--t-base) var(--ease); }
+.ask-t { min-width: 0; font-size: var(--fs-sub); color: var(--ink-2); }
+.ask-t b { display: block; font-size: var(--fs-body); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 도착 제안이 떠 있으면 알림 한 줄은 그 위로 */
+.ask-wrap + .toast-wrap { bottom: calc(var(--bar-tab) + var(--safe-b) + var(--s3) + 80px); }
+@media (min-width: 1024px) { .ask-wrap + .toast-wrap { bottom: calc(var(--s5) + 80px); } }
+@media (min-width: 1024px) { .ask-wrap { left: calc(96px + var(--s3)); bottom: var(--s5); } }
+@media (prefers-reduced-motion: reduce) { .off-bar > i, .switch input, .switch input::after { transition: none; } .ask { animation: none; } }

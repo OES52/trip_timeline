@@ -2,10 +2,11 @@
 //  전: 전광판 카운트다운 + 날짜별 여정 / 중: 지금·다음 + 길찾기 + 오늘 남은 일정 / 후: 여정 돌아보기
 import { view, nt, nowMs, go, user } from '../data/store.js';
 import { recordArrivalNow } from '../data/records.js';
-import { dayLabel, md, fmtDur, hhmm } from '../lib/time.js';
+import { dayLabel, md, fmtDur, hhmm, toMin } from '../lib/time.js';
 import { phase, tripRange, nowNext, remainMin, predictedMin, pname, vk, arrivedAt, dayCity, dayRoute, dayPoints, daySpend, segModeName, segRides, MODE_KEY } from '../lib/trip.js';
 import { money } from '../lib/money.js';
-import { navUrl } from '../lib/geo.js';
+import { navUrl, haversine, fmtDist, walkMin } from '../lib/geo.js';
+import { pos } from '../data/location.js';
 import { onColor } from '../lib/colors.js';
 import { TopBar, SyncLine } from '../ui/Shell.jsx';
 import { Board } from '../ui/Board.jsx';
@@ -71,6 +72,7 @@ function NextUp({ v, now }) {
             {segRides(seg).slice(0, 2).map((r, i) => <span class="line" key={i} style={r.color ? { '--lc': r.color, '--lt': onColor(r.color) } : undefined}>{r.line}</span>)}
           </p>
         )}
+        <WalkEta v={v} p={next} now={now} pr={pr} />
         {arr && <p class="nextup-s note-ok">실제 <span class="num">{arr}</span> 도착 기록함</p>}
       </div>
       <div class="nextup-act">
@@ -78,6 +80,23 @@ function NextUp({ v, now }) {
         <a class="btn btn-exit" href={navUrl(next.lat, next.lng)} target="_blank" rel="noopener"><Icon name="nav" />길찾기</a>
       </div>
     </section>
+  );
+}
+
+/** 위치를 켰을 때: 지금 걸어가면 몇 시 도착인지, 계획보다 여유/늦음 (2.5km 안), 멀면 거리만 */
+function WalkEta({ v, p, now, pr }) {
+  const me = pos.value;
+  if (!me || p.date !== now.date || p.lat == null || arrivedAt(v, p)) return null;
+  const d = haversine([me.lat, me.lng], [p.lat, p.lng]);
+  if (d > 2500) return <p class="nextup-s"><Icon name="nav" />여기서 직선 <span class="num">{fmtDist(d)}</span></p>;
+  const eta = now.min + walkMin(d);
+  const plan = pr != null ? pr : toMin(p.arrive);
+  const diff = plan == null ? null : plan - eta;
+  return (
+    <p class="nextup-s">
+      <Icon name="walk" />지금 걸어가면 <span class="num">{hhmm(eta)}</span> 도착 · <span class="num">{fmtDist(d)}</span>
+      {diff != null && (diff >= 0 ? <em class="note-ok"> · {diff}분 여유</em> : <em class="note-late"> · {-diff}분 늦음</em>)}
+    </p>
   );
 }
 

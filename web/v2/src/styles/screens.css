@@ -92,3 +92,4 @@
   .tl { margin: 0 var(--s4); border-radius: var(--r-plate); box-shadow: inset 0 0 0 1.5px var(--hair-2); }
   .days { margin: 0 var(--s4); border: 0; border-radius: var(--r-plate); box-shadow: inset 0 0 0 1.5px var(--hair-2); overflow: hidden; }
 }
+.nextup-s em { font-style: normal; }
