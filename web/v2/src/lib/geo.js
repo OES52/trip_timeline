@@ -22,6 +22,8 @@ export function navUrl(lat, lng, mode) {
 }
 
 /** 장소 사진 주소: https 사진은 프록시(/api/photo)를 거쳐 받음 (캐시됨, 오프라인에서도 보임) */
-export function photoUrl(u) {
-  return /^https:\/\//i.test(u || '') ? '/api/photo?u=' + encodeURIComponent(u) : u;
+/** 사진 폭: 목록 썸네일 / 카드·시트 (화면 폭 × 화면 배율 정도). 서버가 이 폭의 webp로 줄여 줌 */
+export const PHOTO_THUMB = 160, PHOTO_FULL = 960;
+export function photoUrl(u, w) {
+  return /^https:\/\//i.test(u || '') ? '/api/photo?u=' + encodeURIComponent(u) + (w ? '&w=' + w : '') : u;
 }

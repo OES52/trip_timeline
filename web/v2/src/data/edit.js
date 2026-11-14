@@ -4,7 +4,7 @@ import { signal } from '@preact/signals';
 import { raw, user, showToast, openDialog } from './store.js';
 import { writeCache } from './cache.js';
 import { call, ApiError } from './api.js';
-import { getPin } from './records.js';
+import { getPin, previewBlocks } from './records.js';
 import { vk } from '../lib/trip.js';
 
 /** 지금 다시 계산 중인 조정 { key, label } 또는 null. 그동안 다른 조정 버튼은 막음 */
@@ -17,7 +17,7 @@ export function canEdit() { const u = user.value; return !!(u && u.canEdit); }
  * @param label 끝나고 알림에 띄울 글  @param undo 되돌리기로 할 조정 { op, value, label } (없으면 버튼 없음)
  */
 export async function editPlan(key, op, value, label, undo) {
-  if (!canEdit() || editing.value) return;
+  if (!canEdit() || editing.value || previewBlocks()) return;
   const u = user.value;
   if (navigator.onLine === false) { showToast('일정 조정은 연결이 있어야 됨. 연결되면 다시 시도'); return; }
   if (u.hasPin && !getPin(u.id)) { openDialog({ kind: 'pin', id: u.id, error: '' }); return; }

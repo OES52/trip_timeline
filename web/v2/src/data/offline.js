@@ -2,7 +2,7 @@
 import { signal } from '@preact/signals';
 import { view } from './store.js';
 import { tripTiles, glyphPaths } from '../lib/tiles.js';
-import { photoUrl } from '../lib/geo.js';
+import { photoUrl, PHOTO_THUMB, PHOTO_FULL } from '../lib/geo.js';
 
 const OFM = '/api/map/ofm/';
 const MAP_CACHE = 'trip2-map', PHOTO_CACHE = 'trip-photos-v1';
@@ -51,7 +51,8 @@ async function plan() {
     tpl = String(tj.tiles[0]).replace('https://tiles.openfreemap.org/', OFM);
   } catch (e) { tpl = null; }
   const tiles = tpl ? tripTiles(v).map(t => { const [z, x, y] = t.split('/'); return tpl.replace('{z}', z).replace('{x}', x).replace('{y}', y); }) : [];
-  const photos = Array.from(new Set(v.allPlaces.flatMap(pl => pl.photos || []))).map(photoUrl);
+  // 화면이 쓰는 그대로: 첫 장은 목록 썸네일과 카드, 나머지는 장소 시트
+  const photos = Array.from(new Set(v.allPlaces.flatMap(pl => (pl.photos || []).flatMap((u, i) => (i === 0 ? [photoUrl(u, PHOTO_THUMB), photoUrl(u, PHOTO_FULL)] : [photoUrl(u, PHOTO_FULL)])))));
   return { map: map.concat(tiles), photos, tileCount: tiles.length, tplOk: !!tpl };
 }
 

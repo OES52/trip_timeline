@@ -1,3 +1,5 @@
 web/dist/
 node_modules/
 api/node_modules/
+web/v2/prev/*
+!web/v2/prev/.gitkeep

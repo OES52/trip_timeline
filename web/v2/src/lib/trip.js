@@ -241,12 +241,17 @@ export const MODE_KEY = { '대중교통': 'transit', '도보': 'walk', '차': 'c
 /** 구간 표시 이름. 택시로 바꿔 둔 구간은 택시, 시트에 직접 적은 구간(수동)은 그냥 '이동' */
 export function segModeName(s) { return s.taxi && s.taxi.on ? '택시' : s.mode === '수동' ? '이동' : s.mode; }
 
-/** 구간에서 타는 노선들 [{ line, color, vehicle }] (배지용) */
+/**
+ * 구간에서 타는 노선들 [{ line, color, vehicle }] (배지용)
+ *  같은 노선을 연달아 타면(급행→보통 갈아타기 등) 배지는 하나만. 갈아타는 건 단계 줄과 "환승 N회"가 보여줌
+ */
 export function segRides(s) {
   if (!Array.isArray(s.steps)) return [];
-  return s.steps.filter(x => x.t === 'transit').map(x => ({
-    line: x.line, vehicle: x.vehicle || '', color: x.color || lineColor(x.line + ' ' + (x.full || '')) || '',
-  }));
+  return s.steps.filter(x => x.t === 'transit')
+    .filter((x, i, a) => i === 0 || x.line !== a[i - 1].line)
+    .map(x => ({
+      line: x.line, vehicle: x.vehicle || '', color: x.color || lineColor(x.line + ' ' + (x.full || '')) || '',
+    }));
 }
 
 /**

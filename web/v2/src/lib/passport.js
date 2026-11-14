@@ -10,13 +10,30 @@ export function hashNum(str) { let h = 0; for (const c of String(str)) h = (h * 
 /** 여권 칸 열쇠: 장소 키, 없으면 이름 */
 export const slotKey = p => p.placeKey || 'n:' + p.place;
 
+/** 도장 칸이 없는 종류: 역·공항·터미널과 숙소는 지나가거나 자는 곳이라 여권에 안 올림 */
+export const NO_STAMP = new Set(['교통', '숙소']);
+/** 이 일정 점이 도장을 찍는 곳인지 */
+export function stampable(v, p) {
+  const pl = placeOf(v, p);
+  return !NO_STAMP.has((pl && pl.type) || '기타');
+}
+
+/** 사용자 한 명이 찍은 도장 수 (visited = raw.visitedBy[사용자]). 같은 장소는 한 번 */
+export function stampCount(v, visited) {
+  if (!visited) return 0;
+  const got = new Set();
+  v.points.forEach(p => { if (visited[vk(p)] && stampable(v, p)) got.add(slotKey(p)); });
+  return got.size;
+}
+
 /**
- * 여권에 올라갈 장소: 일정 순서대로, 같은 장소는 처음 나오는 날 한 칸
+ * 여권에 올라갈 장소: 일정 순서대로, 같은 장소는 처음 나오는 날 한 칸 (교통·숙소 빼고)
  * @returns {{ key, date, point, place, name, type, visits }[]}
  */
 export function passSlots(v) {
   const seen = new Map(), out = [];
   v.points.forEach(p => {
+    if (!stampable(v, p)) return;
     const k = slotKey(p);
     if (!seen.has(k)) {
       const pl = placeOf(v, p);
@@ -58,15 +75,16 @@ export function receipt(v, date, nt, userId) {
   const pts = dayPoints(v, date);
   const items = pts.map(p => {
     const sp = v.spend[vk(p)];
-    return { key: vk(p), time: arrivedAt(v, p) || p.arrive || '', name: pname(v, p), done: isVisited(v, p), amount: sp ? Number(sp.amount) || 0 : null, memo: sp && sp.memo ? sp.memo : '' };
+    return { key: vk(p), time: arrivedAt(v, p) || p.arrive || '', name: pname(v, p), done: isVisited(v, p), stamp: stampable(v, p), amount: sp ? Number(sp.amount) || 0 : null, memo: sp && sp.memo ? sp.memo : '' };
   });
+  const stampItems = items.filter(x => x.stamp);
   const fare = dayFare(v, date).sum;
   const spent = items.reduce((a, x) => a + (x.amount || 0), 0);
   const w = dayWalk(v, date);
   const no = v.dates.indexOf(date) + 1;
   return {
     date, no, user: userId || '-', route: dayRoute(v, date).map(x => x.name).join(' → '),
-    items, stamps: items.filter(x => x.done).length, total: items.length,
+    items, stamps: stampItems.filter(x => x.done).length, total: stampItems.length,
     walkKm: w ? w.km : null, walkMin: w ? w.min : null,
     fare, spent, sum: spent + fare,
     planned: date > nt.date || (date === nt.date && !items.some(x => x.done || x.amount != null)),

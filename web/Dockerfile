@@ -24,5 +24,8 @@ COPY web/nginx.conf /etc/nginx/conf.d/default.conf
 COPY web/root/ /usr/share/nginx/html/
 COPY web/public/icons /usr/share/nginx/html/icons
 COPY --from=build /src/web/dist /usr/share/nginx/html/v1
+#  바로 전 배포의 앱 파일(CI가 web/v2/prev에 넣어 둠, 로컬 빌드면 비어 있음)을 먼저 깔고 새 빌드를 덮어씀
+#  → 배포 직후에도 예전 화면이 늦게 부르는 파일이 404 안 남
+COPY web/v2/prev/ /usr/share/nginx/html/v2/
 COPY --from=v2 /v2/dist /usr/share/nginx/html/v2
 EXPOSE 8080

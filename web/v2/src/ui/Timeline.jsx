@@ -13,7 +13,7 @@ import { hoursFor, warnings } from '../lib/hours.js';
 import { sunsetMin } from '../lib/sun.js';
 import { canSplit, stepRows } from '../lib/steps.js';
 import { YEN, costText, perText } from '../lib/money.js';
-import { navUrl, fmtDist, photoUrl } from '../lib/geo.js';
+import { navUrl, fmtDist, photoUrl, PHOTO_FULL } from '../lib/geo.js';
 import { onColor } from '../lib/colors.js';
 import { Icon } from './Icon.jsx';
 import { MODE_ICON, vehicleIcon, placeIcon, manualIcon } from './icons.js';
@@ -129,7 +129,7 @@ function Stop({ v, p, state, first, last, cIn, cOut, open, onToggle, compact, on
             {canNav && <a class={'btn btn-sm ' + (state === 'next' && !compact ? 'btn-plate' : 'btn-exit')} href={navUrl(p.lat, p.lng)} target="_blank" rel="noopener"><Icon name="nav" />길찾기</a>}
             {pl && pl.link && <a class="btn btn-plate btn-sm" href={pl.link} target="_blank" rel="noopener"><Icon name="map" />지도에서 보기</a>}
           </div>
-          {pl && pl.photos && pl.photos[0] && <img class="stop-photo" src={photoUrl(pl.photos[0])} alt="" loading="lazy" onError={e => { e.currentTarget.hidden = true; }} />}
+          {pl && pl.photos && pl.photos[0] && <img class="stop-photo" src={photoUrl(pl.photos[0], PHOTO_FULL)} alt="" loading="lazy" onError={e => { e.currentTarget.hidden = true; }} />}
           {name !== p.place && <p class="stop-alt">{p.place}</p>}
           {facts.length > 0 && (
             <dl class="facts">

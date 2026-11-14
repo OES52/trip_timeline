@@ -22,6 +22,12 @@
   transition: transform var(--t-fast) var(--ease);
 }
 .viewfab:active { transform: scale(.97); }
+/* 타임라인을 내리는 동안 치워 둠 (아래 내용 가리지 않게). 포커스가 오면 다시 보임 */
+.viewfab { transition: transform var(--t-fast) var(--ease), opacity var(--t-fast) var(--ease); }
+.viewfab.is-away:not(:focus-visible) { transform: translateY(calc(100% + var(--s4) + 8px)); opacity: 0; pointer-events: none; }
+@media (prefers-reduced-motion: reduce) { .viewfab { transition: none; } }
+/* 목록 끝 일정이 버튼 아래에 깔리지 않게 버튼 높이만큼 여백 */
+@media (max-width: 1023px) { .plan .plan-in { padding-bottom: calc(var(--tap) + var(--s4) * 2); } }
 .plan.is-map .viewfab { right: auto; bottom: auto; left: var(--s3); top: var(--s3); }
 @media (min-width: 1024px) { .viewfab { display: none; } }
 

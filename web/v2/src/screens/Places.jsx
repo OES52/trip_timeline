@@ -5,7 +5,7 @@ import { dayLabel, fmtDur } from '../lib/time.js';
 import { vk, isVisited } from '../lib/trip.js';
 import { hoursFor, closedOn } from '../lib/hours.js';
 import { costText } from '../lib/money.js';
-import { navUrl, photoUrl } from '../lib/geo.js';
+import { navUrl, photoUrl, PHOTO_THUMB, PHOTO_FULL } from '../lib/geo.js';
 import { filterPlaces, groupPlaces, cityList, visitsOf, placeStatus, placeName, TYPE_ORDER } from '../lib/places.js';
 import { TopBar, SyncLine } from '../ui/Shell.jsx';
 import { Sheet } from '../ui/Sheet.jsx';
@@ -50,7 +50,7 @@ function Row({ v, pl, onOpen, today }) {
         <span class="prow-ph">
           {/* 사진을 못 받으면 사진만 숨겨서 밑에 깔린 종류 아이콘이 보이게 */}
           <Icon name={placeIcon(pl.type, pl.name)} />
-          {pl.photos && pl.photos[0] && <img src={photoUrl(pl.photos[0])} alt="" loading="lazy" onError={e => { e.currentTarget.hidden = true; }} />}
+          {pl.photos && pl.photos[0] && <img src={photoUrl(pl.photos[0], PHOTO_THUMB)} alt="" loading="lazy" onError={e => { e.currentTarget.hidden = true; }} />}
           {st === 'done' && <i class="prow-seal" aria-label="다녀옴"><Icon name="check" /></i>}
         </span>
         <span class="prow-t">
@@ -86,7 +86,7 @@ function PlaceSheet({ v, pl, onClose }) {
       <div class="psheet">
         {pl.photos && pl.photos.length > 0 && (
           <div class="psheet-ph" role="group" aria-label={'사진 ' + pl.photos.length + '장'}>
-            {pl.photos.map((u, i) => <img key={i} src={photoUrl(u)} alt="" loading="lazy" onError={e => { e.currentTarget.hidden = true; }} />)}
+            {pl.photos.map((u, i) => <img key={i} src={photoUrl(u, PHOTO_FULL)} alt="" loading="lazy" onError={e => { e.currentTarget.hidden = true; }} />)}
           </div>
         )}
         <p class="psheet-m"><Icon name={placeIcon(pl.type, pl.name)} />{pl.type || '기타'}{pl.alias && pl.alias !== pl.name ? ' · ' + pl.name : ''}</p>

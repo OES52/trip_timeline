@@ -1,7 +1,7 @@
 // 일정: 날짜를 고르고 그날 타임라인과 지도를 봄
 //  머리줄 = 날짜 띠(도시색 밑줄) / 본문 = 날짜 표지판(역명판) + 하루 승차권(돈·걷기) + 타임라인
 //  지도: 넓은 화면은 타임라인 옆에 나란히, 좁은 화면은 떠 있는 버튼으로 타임라인과 바꿔 봄
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { view, nt, day, go, planView, setPlanView } from '../data/store.js';
 import { WEEK, dow, md, dayLabel } from '../lib/time.js';
 import { dayCity, dayRoute, dayPoints, daySpend, dayFare, dayActual, dayWalk, isVisited } from '../lib/trip.js';
@@ -120,6 +120,15 @@ export function Plan() {
   // 지도는 처음 볼 때 만들고, 그 뒤로는 타임라인으로 바꿔도 숨겨만 둠 (다시 열 때 바로 뜨게)
   const [mapEver, setMapEver] = useState(showMap);
   useEffect(() => { if (showMap) setMapEver(true); }, [showMap]);
+  // 타임라인을 아래로 내리는 동안은 "지도 보기" 버튼을 치움 (펼친 구간의 버튼을 가리지 않게). 위로 올리면 다시
+  const [fabHide, setFabHide] = useState(false);
+  const lastY = useRef(0);
+  const onListScroll = e => {
+    const y = e.currentTarget.scrollTop, dy = y - lastY.current;
+    if (Math.abs(dy) < 8) return;
+    lastY.current = y;
+    setFabHide(dy > 0 && y > 80);
+  };
   if (!d) return (
     <main class="screen plan">
       <TopBar><div class="ctx"><b>일정</b></div></TopBar>
@@ -131,7 +140,7 @@ export function Plan() {
       <TopBar><DayStrip v={v} cur={d} today={now.date} /></TopBar>
       <SyncLine />
       <div class="plan-split">
-        <div class="scroll plan-list" key={d}>
+        <div class="scroll plan-list" key={d} onScroll={onListScroll}>
           <div class="plan-in">
             <DaySign v={v} date={d} />
             <DayTicket v={v} date={d} />
@@ -139,7 +148,7 @@ export function Plan() {
           </div>
         </div>
         <div class="plan-map">{(mapEver || showMap) && <MapView date={d} active={showMap} />}</div>
-        <button type="button" class="viewfab" onClick={() => setPlanView(mode === 'map' ? 'list' : 'map')}>
+        <button type="button" class={'viewfab' + (fabHide && mode !== 'map' ? ' is-away' : '')} onClick={() => { setFabHide(false); setPlanView(mode === 'map' ? 'list' : 'map'); }}>
           <Icon name={mode === 'map' ? 'list' : 'map'} />{mode === 'map' ? '타임라인 보기' : '지도 보기'}
         </button>
       </div>

@@ -13,6 +13,21 @@
   <meta name="apple-mobile-web-app-title" content="여행">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <title>여행 타임라인</title>
+  <script>
+    // 배포 중에는 새 index.html이 아직 예전 서버(Pod)에 앱 파일을 물어 404가 날 수 있음 → 잠깐 뒤 다시 불러옴 (최대 3번)
+    //  잘 뜨면 main.jsx가 횟수를 지움
+    addEventListener('error', function (e) {
+      var t = e.target, u = t && (t.src || t.href) || '';
+      if (!/\/v2\/assets\//.test(u)) return;
+      window.__tripAssetErr = true;
+      try {
+        var n = Number(sessionStorage.getItem('trip-asset-retry') || 0);
+        if (n >= 3) return;
+        sessionStorage.setItem('trip-asset-retry', String(n + 1));
+        setTimeout(function () { location.reload(); }, 1500 * (n + 1));
+      } catch (err) { /* 저장소를 못 쓰면 다시 불러오지 않음 (무한 반복 막기) */ }
+    }, true);
+  </script>
 </head>
 <body>
   <div id="app"></div>

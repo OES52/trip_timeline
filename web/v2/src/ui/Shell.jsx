@@ -1,10 +1,12 @@
 // 껍데기: 머리줄(흰 판), 탭(남색 안내판), 사용자 고르기, 연결 상태 줄
 import { useState } from 'preact/hooks';
-import { route, go, user, users, userId, chooseUser, sync, refresh, raw, unlock, ops, sendState, openDialog } from '../data/store.js';
+import { route, go, user, users, userId, chooseUser, sync, refresh, raw, view, unlock, ops, sendState, openDialog } from '../data/store.js';
+import { stampCount } from '../lib/passport.js';
 import { getPin, flush } from '../data/records.js';
 import { PinForm } from './Dialogs.jsx';
 import { userColor } from '../lib/colors.js';
-import { md } from '../lib/time.js';
+import { md, tokyoNow, hhmm } from '../lib/time.js';
+import { preview } from '../preview.js';
 import { Icon } from './Icon.jsx';
 import { SettingsSheet } from './Settings.jsx';
 
@@ -67,7 +69,7 @@ export function UserList({ onPick }) {
   return (
     <ul class="who">
       {users.value.map(u => {
-        const stamps = r && r.visitedBy && r.visitedBy[u.id] ? Object.keys(r.visitedBy[u.id]).length : 0;
+        const stamps = r && r.visitedBy && view.value ? stampCount(view.value, r.visitedBy[u.id]) : 0;
         const on = userId.value === u.id;
         return (
           <li key={u.id}>
@@ -103,8 +105,24 @@ export function FirstWho() {
   );
 }
 
-/** 연결이 안 돼 저장본을 보여주는 중일 때만 뜨는 한 줄 */
+/** 시간 미리보기(?now=) 중일 때 맨 위 한 줄 */
+function PreviewLine() {
+  const t = tokyoNow(new Date(preview.start));
+  return (
+    <div class="syncline syncline-preview" role="status">
+      <Icon name="clock" />
+      <span>미리보기 <b class="num">{md(t.date)} {hhmm(t.min)}</b>부터 · 기록 안 남음</span>
+      <a class="btn btn-quiet btn-sm" href={preview.exitUrl}>끝내기</a>
+    </div>
+  );
+}
+
+/** 연결 상태 줄: 저장본을 보는 중·안 보낸 기록·PIN 필요할 때만 (시간 미리보기 중이면 그 줄이 먼저) */
 export function SyncLine() {
+  return preview.on ? <><PreviewLine /><SyncState /></> : <SyncState />;
+}
+
+function SyncState() {
   const s = sync.value;
   const n = ops.value.length, send = sendState.value;
   // PIN을 넣어야 저장되는 기록이 있음

@@ -9,8 +9,11 @@
     "start": "node server.mjs",
     "vapid": "web-push generate-vapid-keys --json"
   },
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "dependencies": {
+    "sharp": "0.34.5",
     "web-push": "3.6.7"
   }
 }

@@ -9,6 +9,8 @@ import { nextBatch, applyResult, failureKind, clockNow } from '../lib/ops.js';
 import { vk, pname, isVisited, arrivedAt } from '../lib/trip.js';
 import { tokyoNow } from '../lib/time.js';
 import { YEN } from '../lib/money.js';
+import { stampable } from '../lib/passport.js';
+import { preview } from '../preview.js';
 
 const OUTBOX_KEY = 'trip2-outbox-v1';
 const MAX_TRIES = 8;   // 서버 오류가 이만큼 이어지면 그 기록은 버림 (연결이 없는 건 세지 않음)
@@ -18,6 +20,13 @@ export const setPin = (id, v) => local.set('trip-pin-' + id, v || null);
 
 /** 지금 사용자가 기록을 남길 수 있는지 (보기 전용이 아닌지) */
 export function canRecord() { const u = user.value; return !!(u && u.canStamp); }
+
+/** 시간 미리보기(?now=) 중이면 안내만 하고 true: 가짜 시각이 시트에 기록되지 않게 */
+export function previewBlocks() {
+  if (!preview.on) return false;
+  showToast('시간 미리보기 중이라 기록·조정은 안 함. 미리보기를 끝내면 다시 됨');
+  return true;
+}
 
 /** PIN 확인. 맞으면 폰에 저장하고 true. 틀리면 서버 안내가 담긴 ApiError */
 export async function verifyPin(id, pin) {
@@ -107,23 +116,24 @@ const me = () => user.value.id;
 
 /** 도장 찍기/지우기 */
 export function toggleVisit(p) {
-  if (!canRecord()) return;
+  if (!canRecord() || previewBlocks()) return;
   const key = vk(p), on = !isVisited(view.value, p), name = pname(view.value, p);
+  const st = stampable(view.value, p);   // 역·숙소는 도장 대신 "다녀옴" 표시만
   push([{ kind: 'visit', user: me(), key, value: on ? 1 : 0 }]);
-  if (on) stampFx.value = key;
-  showToast(name + (on ? ' 도장 찍음' : ' 도장 지움'), { label: '되돌리기', fn: () => push([{ kind: 'visit', user: me(), key, value: on ? 0 : 1 }]) });
+  if (on && st) stampFx.value = key;
+  showToast(name + (st ? (on ? ' 도장 찍음' : ' 도장 지움') : (on ? ' 다녀옴 표시' : ' 다녀옴 표시 지움')), { label: '되돌리기', fn: () => push([{ kind: 'visit', user: me(), key, value: on ? 0 : 1 }]) });
 }
 
 /** "도착 기록": 지금 시각으로 도착을 적고, 아직이면 도장도 같이 */
 export function recordArrivalNow(p) {
-  if (!canRecord()) return;
+  if (!canRecord() || previewBlocks()) return;
   const v = view.value, key = vk(p), t = clockNow(tokyoNow());
-  const prev = arrivedAt(v, p) || '', had = isVisited(v, p);
+  const prev = arrivedAt(v, p) || '', had = isVisited(v, p), st = stampable(v, p);
   const list = [{ kind: 'arrive', user: me(), key, value: t }];
   if (!had) list.unshift({ kind: 'visit', user: me(), key, value: 1 });
   push(list);
-  if (!had) stampFx.value = key;
-  showToast(pname(v, p) + ' 도착 ' + t + ' 기록' + (had ? '' : ', 도장 찍음'), {
+  if (!had && st) stampFx.value = key;
+  showToast(pname(v, p) + ' 도착 ' + t + ' 기록' + (had || !st ? '' : ', 도장 찍음'), {
     label: '되돌리기',
     fn: () => push([{ kind: 'arrive', user: me(), key, value: prev }].concat(had ? [] : [{ kind: 'visit', user: me(), key, value: 0 }])),
   });
@@ -132,7 +142,7 @@ export function recordArrivalNow(p) {
 
 /** 한 장소의 도장을 모두 지움 (같은 장소를 여러 번 들렀으면 다) */
 export function clearStamps(points, name) {
-  if (!canRecord()) return;
+  if (!canRecord() || previewBlocks()) return;
   const keys = points.filter(p => isVisited(view.value, p)).map(vk);
   if (!keys.length) return;
   push(keys.map(key => ({ kind: 'visit', user: me(), key, value: 0 })));
@@ -141,7 +151,7 @@ export function clearStamps(points, name) {
 
 /** 도착 시각 고치기 ("HH:MM") 또는 지우기 ('') */
 export function saveArrival(p, hhmm) {
-  if (!canRecord()) return;
+  if (!canRecord() || previewBlocks()) return;
   const v = view.value, key = vk(p), prev = arrivedAt(v, p) || '';
   if (prev === (hhmm || '')) return;
   push([{ kind: 'arrive', user: me(), key, value: hhmm || '' }]);
@@ -150,7 +160,7 @@ export function saveArrival(p, hhmm) {
 
 /** 실제 지출 저장 (amount 숫자) 또는 지우기 (amount null) */
 export function saveSpend(p, amount, memo) {
-  if (!canRecord()) return;
+  if (!canRecord() || previewBlocks()) return;
   const v = view.value, key = vk(p), place = pname(v, p);
   const prev = v.spend[key] ? { amount: v.spend[key].amount, memo: v.spend[key].memo || '' } : null;
   const value = amount == null ? null : { amount: Number(amount), memo: memo || '' };

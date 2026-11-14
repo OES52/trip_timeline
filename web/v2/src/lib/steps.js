@@ -8,6 +8,32 @@ const TRANSIT_COLOR = '#2b62d9';
 const hmMin = v => { const m = String(v || '').match(/^(\d{1,2}):(\d{2})/); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
 const gap = (a, b) => { const x = hmMin(a), y = hmMin(b); return x == null || y == null ? null : (y - x + 1440) % 1440; };
 
+/**
+ * 지금 시각에 이 구간의 어느 단계인지 (다음 장소 카드에 한두 줄로). 계획 시각 기준
+ * @param nowMin 오늘 0시부터 분 (tokyoNow().min)
+ * @returns null |
+ *  { kind:'board',    ride }        아직 안 탐: ride.from 에서 ride.dep 에 탐
+ *  { kind:'transfer', ride, prev }  내렸고 다음 탈 것 기다림: ride.from 에서 ride.dep 에 갈아탐
+ *  { kind:'ride',     ride, next }  타는 중: ride.to 에서 ride.arr 에 내림. next = 그다음 탈 것
+ *  { kind:'walk',     ride, min }   마지막으로 내린 뒤: ride.to 에서 걸어서 min분
+ */
+export function stepNow(s, nowMin) {
+  if (!s || !canSplit(s) || nowMin == null) return null;
+  const rides = s.steps.filter(x => x.t === 'transit' && hmMin(x.dep) != null && hmMin(x.arr) != null);
+  if (!rides.length) return null;
+  // 새벽(4시 전)은 전날 밤의 연장으로 봄 (막차 계산과 같은 규칙)
+  const fix = m => (m < 240 ? m + 1440 : m);
+  const now = fix(nowMin);
+  for (let i = 0; i < rides.length; i++) {
+    const r = rides[i];
+    if (now < fix(hmMin(r.dep))) return i === 0 ? { kind: 'board', ride: r } : { kind: 'transfer', ride: r, prev: rides[i - 1] };
+    if (now < fix(hmMin(r.arr))) return { kind: 'ride', ride: r, next: rides[i + 1] || null };
+  }
+  const last = rides[rides.length - 1];
+  const after = s.steps.slice(s.steps.indexOf(last) + 1).filter(x => x.t !== 'transit');
+  return { kind: 'walk', ride: last, min: after.reduce((a, x) => a + (Number(x.min) || 0), 0) };
+}
+
 /** 탑승 단계가 하나라도 있어서 쪼개 보여줄 수 있는 구간인지 */
 export function canSplit(s) {
   return s.mode === '대중교통' && Array.isArray(s.steps) && s.steps.some(x => x.t === 'transit');

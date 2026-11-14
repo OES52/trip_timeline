@@ -38,6 +38,20 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # 바로 전 배포의 앱 파일을 새 이미지에 같이 넣음 (배포 직후 예전 화면이 늦게 부르는 파일 404 막기)
+      #  전 이미지 sw.js의 미리 저장 목록에 든 파일만 → 두 빌드 치만 남고 더 쌓이지 않음
+      - name: 전 빌드 앱 파일 가져오기
+        run: |
+          mkdir -p web/v2/prev
+          if docker pull --platform linux/arm64 ghcr.io/oes52/trip-web:latest; then
+            id=$(docker create --platform linux/arm64 ghcr.io/oes52/trip-web:latest)
+            docker cp "$id:/usr/share/nginx/html/v2" /tmp/prev-v2
+            docker rm "$id"
+            node web/v2/scripts/prev-assets.mjs /tmp/prev-v2 web/v2/prev
+          else
+            echo "전 이미지 없음, 건너뜀"
+          fi
+
       - uses: docker/build-push-action@v6
         with:
           context: .

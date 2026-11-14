@@ -5,6 +5,7 @@ import { recordArrivalNow } from '../data/records.js';
 import { dayLabel, md, fmtDur, hhmm, toMin } from '../lib/time.js';
 import { phase, tripRange, nowNext, remainMin, predictedMin, pname, vk, arrivedAt, dayCity, dayRoute, dayPoints, daySpend, segModeName, segRides, MODE_KEY } from '../lib/trip.js';
 import { money } from '../lib/money.js';
+import { stepNow } from '../lib/steps.js';
 import { navUrl, haversine, fmtDist, walkMin } from '../lib/geo.js';
 import { pos } from '../data/location.js';
 import { onColor } from '../lib/colors.js';
@@ -72,6 +73,7 @@ function NextUp({ v, now }) {
             {segRides(seg).slice(0, 2).map((r, i) => <span class="line" key={i} style={r.color ? { '--lc': r.color, '--lt': onColor(r.color) } : undefined}>{r.line}</span>)}
           </p>
         )}
+        {seg && next.date === now.date && <StepNow seg={seg} now={now} />}
         <WalkEta v={v} p={next} now={now} pr={pr} />
         {arr && <p class="nextup-s note-ok">실제 <span class="num">{arr}</span> 도착 기록함</p>}
       </div>
@@ -80,6 +82,35 @@ function NextUp({ v, now }) {
         <a class="btn btn-exit" href={navUrl(next.lat, next.lng)} target="_blank" rel="noopener"><Icon name="nav" />길찾기</a>
       </div>
     </section>
+  );
+}
+
+/** 노선 배지 (노선 색) */
+const Line = ({ r }) => (
+  <span class="line" style={r.color ? { '--lc': r.color, '--lt': onColor(r.color) } : undefined}>{r.line}</span>
+);
+const toward = r => (r.head ? <span class="nextup-head"> · {r.head} 방면</span> : null);
+
+/** 대중교통 구간: 지금 할 일 한 줄 (탈 역·시각 / 내릴 역·시각 / 갈아탈 곳). 계획 시각 기준 */
+function StepNow({ seg, now }) {
+  const st = stepNow(seg, now.min);
+  if (!st) return null;
+  const r = st.ride;
+  if (st.kind === 'walk') {
+    return st.min > 0 ? <p class="nextup-step"><Icon name="walk" />{r.to}에서 걸어서 <span class="num">{st.min}</span>분</p> : null;
+  }
+  if (st.kind === 'ride') {
+    return (
+      <>
+        <p class="nextup-step"><Line r={r} />타는 중 · <span class="num">{r.arr}</span> {r.to}에서 내림</p>
+        {st.next && <p class="nextup-s">다음: <span class="num">{st.next.dep}</span> {st.next.from}에서 <Line r={st.next} /> 갈아타기</p>}
+      </>
+    );
+  }
+  return (
+    <p class="nextup-step">
+      <span class="num">{r.dep}</span> {r.from}에서 <Line r={r} />{st.kind === 'transfer' ? '갈아타기' : '타기'}{toward(r)}
+    </p>
   );
 }
 

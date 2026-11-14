@@ -3,7 +3,7 @@
 //  GET  /api/events               SSE: 데이터가 바뀌면 {v} 알림 → 화면이 다시 받음 (친구 도장·도착 실시간)
 //  POST /api/call   {fn, args}    쓰기·PIN 확인. PIN은 여기서 먼저 확인 (틀리면 Apps Script까지 안 감), 레이트 리밋
 //  POST /api/hook/invalidate      Apps Script가 시트 바뀌면 부름 (X-Trip-Key)
-//  GET  /api/photo?u=URL          장소 사진을 받아 디스크에 캐시 (사설 IP 차단)
+//  GET  /api/photo?u=URL[&w=160|480|960]  장소 사진을 받아 디스크에 캐시 (사설 IP 차단). w가 있으면 그 폭의 webp로 줄여서
 //  GET  /api/map/ofm/<경로>        OpenFreeMap 벡터 지도(스타일·타일·글꼴·아이콘)를 받아 디스크에 캐시
 //                                  일정 경로 주변 타일은 미리 받아둠 (prewarm). 화면은 transformRequest로 이리로 보냄
 //  GET  /api/push/key             VAPID 공개키
@@ -359,31 +359,82 @@ async function prunePhotos() {
     photoIndex.delete(h); photoTotal -= v.size;
   }
 }
+// 사진 줄이기: ?w=160|480|960 이면 그 폭(이하)의 webp로. 원본은 따로 캐시해 두고 폭마다 한 번만 줄임
+//  sharp가 없거나 줄이다 실패하면 원본 그대로 (화면은 똑같이 보임, 크기만 큼)
+const PHOTO_W = new Set([160, 480, 960]);
+let sharp = null;
+try {
+  sharp = (await import('sharp')).default;
+  sharp.cache(false);        // 메모리 제한(384Mi) 안에서: 캐시 끄고 한 번에 하나씩
+  sharp.concurrency(1);
+} catch (e) { console.log('sharp 없음, 사진은 원본 그대로:', e.message); }
+
+async function photoFromDisk(h) {
+  if (!photoIndex.has(h)) return null;
+  try {
+    const [buf, type] = await Promise.all([fsp.readFile(path.join(PHOTO_DIR, h + '.bin')), fsp.readFile(path.join(PHOTO_DIR, h + '.type'), 'utf8')]);
+    photoIndex.get(h).at = Date.now();
+    return { buf, type };
+  } catch (e) { photoIndex.delete(h); return null; }
+}
+async function photoToDisk(h, img) {
+  if (photoIndex.has(h)) return;
+  await fsp.writeFile(path.join(PHOTO_DIR, h + '.bin'), img.buf);
+  await fsp.writeFile(path.join(PHOTO_DIR, h + '.type'), img.type);
+  photoIndex.set(h, { size: img.buf.length, at: Date.now() });
+  photoTotal += img.buf.length;
+  prunePhotos().catch(() => null);
+}
+/** 같은 h를 동시에 여러 번 만들지 않게 (받는 중·줄이는 중이면 그걸 기다림) */
+function once(h, make) {
+  if (!photoInflight.has(h)) photoInflight.set(h, make().finally(() => photoInflight.delete(h)));
+  return photoInflight.get(h);
+}
+/** 원본: 디스크 → 없으면 받아서 저장 */
+function originalPhoto(u) {
+  const h = sha256(u);
+  return once(h, async () => {
+    const hit = await photoFromDisk(h);
+    if (hit) return hit;
+    const img = await fetchImage(u);
+    await photoToDisk(h, img);
+    return img;
+  });
+}
+/** 폭 w로 줄인 것: 디스크 → 없으면 원본을 줄여서 저장 (원본보다 커지면 원본) */
+function resizedPhoto(u, w, h) {
+  return once(h, async () => {
+    const hit = await photoFromDisk(h);
+    if (hit) return hit;
+    const orig = await originalPhoto(u);
+    let img = orig;
+    try {
+      const buf = await sharp(orig.buf, { failOn: 'none', limitInputPixels: 50e6, sequentialRead: true })
+        .rotate().resize({ width: w, withoutEnlargement: true }).webp({ quality: w <= 160 ? 70 : 78 }).toBuffer();
+      if (buf.length < orig.buf.length) img = { type: 'image/webp', buf };
+    } catch (e) { log('사진 줄이기 실패, 원본으로', u.slice(0, 120), e.message); }
+    await photoToDisk(h, img);
+    return img;
+  });
+}
+
 async function apiPhoto(req, res, q) {
   const u = q.get('u') || '';
   if (!/^https:\/\//i.test(u) || u.length > 2000) return fail(req, res, 400, 'https 주소만');
-  const h = sha256(u);
-  const file = path.join(PHOTO_DIR, h + '.bin'), tfile = path.join(PHOTO_DIR, h + '.type');
-  const hdr = type => ({ 'Content-Type': type, 'Cache-Control': 'public, max-age=31536000, immutable', ETag: '"' + h.slice(0, 20) + '"' });
+  const w = Number(q.get('w') || 0);
+  if (w && !PHOTO_W.has(w)) return fail(req, res, 400, 'w는 ' + Array.from(PHOTO_W).join('·') + ' 중 하나');
+  const small = !!(w && sharp);
+  const h = small ? sha256(u + '#w' + w) : sha256(u);
+  const etag = '"' + h.slice(0, 20) + '"';
+  const hdr = type => ({ 'Content-Type': type, 'Cache-Control': 'public, max-age=31536000, immutable', ETag: etag });
   if (photoIndex.has(h)) {
-    if (req.headers['if-none-match'] === '"' + h.slice(0, 20) + '"') return send(res, 304, hdr('image/jpeg'));
-    try {
-      const [buf, type] = await Promise.all([fsp.readFile(file), fsp.readFile(tfile, 'utf8')]);
-      photoIndex.get(h).at = Date.now();
-      return send(res, 200, hdr(type), buf);
-    } catch (e) { photoIndex.delete(h); }
+    if (req.headers['if-none-match'] === etag) return send(res, 304, hdr('image/jpeg'));
+    const hit = await photoFromDisk(h);
+    if (hit) return send(res, 200, hdr(hit.type), hit.buf);
   }
   if (limited('photo|' + clientIp(req), 120, 60000)) return fail(req, res, 429, '요청이 너무 많음');
   try {
-    if (!photoInflight.has(h)) photoInflight.set(h, fetchImage(u).finally(() => photoInflight.delete(h)));
-    const img = await photoInflight.get(h);
-    if (!photoIndex.has(h)) {
-      await fsp.writeFile(file, img.buf);
-      await fsp.writeFile(tfile, img.type);
-      photoIndex.set(h, { size: img.buf.length, at: Date.now() });
-      photoTotal += img.buf.length;
-      prunePhotos().catch(() => null);
-    }
+    const img = small ? await resizedPhoto(u, w, h) : await originalPhoto(u);
     send(res, 200, hdr(img.type), img.buf);
   } catch (e) {
     log('사진 실패', u.slice(0, 120), e.message);

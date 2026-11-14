@@ -93,6 +93,7 @@
 /* 연결 안 됨 한 줄 */
 .syncline { display: flex; align-items: center; gap: var(--s2); min-height: 44px; padding: 0 var(--s2) 0 var(--s4); font-size: var(--fs-sub); background: var(--late-bg); }
 .syncline > span { flex: 1; }
+.syncline-preview { background: var(--plate-2); }
 
 /* ── 알림 한 줄 (되돌리기 등). 탭 바로 위 ── */
 .toast-wrap {

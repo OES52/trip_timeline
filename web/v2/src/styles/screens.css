@@ -10,6 +10,11 @@
 .nextup-s .ic { width: 16px; height: 16px; }
 /* 도착 기록 버튼이 같이 있을 땐 글 아래에 버튼 두 개를 나란히 */
 .nextup-act { display: flex; flex: none; gap: var(--s2); }
+/* 지금 할 일 (탈 곳·내릴 곳): 카드 안에서 한 단계 더 진하게 */
+.nextup-step { margin-top: var(--s1); font-size: var(--fs-body); font-weight: 700; line-height: 1.6; color: var(--ink); }
+.nextup-step .ic { width: 16px; height: 16px; margin-right: 4px; vertical-align: -3px; }
+.nextup-step .line { margin: 0 4px; vertical-align: 1px; }
+.nextup-head { font-weight: 400; color: var(--ink-2); }
 .nextup.has-rec { flex-direction: column; align-items: stretch; padding-right: var(--s4); }
 .nextup.has-rec .nextup-act .btn { flex: 1; }
 

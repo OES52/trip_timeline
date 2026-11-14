@@ -72,7 +72,7 @@ spec:
               cpu: 20m
               memory: 64Mi
             limits:
-              memory: 256Mi
+              memory: 384Mi   # 사진 줄이기(sharp)가 큰 원본을 풀 때 여유
           readinessProbe:
             httpGet:
               path: /healthz
