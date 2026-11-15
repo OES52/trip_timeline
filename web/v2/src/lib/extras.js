@@ -44,8 +44,8 @@ export function myBookings(v, userId, from) {
     });
 }
 
-/** 보여주기 카드를 띄울 수 있는 장소인지 (일본어 이름이나 주소가 있음) */
-export const canShow = pl => !!(pl && (pl.ja || pl.addr));
+/** 보여주기 카드를 띄울 수 있는 장소인지: 일본어 이름이나 주소가 있고, 한국 주소가 아님 (출발지 역·공항은 카드가 필요 없음) */
+export const canShow = pl => !!(pl && (pl.ja || pl.addr) && !/^(大韓民国|韓国)/.test(pl.addr || ''));
 
 /**
  * 비상 연락처 한 줄 → { text, tel }. 줄 안의 전화번호(국가번호·하이픈 포함)를 찾아 tel: 주소로

@@ -60,4 +60,6 @@ test('비상 연락처 줄에서 전화번호, 숙소 목록, 보여주기 가�
   assert.deepEqual(lodgings(v).map(p => p.key), ['H']);
   assert.equal(canShow(v.placeByKey.get('H')), true);
   assert.equal(canShow(v.placeByKey.get('K')), false);
+  // 출발지(한국) 역·공항은 일본어 칸이 채워져 있어도 카드 없음
+  assert.equal(canShow({ key: 'U', name: '운서역', ja: 'Unseo station', addr: '大韓民国 仁川広域市' }), false);
 });

@@ -173,7 +173,9 @@ function fillPlaceJa() {
       checkPlacesRes_(res);
       const j = JSON.parse(res.getContentText() || '{}');
       const ja = j.displayName && j.displayName.text ? j.displayName.text : '';
-      const addr = String(j.formattedAddress || '').replace(/^日本、\s*/, '');
+      const full = String(j.formattedAddress || '');
+      if (full && !/^日本/.test(full)) { missed++; return; }   // 일본 밖(출발지 역·공항)은 택시 카드가 필요 없어서 안 채움
+      const addr = full.replace(/^日本、\s*/, '');
       if (!p.ja && ja) sh.getRange(p.row, col.JA + 1).setValue(ja);
       if (!p.addr && addr) sh.getRange(p.row, col.ADDR + 1).setValue(addr);
       if (ja || addr) filled++; else missed++;

@@ -16,7 +16,7 @@ import { Icon } from '../ui/Icon.jsx';
 import { MODE_ICON } from '../ui/icons.js';
 import { Hm } from '../ui/Hm.jsx';
 import { TodoBlock, BookingBlock, BookingButtons, ShowButton } from '../ui/Extras.jsx';
-import { bookingsFor } from '../lib/extras.js';
+import { bookingsFor, canShow } from '../lib/extras.js';
 
 const dayDiff = (a, b) => Math.round((Date.parse(b + 'T00:00:00Z') - Date.parse(a + 'T00:00:00Z')) / 864e5);
 
@@ -61,7 +61,7 @@ function NextUp({ v, now }) {
   const arr = arrivedAt(v, next);
   const pl = placeOf(v, next);
   const books = bookingsFor(v, next, user.value ? user.value.id : '');
-  const canShow = !!(pl && (pl.ja || pl.addr));
+  const showable = canShow(pl);
   // 계획보다 일찍 닿았을 때도 여기서 바로 도착을 적을 수 있게 (보기 전용 사용자는 버튼 없음)
   const showRec = !!(user.value && user.value.canStamp) && next.date === now.date && !arr;
   return (
@@ -87,7 +87,7 @@ function NextUp({ v, now }) {
         {showRec && <button type="button" class="btn btn-plate" onClick={() => recordArrivalNow(next)}><Icon name="clock" />도착 기록</button>}
         <a class="btn btn-exit" href={navUrl(next.lat, next.lng)} target="_blank" rel="noopener"><Icon name="nav" />길찾기</a>
       </div>
-      {(books.length > 0 || canShow) && (
+      {(books.length > 0 || showable) && (
         <div class="nextup-more">
           <BookingButtons list={books} />
           <ShowButton pl={pl} />
