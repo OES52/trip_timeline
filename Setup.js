@@ -9,6 +9,7 @@ function onOpen() {
     .addSeparator()
     .addItem('경로 계산', 'calculateRoutes')
     .addItem('경로 계산 (캐시 무시)', 'calculateRoutesForce')
+    .addItem('관통 도보 길만 받기 (경로·시각은 그대로)', 'fetchInnerWalks')
     .addSeparator()
     .addItem('예산 동기화', 'syncBudget')
     .addItem('교통비 예산 반영', 'syncTransportBudget')

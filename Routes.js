@@ -506,6 +506,32 @@ function innerWalk_(r, fetch) {
   return { min: Math.max(1, Math.ceil(m / CONFIG.INNER_WALK_M_PER_MIN)), m: Math.round(m), est: true, poly: '' };
 }
 
+// 메뉴 "관통 도보 길만 받기": 종착점 있는 줄의 시작점→종착점 도보 길(모양)만 받아 둠
+//  경로·시각·시트는 안 건드림. 이미 모양이 있는 곳은 다시 안 받음 (구글 호출은 모양 없는 곳만, 보통 몇 번)
+//  끝나면 웹앱 캐시를 비워서 지도 관통 띠가 바로 실제 길로 보이게
+function fetchInnerWalks() {
+  requireSheetUi_();
+  const ss = SpreadsheetApp.getActive();
+  const plan = ss.getSheetByName(CONFIG.PLAN_SHEET);
+  if (!plan) { alert_('"일정" 시트가 없음'); return; }
+  const rows = readPlanRows_(plan, ss.getSpreadsheetTimeZone());
+  let all = 0, shaped = 0, stopped = '';
+  for (let i = 0; i < rows.length; i++) {
+    let iw = null;
+    try { iw = innerWalk_(rows[i], true); } catch (e) {
+      if (!e.quota) throw e;
+      stopped = '\n구글 지도 하루 호출 한도에 걸려서 멈춤 (받은 곳까지는 저장됨). 내일 다시 실행';
+      break;
+    }
+    if (!iw) continue;
+    all++;
+    if (iw.poly) shaped++;
+  }
+  invalidateCache_();
+  alert_('관통하는 장소 ' + all + '곳 중 ' + shaped + '곳 도보 길 모양 있음.\n웹앱을 새로고침하면 지도 띠가 실제 길로 보임' +
+    (shaped < all && !stopped ? '\n(모양을 못 받은 곳은 직선 띠)' : '') + stopped);
+}
+
 /* ── 순서 제안: 고정점 사이 장소들 순서를 직선거리로 비교 (API 호출 없음) ── */
 
 // 고정점: 그날 첫·마지막 행, 고정 시각 있는 행, 메모·활동에 [고정]
