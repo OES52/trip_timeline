@@ -73,6 +73,10 @@
 .pinbox.is-now.is-picked > .pin { box-shadow: 0 0 0 4px var(--exit), 0 0 0 7px var(--info), 0 2px 8px rgba(13, 18, 26, .45); }
 .pinbox:focus-visible { outline: none; }
 .pinbox:focus-visible > .pin { outline: 3px solid var(--info); outline-offset: 2px; }
+/* 관통하는 장소의 나오는 곳: 같은 번호의 작은 네모 (여기서 다음 장소로 떠남) */
+.pinbox.is-end > .pin { min-width: 22px; height: 22px; padding: 0 4px; font-size: var(--fs-meta); border-width: 2px; border-radius: var(--r-plate); }
+.pinbox.is-end.is-past > .pin { color: var(--ink-2); border-color: var(--ink-3); }
+.pinbox.is-end.is-picked > .pin { transform: scale(1.15); box-shadow: 0 0 0 3px var(--info), 0 2px 8px rgba(13, 18, 26, .45); }
 /* 비행기 구간 가운데 표시 */
 .pin-plane { display: grid; place-items: center; width: 26px; height: 26px; color: #fff; background: #1B2536; border-radius: var(--r-round); box-shadow: 0 1px 4px rgba(13, 18, 26, .4); pointer-events: none; }
 .pin-plane svg { width: 16px; height: 16px; }

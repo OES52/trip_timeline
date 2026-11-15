@@ -7,7 +7,7 @@ import { editing, canEdit, changeStay, skipStop, setTaxi } from '../data/edit.js
 import { toMin, hhmm, fmtDur, hmParts, fmtHM } from '../lib/time.js';
 import {
   vk, placeOf, pname, dayPoints, stopStates, isVisited, arrivedAt, arrivalDiff, predictedMin, dayDelay,
-  MODE_KEY, segModeName, segRides, lastTrain, nightRide,
+  MODE_KEY, segModeName, segRides, lastTrain, nightRide, passText,
 } from '../lib/trip.js';
 import { Hm } from './Hm.jsx';
 import { BookingButtons, ShowButton } from './Extras.jsx';
@@ -58,6 +58,7 @@ function Stop({ v, p, state, first, last, cIn, cOut, open, onToggle, compact, on
   const busy = editing.value;   // 보기 전용 사용자는 기록 버튼이 없음
   const ap = hmParts(p.arrive), dp = hmParts(p.depart);   // 24시 넘긴 시각은 "익일"
   const ride = nightRide(v, p);   // 야간버스처럼 밤새 타고 가는 곳
+  const pass = passText(p);       // 시장·상점가처럼 들어간 곳과 나오는 곳이 다른 곳
 
   const facts = [];
   if (p.stay) facts.push(['체류', fmtDur(p.stay)]);
@@ -92,6 +93,7 @@ function Stop({ v, p, state, first, last, cIn, cOut, open, onToggle, compact, on
             {state === 'next' && <em class="tag tag-next">다음</em>}
           </span>
           {sub && <span class="stop-m">{type && <Icon name={placeIcon(type, name)} label={type} />}<span>{sub}</span></span>}
+          {pass && <span class="stop-m"><Icon name="walk" /><span>{pass}</span></span>}
           {warns.map((w, i) => <span class="stop-w" key={i}><Icon name="warn" label="주의" /><span>{w}</span></span>)}
           {p.slack != null && p.slack < 0 && <span class="stop-w"><Icon name="clock" /><span>{Math.abs(p.slack)}분 늦음</span></span>}
         </span>

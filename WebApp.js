@@ -184,7 +184,7 @@ function buildMapBase_() {
       lng: r.lng,
       endLat: r.endLat,   // 종착점 (없으면 null = 시작점에서 출발)
       endLng: r.endLng,
-      inner: innerWalk_(r, false),   // 시작점→종착점 걷는 시간 { min, m, est } (종착점 없으면 null)
+      inner: innerWalk_(r, false),   // 시작점→종착점 걷는 시간·거리·도보 선 모양 { min, m, est, poly } (종착점 없으면 null)
       stay: r.stay,
       fixed: r.fixed != null ? fmtMin_(r.fixed) : '',
       arrive: r.arrive,

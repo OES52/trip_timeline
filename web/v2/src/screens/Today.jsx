@@ -3,7 +3,7 @@
 import { view, tn, nowMs, go, user } from '../data/store.js';
 import { recordArrivalNow } from '../data/records.js';
 import { dayLabel, md, fmtDur, hhmm, toMin } from '../lib/time.js';
-import { phase, tripRange, nowNext, remainMin, predictedMin, pname, placeOf, vk, arrivedAt, dayCity, dayRoute, dayPoints, daySpend, segModeName, segRides, MODE_KEY } from '../lib/trip.js';
+import { phase, tripRange, nowNext, remainMin, predictedMin, pname, placeOf, vk, arrivedAt, dayCity, dayRouteMain, dayPoints, daySpend, segModeName, segRides, MODE_KEY } from '../lib/trip.js';
 import { money } from '../lib/money.js';
 import { stepNow } from '../lib/steps.js';
 import { navUrl, haversine, fmtDist, walkMin } from '../lib/geo.js';
@@ -143,7 +143,10 @@ function WalkEta({ v, p, now, pr }) {
   );
 }
 
-/** 날짜별 여정: 도시색 띠 + 날짜 + 지나는 도시 + 장소 수·1인당 금액. 누르면 그날 일정 */
+/**
+ * 날짜별 여정: 도시색 띠 + 날짜 + 지나는 도시 + 장소 수·1인당 금액. 누르면 그날 일정
+ *  도시는 그날 주로 다니는 곳만 (비행기·밤버스로 오가는 인천·반대편 도시는 일정 화면 표지판에만)
+ */
 function TripDays({ v, now }) {
   return (
     <section class="block" aria-labelledby="days-h">
@@ -151,7 +154,7 @@ function TripDays({ v, now }) {
       <ol class="days">
         {v.dates.map((d, i) => {
           const c = dayCity(v, d);
-          const route = dayRoute(v, d);
+          const route = dayRouteMain(v, d);
           const sp = daySpend(v, d);
           const past = d < now.date, today = d === now.date;
           return (

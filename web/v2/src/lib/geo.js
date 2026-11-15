@@ -8,6 +8,15 @@ export function haversine(a, b) {
   return 2 * R * Math.asin(Math.sqrt(h));
 }
 
+/** a → b 방향(도). 0 = 북, 90 = 동 (짧은 거리용 평면 근사) */
+export function bearing(a, b) {
+  const dx = (b[1] - a[1]) * Math.cos(a[0] * Math.PI / 180), dy = b[0] - a[0];
+  return (Math.atan2(dx, dy) * 180 / Math.PI + 360) % 360;
+}
+
+/** 방향(도) → 8방위 이름 ("남", "북동" …) */
+export function compass(deg) { return ['북', '북동', '동', '남동', '남', '남서', '서', '북서'][Math.round(deg / 45) % 8]; }
+
 /** 850 → "850m", 1234 → "1.2km", 12345 → "12km" */
 export function fmtDist(m) {
   return m >= 1000 ? (m / 1000).toFixed(m >= 10000 ? 0 : 1) + 'km' : Math.round(m) + 'm';

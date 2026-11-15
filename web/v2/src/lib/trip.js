@@ -2,6 +2,7 @@
 //  그 보기에서 "지금·다음", 지연 예측, 하루 요약 같은 걸 계산함. 화면 코드는 여기 함수만 부름
 import { toMin, hhmm, toDateTime, tokyoNow, addDays, fmtHM } from './time.js';
 import { cityColor, lineColor } from './colors.js';
+import { haversine, bearing, compass, walkMin, fmtDist } from './geo.js';
 
 /** 일정 점의 키 "날짜#순서" (도장·도착·지출 기록이 이 키로 저장됨) */
 export const vk = p => p.date + '#' + p.order;
@@ -25,8 +26,12 @@ export function buildView(raw, user, pending) {
     if (toDate && !over.some(o => o.date === s.date && o.fromOrder === s.fromOrder)) over.push(Object.assign({}, s, { toDate }));
   });
   const allPlaces = raw.places || [];
+  // 여행 출발지 = 사용자 범위와 상관없이 여행 첫 장소 (첫날·마지막 날 집 쪽 먼 이동을 가려낼 때 씀)
+  const home = raw.points.filter(p => p.lat != null && p.lng != null)
+    .reduce((a, p) => (!a || p.date < a.date || (p.date === a.date && p.order < a.order) ? p : a), null);
   const v = Object.assign({}, raw, {
     user: user || null,
+    home: home ? [home.lat, home.lng] : null,
     dates: raw.dates.filter(inR),
     points,
     segments: segs.filter(s => inR(s.date)),
@@ -88,15 +93,93 @@ export function dayCity(v, date) {
   return { name, color: cityColor(name) || '' };
 }
 
-/** 그날 지나는 도시 순서 (연속 중복 제거) → [{ name, color }] */
-export function dayRoute(v, date) {
+/** 도시 이름들 → [{ name, color }] (빈 것 빼고 연속 중복 제거) */
+function cityRun(names) {
   const out = [];
-  dayPoints(v, date).forEach(p => {
-    const pl = placeOf(v, p);
-    const c = pl && pl.city;
-    if (c && (!out.length || out[out.length - 1].name !== c)) out.push({ name: c, color: cityColor(c) || '' });
+  names.forEach(c => { if (c && (!out.length || out[out.length - 1].name !== c)) out.push({ name: c, color: cityColor(c) || '' }); });
+  return out;
+}
+const cityOf = (v, p) => { const pl = placeOf(v, p); return pl ? pl.city : ''; };
+
+/**
+ * 그날 지나는 도시 순서 → [{ name, color }]
+ *  날짜를 넘는 이동(밤버스 등)은 양쪽 날에 다 넣음: 떠나는 날은 끝에 도착 도시, 도착하는 날은 앞에 출발 도시
+ *  (12/27 오사카 › 도쿄, 12/28 오사카 › 도쿄 › 요코하마)
+ */
+export function dayRoute(v, date) {
+  const at = (d, order) => cityOf(v, dayPoints(v, d).find(p => p.order === order));
+  return cityRun([].concat(
+    v.overnight.filter(s => s.toDate === date).map(s => at(s.date, s.fromOrder)),
+    dayPoints(v, date).map(p => cityOf(v, p)),
+    v.overnight.filter(s => s.date === date).map(s => at(s.toDate, s.toOrder)),
+  ));
+}
+
+/** 직선거리가 이만큼(150km) 넘는 이동은 "먼 이동"(비행기·밤버스). 오사카↔교토·나라, 도쿄↔요코하마는 안 넘음 */
+export const FAR_M = 150000;
+
+/**
+ * 그날 주로 다니는 곳의 순서들 (Set). 먼 이동으로 오가는 곳은 뺌
+ *  - 직선 FAR_M 안으로 이어지는 장소끼리 한 무리
+ *  - 여행 출발지(집) 쪽 무리는 뺌: 첫날 인천, 마지막 날 인천
+ *  - 남은 무리 중 장소가 가장 많은 것, 같으면 오래 머문 것
+ *  - 좌표 없는 장소는 바로 앞(없으면 뒤) 장소를 따라감
+ */
+export function mainOrders(v, date) {
+  const pts = dayPoints(v, date);
+  const has = p => p.lat != null && p.lng != null;
+  const geo = pts.filter(has);
+  const up = geo.map((_, i) => i);
+  const root = i => (up[i] === i ? i : (up[i] = root(up[i])));
+  for (let i = 0; i < geo.length; i++) {
+    for (let j = i + 1; j < geo.length; j++) {
+      if (haversine([geo[i].lat, geo[i].lng], [geo[j].lat, geo[j].lng]) <= FAR_M) up[root(i)] = root(j);
+    }
+  }
+  const byRoot = new Map();
+  geo.forEach((p, i) => {
+    const r = root(i);
+    if (!byRoot.has(r)) byRoot.set(r, { orders: new Set(), n: 0, stay: 0, home: false });
+    const g = byRoot.get(r);
+    const a = toMin(p.arrive), d = toMin(p.depart);
+    g.orders.add(p.order);
+    g.n++;
+    if (a != null && d != null && d > a) g.stay += d - a;
+    if (v.home && haversine(v.home, [p.lat, p.lng]) <= FAR_M) g.home = true;
+  });
+  const all = Array.from(byRoot.values());
+  const away = all.filter(g => !g.home);
+  const best = (away.length ? away : all).sort((a, b) => b.n - a.n || b.stay - a.stay)[0];
+  if (!best) return new Set(pts.map(p => p.order));
+  const out = new Set(best.orders);
+  pts.forEach((p, i) => {
+    if (has(p)) return;
+    const ref = pts.slice(0, i).reverse().find(has) || pts.slice(i + 1).find(has);
+    if (ref && best.orders.has(ref.order)) out.add(p.order);
   });
   return out;
+}
+
+/** 첫 화면 여정용 도시 순서: 먼 이동으로 오가는 도시(첫날·마지막 날 인천, 밤버스 반대편)는 빼고 그날 주로 다니는 도시만 */
+export function dayRouteMain(v, date) {
+  const main = mainOrders(v, date);
+  return cityRun(dayPoints(v, date).filter(p => main.has(p.order)).map(p => cityOf(v, p)));
+}
+
+/* ── 관통하는 장소 (시장·상점가: 들어간 곳과 나오는 곳이 다름) ── */
+
+/** 시작점과 다른 종착점이 있는 장소인지. 다음 장소로는 종착점에서 떠남 */
+export function passThrough(p) {
+  return !!p && p.lat != null && p.lng != null && p.endLat != null && p.endLng != null && (p.endLat !== p.lat || p.endLng !== p.lng);
+}
+
+/** 관통 안내 한 줄: "남쪽으로 지나서 나옴 · 6분 · 450m". 걷는 시간·거리는 서버의 도보 경로(없으면 직선 어림) */
+export function passText(p) {
+  if (!passThrough(p)) return '';
+  const a = [p.lat, p.lng], b = [p.endLat, p.endLng], d = haversine(a, b), iw = p.inner;
+  const min = iw && iw.min ? iw.min : walkMin(d);
+  const m = iw && iw.m ? iw.m : Math.round(d * 1.3);
+  return compass(bearing(a, b)) + '쪽으로 지나서 나옴 · ' + (!iw || iw.est ? '약 ' : '') + min + '분 · ' + fmtDist(m);
 }
 
 /* ── 기록: 도장·실제 도착 ── */

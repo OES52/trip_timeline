@@ -453,7 +453,8 @@ function moveStepFormula_(modeRef) {
 
 /* ── 장소 안 시작점→종착점 도보 (시장·상점가 관통 등) ── */
 
-// 저장 위치: 스크립트 속성 "iw|시작lat,lng|종착lat,lng" = "분|미터"
+// 저장 위치: 스크립트 속성 "iw|시작lat,lng|종착lat,lng" = "분|미터|도보 선 모양(구글 polyline)"
+//  예전 값 "분|미터"(모양 없음)는 다음 경로 계산 때 한 번 다시 받아 모양까지 채움
 let INNER_WALK_MEMO_ = null;
 function innerWalkStore_() {
   if (!INNER_WALK_MEMO_) {
@@ -462,9 +463,9 @@ function innerWalkStore_() {
   return INNER_WALK_MEMO_;
 }
 
-// 시작점→종착점 걷는 시간·거리 { min, m, est } (종착점 없거나 시작점과 같으면 null)
-//  저장된 도보 경로가 있으면 그 값 (est: false)
-//  fetch = true면 없을 때 구글 도보 경로를 받아 저장 (경로 계산 때만)
+// 시작점→종착점 걷는 시간·거리·모양 { min, m, est, poly } (종착점 없거나 시작점과 같으면 null)
+//  저장된 도보 경로가 있으면 그 값 (est: false). poly = 구글 도보 경로 선 (웹앱 지도가 관통 길로 그림, 없으면 '')
+//  fetch = true면 없을 때(모양 없는 예전 값일 때도) 구글 도보 경로를 받아 저장 (경로 계산 때만)
 //  그래도 없으면 직선거리 × INNER_WALK_DETOUR, INNER_WALK_M_PER_MIN 속도로 어림 (est: true)
 function innerWalk_(r, fetch) {
   if (!r || r.lat == null || r.lng == null || r.endLat == null || r.endLng == null) return null;
@@ -472,32 +473,37 @@ function innerWalk_(r, fetch) {
   const f = v => Number(v).toFixed(5);
   const key = 'iw|' + f(r.lat) + ',' + f(r.lng) + '|' + f(r.endLat) + ',' + f(r.endLng);
   const store = innerWalkStore_();
+  // polyline 글자에도 '|'가 나올 수 있어서 세 번째 칸은 끝까지 통째로
   const parse = s => {
-    const mm = String(s || '').match(/^(\d+)\|(\d+)$/);
-    return mm ? { min: Number(mm[1]), m: Number(mm[2]), est: false } : null;
+    const mm = String(s || '').match(/^(\d+)\|(\d+)(\|([\s\S]*))?$/);
+    return mm ? { min: Number(mm[1]), m: Number(mm[2]), est: false, poly: mm[4] || '', shaped: mm[3] != null } : null;
   };
+  const pub = x => ({ min: x.min, m: x.m, est: x.est, poly: x.poly });
   const hit = parse(store[key]);
-  if (hit) return hit;
+  if (hit && (hit.shaped || !fetch)) return pub(hit);
   if (fetch) {
     try {
       const out = Maps.newDirectionFinder()
         .setOrigin(r.lat, r.lng).setDestination(r.endLat, r.endLng)
         .setMode(Maps.DirectionFinder.Mode.WALKING).setLanguage('ko').getDirections();
       Utilities.sleep(CONFIG.SLEEP_MS);
-      const leg = out && out.status === 'OK' && out.routes && out.routes[0] ? out.routes[0].legs[0] : null;
+      const route = out && out.status === 'OK' && out.routes && out.routes[0] ? out.routes[0] : null;
+      const leg = route && route.legs ? route.legs[0] : null;
       if (leg && leg.duration && leg.distance) {
-        const val = Math.ceil(leg.duration.value / 60) + '|' + Math.round(leg.distance.value);
+        const poly = route.overview_polyline && route.overview_polyline.points ? route.overview_polyline.points : '';
+        const val = Math.ceil(leg.duration.value / 60) + '|' + Math.round(leg.distance.value) + '|' + poly;
         PropertiesService.getScriptProperties().setProperty(key, val);
         store[key] = val;
-        return parse(val);
+        return pub(parse(val));
       }
     } catch (e) {
       rethrowQuota_(e);
-      // 조회 실패하면 어림값
+      // 조회 실패하면 예전 값, 그것도 없으면 어림값
     }
   }
+  if (hit) return pub(hit);
   const m = distanceM_(r.lat, r.lng, r.endLat, r.endLng) * CONFIG.INNER_WALK_DETOUR;
-  return { min: Math.max(1, Math.ceil(m / CONFIG.INNER_WALK_M_PER_MIN)), m: Math.round(m), est: true };
+  return { min: Math.max(1, Math.ceil(m / CONFIG.INNER_WALK_M_PER_MIN)), m: Math.round(m), est: true, poly: '' };
 }
 
 /* ── 순서 제안: 고정점 사이 장소들 순서를 직선거리로 비교 (API 호출 없음) ── */

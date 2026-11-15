@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildView, pname, tripRange, phase, dayCity, dayRoute, dayDelay, predictedMin, nowNext, remainMin, stopStates, daySpend, dayFare, lastTrain, tripClock, dayEndMin, nightRide } from './trip.js';
+import { buildView, pname, tripRange, phase, dayCity, dayRoute, dayRouteMain, mainOrders, dayDelay, predictedMin, nowNext, remainMin, stopStates, daySpend, dayFare, lastTrain, tripClock, dayEndMin, nightRide, passThrough, passText } from './trip.js';
 
 // 이틀짜리 작은 여행
 const raw = () => ({
@@ -63,6 +63,79 @@ test('dayCity·dayRoute: 교통은 가중치 낮게, 연속 중복 제거', () =
   const v = buildView(raw(), null);
   assert.equal(dayCity(v, '2026-12-25').name, '오사카');
   assert.deepEqual(dayRoute(v, '2026-12-25').map(c => c.name), ['인천', '오사카']);
+});
+
+// 먼 이동: 첫날 인천 → (비행기) → 오사카·교토, 12/27 밤버스 → 12/28 도쿄·요코하마, 마지막 날 도쿄 → (비행기) → 인천·서울
+const farRaw = () => ({
+  dates: ['2026-12-25', '2026-12-27', '2026-12-28', '2027-01-03'],
+  places: [
+    { key: 'U', name: '운서역', type: '교통', city: '인천' },
+    { key: 'I', name: '인천공항', type: '교통', city: '인천' },
+    { key: 'K', name: '간사이 공항', type: '교통', city: '오사카' },
+    { key: 'N', name: '난바역', type: '교통', city: '오사카' },
+    { key: 'Q', name: '기요미즈데라', type: '관광지', city: '교토' },
+    { key: 'H', name: '호텔', type: '숙소', city: '오사카' },
+    { key: 'B', name: '윌러 버스터미널', type: '교통', city: '오사카' },
+    { key: 'S', name: '신주쿠 터미널', type: '교통', city: '도쿄' },
+    { key: 'Y', name: '요코하마역', type: '교통', city: '요코하마' },
+    { key: 'T', name: '숙소', type: '숙소', city: '도쿄' },
+    { key: 'R', name: '나리타 공항', type: '교통', city: '도쿄' },
+    { key: 'G', name: '집', type: '숙소', city: '서울' },
+  ],
+  points: [
+    { placeKey: 'U', date: '2026-12-25', order: 1, arrive: '4:00', depart: '4:00', lat: 37.493, lng: 126.493 },
+    { placeKey: 'I', date: '2026-12-25', order: 2, arrive: '4:20', depart: '6:35', lat: 37.449, lng: 126.451 },
+    { placeKey: 'K', date: '2026-12-25', order: 3, arrive: '9:05', depart: '10:05', lat: 34.432, lng: 135.230 },
+    { placeKey: 'N', date: '2026-12-25', order: 4, arrive: '11:00', depart: '11:05', lat: 34.666, lng: 135.500 },
+    { placeKey: 'Q', date: '2026-12-25', order: 5, arrive: '15:10', depart: '16:00', lat: 34.995, lng: 135.785 },
+    { placeKey: 'H', date: '2026-12-25', order: 6, arrive: '20:35', depart: '20:50', lat: 34.671, lng: 135.499 },
+    { placeKey: 'H', date: '2026-12-27', order: 1, arrive: '7:45', depart: '7:50', lat: 34.671, lng: 135.499 },
+    { placeKey: 'B', date: '2026-12-27', order: 2, arrive: '20:50', depart: '31:00', lat: 34.705, lng: 135.491 },
+    { placeKey: 'S', date: '2026-12-28', order: 1, arrive: '7:40', depart: '7:50', lat: 35.689, lng: 139.701 },
+    { placeKey: 'Y', date: '2026-12-28', order: 2, arrive: '8:40', depart: '13:50', lat: 35.466, lng: 139.622 },
+    { placeKey: 'T', date: '2026-12-28', order: 3, arrive: '15:00', depart: '15:20', lat: 35.728, lng: 139.793 },
+    // 마지막 날: 일본 쪽 2곳, 한국 쪽 3곳
+    { placeKey: 'T', date: '2027-01-03', order: 1, arrive: '6:00', depart: '6:30', lat: 35.728, lng: 139.793 },
+    { placeKey: 'R', date: '2027-01-03', order: 2, arrive: '8:00', depart: '10:00', lat: 35.772, lng: 140.393 },
+    { placeKey: 'I', date: '2027-01-03', order: 3, arrive: '12:30', depart: '13:10', lat: 37.449, lng: 126.451 },
+    { placeKey: 'U', date: '2027-01-03', order: 4, arrive: '13:30', depart: '13:35', lat: 37.493, lng: 126.493 },
+    { placeKey: 'G', date: '2027-01-03', order: 5, arrive: '15:00', depart: '15:00', lat: 37.55, lng: 126.95 },
+  ],
+  segments: [],
+  overnight: [{ date: '2026-12-27', toDate: '2026-12-28', fromOrder: 2, toOrder: 1, mode: '수동', minutes: 0 }],
+  users: [], visitedBy: {}, arrivedBy: {}, spend: {},
+});
+
+test('dayRoute: 밤버스는 떠나는 날 끝·도착하는 날 앞에 반대편 도시', () => {
+  const v = buildView(farRaw(), null);
+  assert.deepEqual(dayRoute(v, '2026-12-25').map(c => c.name), ['인천', '오사카', '교토', '오사카']);
+  assert.deepEqual(dayRoute(v, '2026-12-27').map(c => c.name), ['오사카', '도쿄']);
+  assert.deepEqual(dayRoute(v, '2026-12-28').map(c => c.name), ['오사카', '도쿄', '요코하마', '도쿄']);
+  assert.deepEqual(dayRoute(v, '2027-01-03').map(c => c.name), ['도쿄', '인천', '서울']);
+});
+
+test('dayRouteMain·mainOrders: 첫 화면은 먼 이동으로 오가는 도시를 뺌', () => {
+  const v = buildView(farRaw(), null);
+  assert.deepEqual(v.home, [37.493, 126.493]);
+  assert.deepEqual(Array.from(mainOrders(v, '2026-12-25')), [3, 4, 5, 6]);
+  assert.deepEqual(dayRouteMain(v, '2026-12-25').map(c => c.name), ['오사카', '교토', '오사카']);
+  assert.deepEqual(dayRouteMain(v, '2026-12-27').map(c => c.name), ['오사카']);
+  assert.deepEqual(dayRouteMain(v, '2026-12-28').map(c => c.name), ['도쿄', '요코하마', '도쿄']);
+  assert.deepEqual(dayRouteMain(v, '2027-01-03').map(c => c.name), ['도쿄']);   // 한국 쪽이 더 많아도 출발지 쪽이라 뺌
+  // 도쿄부터 함께하는 사용자도 출발지는 여행 첫 장소(인천)
+  const u = buildView(farRaw(), { id: 'X', from: '2026-12-28', to: '2027-01-03' });
+  assert.deepEqual(dayRouteMain(u, '2027-01-03').map(c => c.name), ['도쿄']);
+  assert.deepEqual(dayRoute(u, '2026-12-28').map(c => c.name), ['도쿄', '요코하마', '도쿄']);   // 밤버스는 범위 밖
+});
+
+test('passThrough·passText: 들어간 곳과 나오는 곳이 다른 장소', () => {
+  const p = { lat: 34.6665, lng: 135.5065, endLat: 34.6625, endLng: 135.5065 };   // 북쪽에서 들어가 남쪽으로 나옴
+  assert.equal(passThrough(p), true);
+  assert.equal(passThrough({ lat: 1, lng: 2, endLat: 1, endLng: 2 }), false);
+  assert.equal(passThrough({ lat: 1, lng: 2, endLat: null, endLng: null }), false);
+  assert.equal(passText(Object.assign({ inner: { min: 6, m: 450, est: false } }, p)), '남쪽으로 지나서 나옴 · 6분 · 450m');
+  assert.equal(passText(p), '남쪽으로 지나서 나옴 · 약 7분 · 578m');   // 도보 경로 없으면 직선 × 1.3 어림
+  assert.equal(passText({ lat: 34.67, lng: 135.5 }), '');
 });
 
 test('nowNext: 머무는 중 / 이동 중 / 오늘 끝', () => {

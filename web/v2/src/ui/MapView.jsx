@@ -3,8 +3,8 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { view, tn, picked, pick, setPlanView, go } from '../data/store.js';
 import { local } from '../data/cache.js';
-import { dayLines, pinGroups, pinState, boundsOf } from '../lib/route.js';
-import { stopStates, dayPoints, pname, placeOf, vk, dayCity } from '../lib/trip.js';
+import { dayLines, pinGroups, pinState, boundsOf, fitCoords, assignLanes, innerLines, MODE_HEX } from '../lib/route.js';
+import { stopStates, dayPoints, pname, placeOf, vk, dayCity, passThrough, passText } from '../lib/trip.js';
 import { navUrl } from '../lib/geo.js';
 import { fmtHM } from '../lib/time.js';
 import { Icon } from './Icon.jsx';
@@ -81,6 +81,33 @@ function poiIcon(map, o) {
   return id;
 }
 
+// 경로 선 모양 (GL 식)
+const FADE = ['case', ['==', ['get', 'past'], 1], 0.4, 0.95];               // 지난 구간은 흐리게
+const INNER_FADE = ['case', ['==', ['get', 'past'], 1], 0.15, 0.32];        // 관통 띠
+// 모든 선을 진행 방향 왼쪽으로 비킴: 왕복은 저절로 두 줄, 같은 방향 겹침은 차선(lane)마다 한 칸 더
+const OFFSET = ['*', -1, ['+', 4, ['*', 6, ['coalesce', ['get', 'lane'], 0]]]];
+const EMPTY = { type: 'FeatureCollection', features: [] };
+
+/**
+ * 고른 장소(순서 o)로 들어오고 나가는 구간만 진하게·위로, 나머지는 흐리게. o가 null이면 원래대로
+ *  관통하는 장소면 그 안의 띠도 진하게
+ */
+function legPaint(map, o) {
+  const hit = ['any', ['==', ['get', 'a'], o == null ? -9 : o], ['==', ['get', 'b'], o == null ? -9 : o]];
+  const by = (on, off, base) => (o == null ? base : ['case', hit, on, off]);
+  const paint = (id, k, val) => { try { map.setPaintProperty(id, k, val); } catch (e) { /* 층 없음 */ } };
+  paint('trip-casing', 'line-opacity', by(0.95, 0.3, 0.9));
+  paint('trip-casing', 'line-width', by(11, 8, 9));
+  paint('trip-line', 'line-opacity', by(1, 0.22, FADE));
+  paint('trip-line', 'line-width', by(7, 4, 5));
+  paint('trip-dash', 'line-opacity', by(1, 0.22, FADE));
+  paint('trip-dash', 'line-width', by(5, 3, 4));
+  paint('trip-inner-band', 'line-opacity', by(0.5, 0.12, INNER_FADE));
+  ['trip-casing', 'trip-line', 'trip-dash'].forEach(id => {
+    try { map.setLayoutProperty(id, 'line-sort-key', o == null ? 0 : ['case', hit, 1, 0]); } catch (e) { /* 층 없음 */ }
+  });
+}
+
 /** 스타일이 실릴 때마다: 지명 언어를 맞추고 경로 층을 얹음 */
 function decorate(map, dark) {
   (map.getStyle().layers || []).forEach(l => {
@@ -88,15 +115,20 @@ function decorate(map, dark) {
     if (JSON.stringify(l.layout['text-field']).indexOf('name') === -1) return;
     try { map.setLayoutProperty(l.id, 'text-field', NAME_KO); } catch (e) { /* 그 층만 건너뜀 */ }
   });
-  const fade = ['case', ['==', ['get', 'past'], 1], 0.4, 0.95];
-  map.addSource('trip', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+  // 관통하는 장소 안 길: 도시색 반투명 띠 + 도보 점선. 이동 선보다 아래
+  map.addSource('trip-inner', { type: 'geojson', data: EMPTY });
+  map.addLayer({ id: 'trip-inner-band', type: 'line', source: 'trip-inner', layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 8, 15, 18], 'line-opacity': INNER_FADE } });
+  map.addLayer({ id: 'trip-inner-walk', type: 'line', source: 'trip-inner', layout: { 'line-join': 'round' },
+    paint: { 'line-color': MODE_HEX.walk, 'line-width': 3, 'line-dasharray': [1.4, 1.4], 'line-opacity': FADE } });
+  map.addSource('trip', { type: 'geojson', data: EMPTY });
   // 테두리를 먼저 깔아서 지도 위에서 선이 묻히지 않게
   map.addLayer({ id: 'trip-casing', type: 'line', source: 'trip', layout: { 'line-cap': 'round', 'line-join': 'round' },
-    paint: { 'line-color': dark ? '#0D121A' : '#FFFFFF', 'line-width': 9, 'line-opacity': 0.9 } });
+    paint: { 'line-color': dark ? '#0D121A' : '#FFFFFF', 'line-width': 9, 'line-opacity': 0.9, 'line-offset': OFFSET } });
   map.addLayer({ id: 'trip-line', type: 'line', source: 'trip', filter: ['==', ['get', 'dash'], 0], layout: { 'line-cap': 'round', 'line-join': 'round' },
-    paint: { 'line-color': ['get', 'color'], 'line-width': 5, 'line-opacity': fade } });
+    paint: { 'line-color': ['get', 'color'], 'line-width': 5, 'line-opacity': FADE, 'line-offset': OFFSET } });
   map.addLayer({ id: 'trip-dash', type: 'line', source: 'trip', filter: ['==', ['get', 'dash'], 1], layout: { 'line-join': 'round' },
-    paint: { 'line-color': ['get', 'color'], 'line-width': 4, 'line-dasharray': [1.4, 1.4], 'line-opacity': fade } });
+    paint: { 'line-color': ['get', 'color'], 'line-width': 4, 'line-dasharray': [1.4, 1.4], 'line-opacity': FADE, 'line-offset': OFFSET } });
 
   // 3D 건물: 높이별 색, 확대하면 솟아오름 (기울였을 때 도시 모양이 보이게)
   const st = map.getStyle();
@@ -148,7 +180,7 @@ export function MapView({ date, active }) {
   const pk = picked.value;
   const box = useRef(null);
   const card = useRef(null);
-  const S = useRef({ map: null, ml: null, markers: new Map(), planes: [], coords: [], sig: '', fitFor: null, needFit: false, eased: null }).current;
+  const S = useRef({ map: null, ml: null, markers: new Map(), planes: [], ends: [], coords: [], sig: '', fitFor: null, needFit: false, eased: null }).current;
   const [phase, setPhase] = useState('loading');   // loading | ready | error | nogl
   const [gen, setGen] = useState(0);               // 스타일이 (다시) 실릴 때마다 +1 → 선·핀을 다시 그림
   const [attempt, setAttempt] = useState(0);       // "다시 불러오기"
@@ -216,7 +248,7 @@ export function MapView({ date, active }) {
       map.addControl(new ml.NavigationControl({ showCompass: true, visualizePitch: true }), 'top-right');
       map.addControl(new ml.GeolocateControl({ positionOptions: { enableHighAccuracy: true }, trackUserLocation: true }), 'top-right');
       const ctl = new BtnControl([
-        { id: 'fit', icon: 'fit', label: '하루(또는 전체) 다 보이게', fn: () => fit(true) },
+        { id: 'fit', icon: 'fit', label: '하루(또는 전체) 다 보이게 (비행기·밤버스 같은 먼 이동은 빼고)', fn: () => fit(true) },
         { id: '3d', icon: 'cube', label: '기울여서 3D 건물 보기', fn: () => set3d(x => !x) },
         { id: 'poi', icon: 'layers', label: '역 출구·화장실·편의점 표시', fn: () => setMenu(x => !x) },
         { id: 'all', icon: 'globe', label: '여행 전체 날짜 한꺼번에 보기', fn: () => { setRp(false); setAll(x => !x); } },
@@ -234,6 +266,7 @@ export function MapView({ date, active }) {
       clearTimeout(timer);
       S.markers.clear();
       S.planes = [];
+      S.ends = [];
       S.map = null;
       S.sig = '';
       S.fitFor = null;
@@ -247,9 +280,25 @@ export function MapView({ date, active }) {
     const map = S.map;
     if (phase !== 'ready' || !map || !map.getSource('trip') || S.sig === sig) return;
     S.sig = sig;
-    const lines = all ? v.dates.map(d => dayLines(v, d)) : [dayLines(v, date, states)];
-    const features = lines.flatMap(x => x.features), planes = lines.flatMap(x => x.planes);
+    const lines = all ? v.dates.map(d => dayLines(v, d, null, { incoming: false })) : [dayLines(v, date, states)];
+    const features = assignLanes(lines.flatMap(x => x.features)), planes = lines.flatMap(x => x.planes);
+    const inner = all ? [] : innerLines(v, date, states);
     map.getSource('trip').setData({ type: 'FeatureCollection', features });
+    if (map.getSource('trip-inner')) map.getSource('trip-inner').setData({ type: 'FeatureCollection', features: inner });
+    // 관통하는 장소의 나오는 곳: 같은 번호의 작은 네모 (여기서 다음 장소로 떠남). 누르면 그 장소를 고름
+    S.ends.forEach(x => x.marker.remove());
+    S.ends = all ? [] : dayPoints(v, date).filter(passThrough).map(p => {
+      const el = document.createElement('button');
+      el.type = 'button';
+      el.className = 'pinbox is-end' + (states.get(p.order) === 'past' ? ' is-past' : '');
+      el.setAttribute('aria-label', p.order + '번 ' + pname(v, p) + ' 나오는 곳');
+      const dot = document.createElement('span');
+      dot.className = 'pin';
+      dot.textContent = String(p.order);
+      el.appendChild(dot);
+      el.addEventListener('click', e => { e.stopPropagation(); pick(vk(p), 'map'); });
+      return { key: vk(p), el, marker: new S.ml.Marker({ element: el }).setLngLat([p.endLng, p.endLat]).addTo(map) };
+    });
     new Set(Array.from(S.markers.values()).map(x => x.marker)).forEach(m => m.remove());
     S.markers.clear();
     S.planes.forEach(m => m.remove());
@@ -299,10 +348,12 @@ export function MapView({ date, active }) {
       const marker = new S.ml.Marker({ element: el }).setLngLat([g.lng, g.lat]).addTo(map);
       g.keys.forEach(k => S.markers.set(k, { marker, el, g }));
     });
-    S.coords = (all ? [] : groups.map(g => [g.lat, g.lng])).concat(features.flatMap(f => f.geometry.coordinates.map(c => [c[1], c[0]])));
     if (all) {   // 여행 전체는 일본 쪽만 맞춤 (출발지 한국까지 넣으면 너무 작아짐)
-      const jp = S.coords.filter(c => c[1] > 128.5);
-      if (jp.length) S.coords = jp;
+      const cs = features.flatMap(f => f.geometry.coordinates.map(c => [c[1], c[0]]));
+      const jp = cs.filter(c => c[1] > 128.5);
+      S.coords = jp.length ? jp : cs;
+    } else {     // 하루는 그날 주로 다니는 곳만 맞춤: 비행기·밤버스 선은 그리되 화면 밖으로 이어지게
+      S.coords = fitCoords(v, date, groups, features.concat(inner));
     }
     if (S.fitFor !== fitKey) S.needFit = true;
   }, [sig, phase]);
@@ -318,10 +369,17 @@ export function MapView({ date, active }) {
     return () => cancelAnimationFrame(id);
   }, [sig, phase, active]);
 
+  // 장소를 직접 고르면 그곳으로 들어오고 나가는 구간만 진하게 (겹치는 길에서 어느 선인지 보이게)
+  useEffect(() => {
+    if (phase !== 'ready' || !S.map) return;
+    legPaint(S.map, !all && pkKey ? Number(pkKey.slice(pkKey.indexOf('#') + 1)) : null);
+  }, [pkKey, all, phase, gen]);
+
   // 고른 핀 강조. 타임라인이나 카드에서 골랐으면 그 핀이 보이게 지도를 옮김 (핀을 직접 눌렀으면 이미 보이니 그대로)
   useEffect(() => {
     if (phase !== 'ready' || !S.map) return;
     new Set(Array.from(S.markers.values())).forEach(x => x.el.classList.remove('is-picked'));
+    S.ends.forEach(x => x.el.classList.toggle('is-picked', x.key === curKey));
     const m = curKey && S.markers.get(curKey);
     if (m) m.el.classList.add('is-picked');
     if (!m || !pkKey || pk.from === 'map' || S.eased === pk || !active || S.needFit) return;
@@ -350,6 +408,7 @@ export function MapView({ date, active }) {
 
   const pl = cur ? placeOf(v, cur) : null;
   const sub = cur ? (cur.activity || (pl && (pl.area || pl.type)) || '') : '';
+  const pass = passText(cur);
   const prev = curIdx > 0 ? pts[curIdx - 1] : null;
   const next = curIdx >= 0 && curIdx < pts.length - 1 ? pts[curIdx + 1] : null;
 
@@ -403,6 +462,7 @@ export function MapView({ date, active }) {
             <span class="mapcard-t">
               <b>{pname(v, cur)}</b>
               <span><span class="num">{fmtHM(cur.arrive)}{cur.depart && cur.depart !== cur.arrive ? '~' + fmtHM(cur.depart) : ''}</span>{sub ? ' · ' + sub : ''}</span>
+              {pass && <span>{pass}</span>}
             </span>
             <Icon name="right" />
           </button>
