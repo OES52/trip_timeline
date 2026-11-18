@@ -104,12 +104,14 @@ export function memoDeadline(memo) {
 
 /**
  * 장소 하나의 경고 글 목록: 메모 마감 넘김 / 휴무 / 영업시간 밖
+ *  영업시간은 고정 시각이 있으면 그 시각부터 머무는 것으로 봄 (16:30 도착해서 17:00 오픈 기다리기)
  *  교통·숙소는 영업시간 비교 안 함 (역 첫차 시각 같은 게 걸려서)
  * @param p 일정 점  @param pl 장소(없으면 null)  @param closeSoonMin 마감 직전 기준(분)
  */
 export function warnings(p, pl, closeSoonMin = 30) {
   const out = [];
-  const a = toMin(p.arrive), d = toMin(p.depart);
+  let a = toMin(p.arrive);
+  const d = toMin(p.depart);
   const dl = memoDeadline(p.memo);
   if (dl != null && a != null && a > dl) out.push('메모 마감 ' + hhmm(dl) + ' 넘김 (' + p.arrive + ' 도착)');
   // 시작점→종착점 걷기만으로 체류 시간 초과 (시장·상점가 관통)
@@ -117,6 +119,9 @@ export function warnings(p, pl, closeSoonMin = 30) {
     out.push('시작점→종착점 걷기만 ' + p.inner.min + '분' + (p.inner.est ? ' (어림)' : '') + ', 체류 ' + (p.stay || 0) + '분보다 김');
   }
   if (!pl) return out;
+  // 고정 시각이 도착보다 늦으면 그때부터 머묾 (오픈런 줄 서기·예약 시각) → 영업시간은 고정 시각 기준으로 봄
+  const fx = toMin(p.fixed);
+  if (fx != null && a != null && fx > a && fx - a < 720) a = fx;
   if (closedOn(pl.closed, p.date)) { out.push('이날 휴무 (' + pl.closed + ')'); return out; }
   if (pl.type === '교통' || pl.type === '숙소') return out;
   const h = hoursFor(pl.hours, p.date);

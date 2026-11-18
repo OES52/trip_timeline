@@ -41,4 +41,8 @@ test('warnings: 영업 전·마감 직전·머무는 중 종료·휴무', () => 
   assert.deepEqual(warnings(pt('4:00', '4:00'), { type: '교통', hours: '05:20~00:10', closed: '' }), []);
   // 메모 마감
   assert.match(warnings(pt('16:00', '17:00', { memo: '15시 전까지' }), null)[0], /메모 마감 15:00 넘김/);
+  // 고정 시각(오픈런·예약)까지 기다리면 그 시각 기준: 16:30 도착, 17:00 고정 → 경고 없음
+  assert.deepEqual(warnings(pt('16:30', '17:40', { fixed: '17:00' }), food), []);
+  // 고정 시각도 오픈 전이면 그대로 경고
+  assert.match(warnings(pt('16:00', '17:10', { fixed: '16:30' }), food)[0], /영업 전 도착 \(17:00 오픈\)/);
 });

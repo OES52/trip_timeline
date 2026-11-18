@@ -203,10 +203,15 @@ export function MapView({ date, active }) {
 
   // 카드가 지도 아래쪽을 가리는 만큼 비워서 맞춤 (넓은 화면은 카드가 없음)
   const cardH = () => (card.current && card.current.offsetParent ? card.current.offsetHeight + 12 : 0);
+  // 오른쪽 버튼 줄(확대·내 위치·맞춤 …)에 핀이 가리지 않게 그 폭만큼 비움
+  const ctlW = () => {
+    const el = S.map && S.map.getContainer().querySelector('.maplibregl-ctrl-top-right');
+    return el ? el.offsetWidth : 0;
+  };
   const fit = animate => {
     const b = boundsOf(S.coords);
     if (!b || !S.map) return;
-    S.map.fitBounds(b, { padding: { top: 72, right: 72, bottom: cardH() + 40, left: 48 }, maxZoom: 15.5, duration: animate ? 600 : 0 });
+    S.map.fitBounds(b, { padding: { top: 72, right: Math.max(72, ctlW() + 40), bottom: cardH() + 40, left: 48 }, maxZoom: 15.5, duration: animate ? 600 : 0 });
   };
 
   // 지도 만들기 (한 번, 또는 "다시 불러오기"를 누를 때)
