@@ -13,6 +13,7 @@
 //  clear   { sheet, range }                 내용만 지움 (서식 그대로) → { range, before }
 //  insertRows { sheet, after, count? }      after번 줄 아래에 빈 줄 (after = 0이면 맨 위)
 //  deleteRows { sheet, row, count? }        row번 줄부터 지움 → { before }
+//  placePhoto { pid | query, lat?, lng?, count? }  구글 장소 사진 주소 (시트는 안 고침) → { pid, name, photos: [{ uri, by }] }
 //  끝나면 웹앱 캐시를 비움 (프록시는 돌려받은 뒤 알아서 다시 받음)
 const ADMIN_MAX_CELLS_ = 50000;
 
@@ -25,6 +26,7 @@ function adminSheet_(req) {
       frozenRows: sh.getFrozenRows(), frozenCols: sh.getFrozenColumns(),
     }));
   }
+  if (req.op === 'placePhoto') return adminPlacePhoto_(req);
   const sh = ss.getSheetByName(String(req.sheet || ''));
   if (!sh) throw new Error('없는 시트: ' + req.sheet);
 
@@ -89,6 +91,37 @@ function adminSheet_(req) {
   } finally {
     lock.releaseLock();
   }
+}
+
+// 구글 장소 사진 주소 받기 (시트는 안 고침. 받은 주소를 write로 사진 칸에 넣음)
+//  { pid } 또는 { query, lat?, lng? } (pid 없으면 이름으로 찾음) → { pid, name, photos: [{ uri, by }] } 최대 count(기본 1)장
+//  Places API: 장소 찾기(무료) + 상세 photos(유료 등급) + 사진 주소(장당 유료, 월 무료 한도 안)
+function adminPlacePhoto_(req) {
+  const key = PropertiesService.getScriptProperties().getProperty('PLACES_API_KEY');
+  if (!key) throw new Error('Places API 키가 없음 (시트 메뉴 → Places API 키 설정)');
+  let pid = String(req.pid || '');
+  if (!pid) {
+    if (!req.query) throw new Error('pid나 query가 필요함');
+    pid = placesSearchId_(key, { name: String(req.query), lat: req.lat != null ? Number(req.lat) : null, lng: req.lng != null ? Number(req.lng) : null });
+    if (!pid) throw new Error('구글에서 장소를 못 찾음: ' + req.query);
+  }
+  const res = UrlFetchApp.fetch('https://places.googleapis.com/v1/places/' + encodeURIComponent(pid) + '?languageCode=ko', {
+    muteHttpExceptions: true,
+    headers: { 'X-Goog-Api-Key': key, 'X-Goog-FieldMask': 'displayName,photos' },
+  });
+  checkPlacesRes_(res);
+  const det = JSON.parse(res.getContentText() || '{}');
+  const n = Math.min(5, Math.max(1, Number(req.count) || 1));
+  const photos = (det.photos || []).slice(0, n).map(ph => {
+    const r = UrlFetchApp.fetch('https://places.googleapis.com/v1/' + ph.name + '/media?maxWidthPx=960&skipHttpRedirect=true', {
+      muteHttpExceptions: true, headers: { 'X-Goog-Api-Key': key },
+    });
+    checkPlacesRes_(r);
+    const j = JSON.parse(r.getContentText() || '{}');
+    const by = (ph.authorAttributions || []).map(a => a.displayName).filter(Boolean).join(', ');
+    return { uri: j.photoUri || '', by: by };
+  }).filter(p => p.uri);
+  return { pid: pid, name: det.displayName ? det.displayName.text : '', photos: photos };
 }
 
 function adminLimit_(rg) {
