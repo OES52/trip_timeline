@@ -3,6 +3,7 @@
 //  GET  /api/events               SSE: 데이터가 바뀌면 {v} 알림 → 화면이 다시 받음 (친구 도장·도착 실시간)
 //  POST /api/call   {fn, args}    쓰기·PIN 확인. PIN은 여기서 먼저 확인 (틀리면 Apps Script까지 안 감), 레이트 리밋
 //  POST /api/hook/invalidate      Apps Script가 시트 바뀌면 부름 (X-Trip-Key)
+//  POST /api/admin  {op, ...}     관리용 시트 읽기·쓰기 (Authorization: Bearer ADMIN_KEY, 없으면 꺼짐). Apps Script Admin.js
 //  GET  /api/photo?u=URL[&w=160|480|960]  장소 사진을 받아 디스크에 캐시 (사설 IP 차단). w가 있으면 그 폭의 webp로 줄여서
 //  GET  /api/map/ofm/<경로>        OpenFreeMap 벡터 지도(스타일·타일·글꼴·아이콘)를 받아 디스크에 캐시
 //                                  일정 경로 주변 타일은 미리 받아둠 (prewarm). 화면은 transformRequest로 이리로 보냄
@@ -13,7 +14,7 @@
 //  GET  /healthz
 //  ACCESS_CODE가 있으면 data·events·call·photo·push는 세션 쿠키 없으면 401. 지도 타일은 그대로 공개
 //  환경변수: APPS_SCRIPT_URL, PROXY_KEY (필수) / VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT (알림)
-//           ACCESS_CODE (일정 보기 접속 코드, 비우면 잠금 없음), SESSION_DAYS(90)
+//           ACCESS_CODE (일정 보기 접속 코드, 비우면 잠금 없음), SESSION_DAYS(90), ADMIN_KEY (관리용 시트 읽기·쓰기, 비우면 꺼짐)
 //           DATA_DIR(/data), PORT(8080), PHOTO_CACHE_MB(500), XFF_HOPS(2), FRESH_SEC(30)
 import http from 'node:http';
 import https from 'node:https';
@@ -776,7 +777,36 @@ async function apiLogin(req, res) {
   if (!crypto.timingSafeEqual(a, w)) { log('접속 코드 틀림', ip); return fail(req, res, 403, '접속 코드가 틀림'); }
   sendJSON(req, res, 200, { ok: true, result: true }, { 'Set-Cookie': sessionCookie() });
 }
-// 세션이 있어야 하는 주소 (지도 타일·healthz·hook·login은 제외)
+/* ── 관리용 시트 읽기·쓰기 (Apps Script Admin.js) ──
+ *  POST /api/admin  Authorization: Bearer <ADMIN_KEY>  본문 { op, sheet, range, values, ... }
+ *  ADMIN_KEY가 없으면 꺼짐(404). 키 틀리면 IP별 10분에 5번까지. 쓰기면 끝나고 데이터 다시 받음 */
+const ADMIN_KEY = String(ENV.ADMIN_KEY || '');
+const ADMIN_READ = new Set(['sheets', 'read']);
+async function apiAdmin(req, res) {
+  if (!ADMIN_KEY) return fail(req, res, 404, '없는 주소');
+  const ip = clientIp(req);
+  const fails = buckets.get('adminfail|' + ip);
+  if (fails && fails.n >= 5 && Date.now() - fails.start <= 600000) return fail(req, res, 429, '키를 너무 많이 틀림. 10분 뒤 다시');
+  const m = String(req.headers.authorization || '').match(/^Bearer\s+(.+)$/i);
+  const a = Buffer.from(sha256(m ? m[1].trim() : '')), w = Buffer.from(sha256(ADMIN_KEY));
+  if (!m || !crypto.timingSafeEqual(a, w)) {
+    limited('adminfail|' + ip, 5, 600000);
+    log('관리 키 틀림', ip);
+    return fail(req, res, 403, '키가 틀림');
+  }
+  const wait = limited('admin|' + ip, 60, 60000);
+  if (wait) return fail(req, res, 429, '요청이 너무 많음. ' + wait + '초 뒤 다시', { 'Retry-After': String(wait) });
+  const body = await readBody(req, 2 * 1048576);
+  try {
+    const result = await gas('POST', null, { fn: 'admin', args: [body], key: PROXY_KEY });
+    if (!ADMIN_READ.has(body.op)) { log('관리 수정', body.op, body.sheet || '', body.range || ''); refreshSoon('관리 수정'); }
+    ok(req, res, result);
+  } catch (e) {
+    fail(req, res, 502, e.message);
+  }
+}
+
+// 세션이 있어야 하는 주소 (지도 타일·healthz·hook·login·admin(자체 키)은 제외)
 const NEED_SESSION = /^\/api\/(data|events|call|photo|push\/(key|subscribe|unsubscribe|test))$/;
 
 /* ── 서버 ── */
@@ -793,6 +823,7 @@ const server = http.createServer(async (req, res) => {
     if (p === '/api/call' && req.method === 'POST') return await apiCall(req, res);
     if (p === '/api/photo' && req.method === 'GET') return await apiPhoto(req, res, url.searchParams);
     if (p.indexOf('/api/map/ofm/') === 0 && req.method === 'GET') return await apiMap(req, res, p.slice('/api/map/ofm/'.length));
+    if (p === '/api/admin' && req.method === 'POST') return await apiAdmin(req, res);
     if (p === '/api/hook/invalidate' && req.method === 'POST') {
       const k = String(req.headers['x-trip-key'] || '');
       if (k.length !== PROXY_KEY.length || !crypto.timingSafeEqual(Buffer.from(k), Buffer.from(PROXY_KEY))) return fail(req, res, 403, '키가 틀림');

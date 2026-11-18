@@ -30,6 +30,18 @@ kubectl -n trip rollout restart deploy/trip-api
 curl -s -o /dev/null -w '%{http_code}\n' https://japan2026.oesgame.xyz/api/data   # 401이면 잠김
 ```
 
+### 관리용 시트 읽기·쓰기 (선택)
+
+`ADMIN_KEY`를 넣으면 `POST /api/admin`이 켜짐: Claude 같은 관리 도구가 시트를 직접 읽고 고침 (Apps Script `Admin.js`, 키 없으면 404).
+요청 머리에 `Authorization: Bearer <ADMIN_KEY>`. 키를 10분에 5번 틀리면 그 IP는 10분 막힘.
+
+```bash
+kubectl -n trip patch secret trip-api --type merge -p "{\"stringData\":{\"ADMIN_KEY\":\"$(openssl rand -hex 32)\"}}"
+kubectl -n trip rollout restart deploy/trip-api
+kubectl -n trip get secret trip-api -o jsonpath='{.data.ADMIN_KEY}' | base64 -d; echo   # 관리 도구에 넣을 값
+curl -s -X POST https://japan2026.oesgame.xyz/api/admin -H "Authorization: Bearer 위의값" -d '{"op":"sheets"}'
+```
+
 ## 2. Apps Script
 
 1. `clasp push` → 편집기 **배포 → 배포 관리 → 기존 배포 연필 → 버전: 새 버전** (주소 그대로, 새 버전 안 만들면 /exec 는 예전 코드)
