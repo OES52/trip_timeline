@@ -51,6 +51,8 @@ const API_FNS_ = {
   setArrived: (key, hhmm, user, pin) => setArrived(key, hhmm, user, pin),
   editPlan: (key, op, value, user, pin) => editPlan(key, op, value, user, pin),
   setTodo: (key, done, user, pin) => setTodo(key, done, user, pin),
+  // 관리용 시트 읽기·쓰기 (Admin.js). 프록시는 /api/admin(ADMIN_KEY)에서만 보냄, 화면용 /api/call 목록엔 없음
+  admin: req => adminSheet_(req),
 };
 
 // POST 본문: {"fn":"setSpend","args":[...]}
