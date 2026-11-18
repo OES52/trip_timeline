@@ -14,6 +14,7 @@
 //  insertRows { sheet, after, count? }      after번 줄 아래에 빈 줄 (after = 0이면 맨 위)
 //  deleteRows { sheet, row, count? }        row번 줄부터 지움 → { before }
 //  placePhoto { pid | query, lat?, lng?, count? }  구글 장소 사진 주소 (시트는 안 고침) → { pid, name, photos: [{ uri, by }] }
+//  innerWalks { fetch? }                    관통 장소 시작점→종착점 도보 시간·거리 (fetch면 없는 곳만 구글에서 받아 저장)
 //  끝나면 웹앱 캐시를 비움 (프록시는 돌려받은 뒤 알아서 다시 받음)
 const ADMIN_MAX_CELLS_ = 50000;
 
@@ -27,6 +28,7 @@ function adminSheet_(req) {
     }));
   }
   if (req.op === 'placePhoto') return adminPlacePhoto_(req);
+  if (req.op === 'innerWalks') return adminInnerWalks_(ss, !!req.fetch);
   const sh = ss.getSheetByName(String(req.sheet || ''));
   if (!sh) throw new Error('없는 시트: ' + req.sheet);
 
@@ -91,6 +93,21 @@ function adminSheet_(req) {
   } finally {
     lock.releaseLock();
   }
+}
+
+// 종착점 있는 장소(시장·상점가 관통)의 시작점→종착점 도보 { row, date, order, place, stay, min, m, est, shaped }
+//  fetch = true면 저장된 도보 경로가 없는 곳만 구글에서 받아 저장 (메뉴 "관통 도보 길만 받기"와 같음)
+function adminInnerWalks_(ss, fetch) {
+  const plan = ss.getSheetByName(CONFIG.PLAN_SHEET);
+  if (!plan) throw new Error('"일정" 시트가 없음');
+  const out = [];
+  readPlanRows_(plan, ss.getSpreadsheetTimeZone()).forEach(r => {
+    const iw = innerWalk_(r, fetch);
+    if (!iw) return;
+    out.push({ row: r.sheetRow, date: r.date, order: r.order, place: r.place, stay: r.stay, min: iw.min, m: iw.m, est: iw.est, shaped: !!iw.poly });
+  });
+  if (fetch) invalidateCache_();
+  return out;
 }
 
 // 구글 장소 사진 주소 받기 (시트는 안 고침. 받은 주소를 write로 사진 칸에 넣음)
