@@ -2,11 +2,11 @@
 //  장소 줄 하나 = 시각 | 선 위의 점 | 이름·한 줄 설명 | 행동 하나. 누르면 펼쳐서 사진·영업시간·메모
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { view, tn, picked, pick, user, openDialog } from '../data/store.js';
-import { recordArrivalNow, toggleVisit } from '../data/records.js';
+import { recordArrivalNow, recordDepartNow, undoArrival, toggleVisit } from '../data/records.js';
 import { editing, canEdit, changeStay, skipStop, setTaxi } from '../data/edit.js';
 import { toMin, hhmm, fmtDur, hmParts, fmtHM } from '../lib/time.js';
 import {
-  vk, placeOf, pname, dayPoints, stopStates, isVisited, arrivedAt, arrivalDiff, predictedMin, dayDelay,
+  vk, placeOf, pname, dayPoints, stopStates, isVisited, arrivedAt, departedAt, arrivalDiff, predictedMin, dayDelay,
   MODE_KEY, segModeName, segRides, lastTrain, nightRide, passText,
 } from '../lib/trip.js';
 import { Hm } from './Hm.jsx';
@@ -45,6 +45,7 @@ function Stop({ v, p, state, first, last, cIn, cOut, open, onToggle, compact, on
   const name = pname(v, p);
   const visited = isVisited(v, p);
   const arr = arrivedAt(v, p);
+  const dep = departedAt(v, p);
   const diff = arrivalDiff(v, p);
   const pred = predictedMin(v, p);
   const delay = dayDelay(v, p.date);
@@ -81,7 +82,7 @@ function Stop({ v, p, state, first, last, cIn, cOut, open, onToggle, compact, on
           {p.depart && p.depart !== p.arrive && dp.nd && !ap.nd && <span class="nd">익일</span>}
           {p.depart && p.depart !== p.arrive && <span class="num">~{dp.t}</span>}
           {arr
-            ? <span class={'stop-real ' + (diff > 0 ? 'note-late' : 'note-ok')}>실제 <span class="num">{arr}</span>{diff ? ' (' + sgn(diff) + ')' : ''}</span>
+            ? <span class={'stop-real ' + (diff > 0 ? 'note-late' : 'note-ok')}>{dep ? <>종료 <span class="num">{dep}</span></> : <>실제 <span class="num">{arr}</span></>}{diff ? ' (' + sgn(diff) + ')' : ''}</span>
             : pred != null && delay && delay.delay
               ? <span class={'stop-real ' + (delay.delay > 0 ? 'note-late' : 'note-ok')}>예상 <span class="num"><Hm min={pred} /></span></span>
               : null}
@@ -104,19 +105,32 @@ function Stop({ v, p, state, first, last, cIn, cOut, open, onToggle, compact, on
           <a class="btn btn-exit btn-sm" href={navUrl(p.lat, p.lng)} target="_blank" rel="noopener"><Icon name="nav" />길찾기</a>
         </div>
       )}
-      {!open && state === 'now' && canRec && !arr && (
+      {!open && state === 'now' && canRec && !dep && (
         <div class="stop-act">
-          <button type="button" class="btn btn-plate btn-sm" onClick={() => recordArrivalNow(p)}>도착 기록</button>
+          {arr
+            ? <button type="button" class="btn btn-ok btn-sm" onClick={() => recordDepartNow(p)}><Icon name="check" />일정 종료</button>
+            : <button type="button" class="btn btn-plate btn-sm" onClick={() => recordArrivalNow(p)}>도착 기록</button>}
         </div>
       )}
       {open && (
         <div class="stop-more" id={'more-' + key}>
-          {/* 자주 누르는 것부터: 기록(도착·도장·지출), 길찾기 → 정보(사진·영업·메모) → 일정 조정 */}
+          {/* 자주 누르는 것부터: 기록(도착·일정 종료·되돌리기·도장·지출), 길찾기 → 정보(사진·영업·메모) → 일정 조정 */}
           {canRec && (
             <div class="rec" role="group" aria-label="기록">
-              {arr
-                ? <button type="button" class="btn btn-plate btn-sm" onClick={() => openDialog({ kind: 'arrive', key })} aria-label={'도착 ' + arr + ', 시각 고치기'}><Icon name="clock" />도착 <span class="num">{arr}</span></button>
-                : <button type="button" class="btn btn-plate btn-sm" onClick={() => recordArrivalNow(p)}><Icon name="clock" />도착 기록</button>}
+              {!arr ? (
+                <button type="button" class="btn btn-plate btn-sm" onClick={() => recordArrivalNow(p)}><Icon name="clock" />도착 기록</button>
+              ) : !dep ? (
+                <>
+                  <button type="button" class="btn btn-ok btn-sm" onClick={() => recordDepartNow(p)}><Icon name="check" />일정 종료</button>
+                  <button type="button" class="btn btn-plate btn-sm" onClick={() => openDialog({ kind: 'arrive', key })} aria-label={'도착 ' + arr + ', 시각 고치기'}><Icon name="clock" />도착 <span class="num">{arr}</span></button>
+                  <button type="button" class="btn btn-quiet btn-sm" onClick={() => undoArrival(p)}><Icon name="reload" />되돌리기</button>
+                </>
+              ) : (
+                <>
+                  <button type="button" class="btn btn-plate btn-sm" onClick={() => openDialog({ kind: 'arrive', key })} aria-label={'도착 ' + arr + ', 종료 ' + dep + ', 시각 고치기'}><Icon name="clock" /><span class="num">{arr}~{dep}</span></button>
+                  <button type="button" class="btn btn-quiet btn-sm" onClick={() => undoArrival(p)}><Icon name="reload" />종료 되돌리기</button>
+                </>
+              )}
               <button type="button" class={'btn btn-sm ' + (visited ? 'btn-seal' : 'btn-plate')} aria-pressed={visited} onClick={() => toggleVisit(p)}>
                 <Icon name="stamp" />{visited ? '도장 찍음' : '도장 찍기'}
               </button>

@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { view, dialog, closeDialog } from '../data/store.js';
 import { verifyPin, flush, saveSpend, saveArrival } from '../data/records.js';
-import { vk, pname, arrivedAt, planPerYen } from '../lib/trip.js';
+import { vk, pname, arrivedAt, departedAt, planPerYen } from '../lib/trip.js';
 import { parseAmount } from '../lib/ops.js';
 import { YEN } from '../lib/money.js';
 import { fmtHM } from '../lib/time.js';
@@ -89,26 +89,35 @@ function SpendSheet({ v, p }) {
 
 function ArriveSheet({ v, p }) {
   const cur = arrivedAt(v, p) || '';
+  const curDep = departedAt(v, p) || '';
   const [t, setT] = useState(cur ? cur.padStart(5, '0') : '');
+  const [d, setD] = useState(curDep ? curDep.padStart(5, '0') : '');
   const [err, setErr] = useState('');
   const input = useRef(null);
   const submit = e => {
     e.preventDefault();
-    if (!/^\d{2}:\d{2}$/.test(t)) { setErr('시각을 넣어야 저장됨'); input.current.focus(); return; }
-    saveArrival(p, t);
+    if (!/^\d{2}:\d{2}$/.test(t)) { setErr('도착 시각을 넣어야 저장됨'); input.current.focus(); return; }
+    if (d && !/^\d{2}:\d{2}$/.test(d)) { setErr('종료 시각 형식이 맞지 않음'); return; }
+    saveArrival(p, t, d || '');
     closeDialog();
   };
   return (
-    <Sheet title={pname(v, p) + ' 도착 시각'} onClose={closeDialog}>
+    <Sheet title={pname(v, p) + ' 도착·종료 시각'} onClose={closeDialog}>
       <form class="form" onSubmit={submit} novalidate>
         <label class="field">
           <span>실제 도착 시각 (일본 시간)</span>
           <input ref={input} data-autofocus type="time" value={t} aria-invalid={err ? 'true' : undefined} aria-describedby="arr-err"
             onInput={e => { setT(e.currentTarget.value); setErr(''); }} />
         </label>
-        <p class="field-err" id="arr-err" role="alert">{err}</p>
         {p.arrive && <p class="field-hint">계획한 도착 <span class="num">{fmtHM(p.arrive)}</span></p>}
-        <button type="submit" class="btn btn-exit btn-block">도착 시각 저장</button>
+        <label class="field">
+          <span>일정 종료 시각 (선택 · 비우면 머무는 중)</span>
+          <input type="time" value={d} onInput={e => { setD(e.currentTarget.value); setErr(''); }} />
+        </label>
+        {p.depart && p.depart !== p.arrive && <p class="field-hint">계획한 출발 <span class="num">{fmtHM(p.depart)}</span></p>}
+        <p class="field-err" id="arr-err" role="alert">{err}</p>
+        <button type="submit" class="btn btn-exit btn-block">시각 저장</button>
+        {curDep && <button type="button" class="btn btn-plate btn-block" onClick={() => { saveArrival(p, cur, ''); closeDialog(); }}>종료 시각만 지우기</button>}
         {cur && <button type="button" class="btn btn-quiet btn-block btn-danger" onClick={() => { saveArrival(p, ''); closeDialog(); }}>도착 기록 지우기</button>}
       </form>
     </Sheet>

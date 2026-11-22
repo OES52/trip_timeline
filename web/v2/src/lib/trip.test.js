@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildView, pname, tripRange, phase, dayCity, dayRoute, dayRouteMain, mainOrders, dayDelay, predictedMin, nowNext, remainMin, stopStates, daySpend, dayFare, dayActual, planPerYen, lastTrain, tripClock, dayEndMin, nightRide, passThrough, passText, innerPath, exitsElsewhere, exitPoint } from './trip.js';
+import { buildView, pname, tripRange, phase, dayCity, dayRoute, dayRouteMain, mainOrders, arrivedAt, departedAt, dayDelay, predictedMin, nowNext, remainMin, stopStates, daySpend, dayFare, dayActual, planPerYen, lastTrain, tripClock, dayEndMin, nightRide, passThrough, passText, innerPath, exitsElsewhere, exitPoint } from './trip.js';
 
 // 이틀짜리 작은 여행
 const raw = () => ({
@@ -167,6 +167,22 @@ test('stopStates: 지금·다음·지남', () => {
   assert.deepEqual([t.get(2), t.get(3)], ['past', 'next']);
   assert.equal(stopStates(v, '2026-12-25', { date: '2026-12-26', min: 0 }).get(3), 'past');
   assert.equal(stopStates(v, '2026-12-26', { date: '2026-12-25', min: 0 }).get(1), 'future');
+});
+
+test('일정 종료(도착~종료): 바로 지남 처리, 다음 장소로 전환, 지연 예측은 종료 시각 기준', () => {
+  const r = raw();
+  r.arrivedBy.A['2026-12-25#2'] = '14:05~14:35';   // 계획 출발 15:05보다 30분 일찍 종료
+  const v = buildView(r, r.users[0]);
+  assert.equal(arrivedAt(v, v.points[1]), '14:05');
+  assert.equal(departedAt(v, v.points[1]), '14:35');
+  assert.equal(dayDelay(v, '2026-12-25').delay, -30);
+  assert.equal(predictedMin(v, v.points[2]), 15 * 60);   // 15:30 - 30분 = 15:00
+  const now = { date: '2026-12-25', min: 14 * 60 + 40 };
+  const nn = nowNext(v, now);
+  assert.equal(nn.cur, null);
+  assert.equal(nn.next.order, 3);
+  const st = stopStates(v, '2026-12-25', now);
+  assert.deepEqual([st.get(1), st.get(2), st.get(3)], ['past', 'past', 'next']);
 });
 
 test('daySpend·dayFare·dayActual·planPerYen', () => {

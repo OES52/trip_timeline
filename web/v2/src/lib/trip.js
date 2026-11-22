@@ -219,21 +219,36 @@ export function passText(p) {
   return head + ' · ' + (!iw || iw.est ? '약 ' : '') + min + '분 · ' + fmtDist(m);
 }
 
-/* ── 기록: 도장·실제 도착 ── */
+/* ── 기록: 도장·실제 도착·종료 ── */
 
 export function isVisited(v, p) { return !!v.visited[vk(p)]; }
-export function arrivedAt(v, p) { return v.arrived[vk(p)] || null; }
+/** 원본 도착·종료 기록 ("17:45" 또는 "17:45~18:20") */
+export function arrivedRaw(v, p) { return v.arrived[vk(p)] || null; }
+/** 실제 도착 시각 ("17:45") */
+export function arrivedAt(v, p) {
+  const s = v.arrived[vk(p)];
+  return s ? String(s).split('~')[0] || null : null;
+}
+/** 실제 일정 종료(출발) 시각 ("18:20") */
+export function departedAt(v, p) {
+  const s = v.arrived[vk(p)];
+  if (!s || String(s).indexOf('~') === -1) return null;
+  return String(s).split('~')[1] || null;
+}
 
-/** 그날 마지막으로 도착 기록한 곳 기준 지연(분). 자정 넘김 보정. 기록 없으면 null */
+/** 그날 마지막으로 도착·종료 기록한 곳 기준 지연(분). 종료 기록이 있으면 계획 출발 대비. 자정 넘김 보정. 기록 없으면 null */
 export function dayDelay(v, date) {
   let ref = null;
   dayPoints(v, date).forEach(p => {
-    const a = arrivedAt(v, p), pm = toMin(p.arrive);
-    if (!a || pm == null) return;
-    let d = toMin(a) - pm;
+    const a = arrivedAt(v, p), dep = departedAt(v, p);
+    const useDep = !!(dep && toMin(dep) != null && toMin(p.depart) != null);
+    const pm = useDep ? toMin(p.depart) : toMin(p.arrive);
+    const am = useDep ? toMin(dep) : toMin(a);
+    if (am == null || pm == null) return;
+    let d = am - pm;
     if (d < -720) d += 1440;
     if (d > 720) d -= 1440;
-    ref = { order: p.order, delay: d, at: a, p };
+    ref = { order: p.order, delay: d, at: useDep ? dep : a, p };
   });
   return ref;
 }
@@ -246,12 +261,16 @@ export function predictedMin(v, p) {
   return pm + r.delay;
 }
 
-/** 실제 도착이 계획보다 몇 분 차이인지 (늦으면 +) */
+/** 실제 도착(또는 종료)이 계획보다 몇 분 차이인지 (늦으면 +) */
 export function arrivalDiff(v, p) {
-  const a = arrivedAt(v, p), pm = toMin(p.arrive);
-  if (!a || pm == null) return null;
-  let d = toMin(a) - pm;
+  const a = arrivedAt(v, p), dep = departedAt(v, p);
+  const useDep = !!(dep && toMin(dep) != null && toMin(p.depart) != null);
+  const pm = useDep ? toMin(p.depart) : toMin(p.arrive);
+  const am = useDep ? toMin(dep) : toMin(a);
+  if (am == null || pm == null) return null;
+  let d = am - pm;
   if (d < -720) d += 1440;
+  if (d > 720) d -= 1440;
   return d;
 }
 
@@ -298,8 +317,10 @@ export function nowNext(v, nt = tokyoNow()) {
   let cur = null, nextIdx = -1;
   list.forEach((p, i) => {
     const a = toMin(p.arrive), d = toMin(p.depart);
-    if (p.date === nt.date && a != null && d != null && a <= nt.min && nt.min <= d) cur = p;
-    if (nextIdx === -1 && (p.date > nt.date || (a != null && a > nt.min))) nextIdx = i;
+    const done = p.date === nt.date && !!departedAt(v, p);
+    const here = p.date === nt.date && !done && ((a != null && d != null && a <= nt.min && nt.min <= d) || (!!arrivedAt(v, p) && (d == null || nt.min <= d)));
+    if (here) cur = p;
+    if (nextIdx === -1 && !done && !here && (p.date > nt.date || (a != null && a > nt.min) || (cur == null && d != null && nt.min <= d))) nextIdx = i;
   });
   let next = nextIdx >= 0 ? list[nextIdx] : null;
   let after = nextIdx >= 0 ? list[nextIdx + 1] || null : null;
@@ -325,16 +346,16 @@ export function stopStates(v, date, nt = tokyoNow()) {
   const pts = dayPoints(v, date);
   if (date < nt.date) { pts.forEach(p => out.set(p.order, 'past')); return out; }
   if (date > nt.date) { pts.forEach(p => out.set(p.order, 'future')); return out; }
-  let marked = false;
   pts.forEach(p => {
     const a = toMin(p.arrive), d = toMin(p.depart);
-    if (a != null && d != null && a <= nt.min && nt.min <= d) { out.set(p.order, 'now'); marked = true; }
+    if (departedAt(v, p)) out.set(p.order, 'past');
+    else if ((a != null && d != null && a <= nt.min && nt.min <= d) || (arrivedAt(v, p) && (d == null || nt.min <= d))) out.set(p.order, 'now');
     else if ((d != null ? d : a) != null && (d != null ? d : a) < nt.min) out.set(p.order, 'past');
     else out.set(p.order, 'future');
   });
   // 머무는 곳이 없으면(이동 중) 처음 다가오는 곳이 '다음'. 머무는 중이어도 그 뒤 첫 곳은 '다음'
-  const nx = pts.find(p => { const a = toMin(p.arrive); return a != null && a > nt.min; });
-  if (nx && out.get(nx.order) === 'future') out.set(nx.order, 'next');
+  const nx = pts.find(p => out.get(p.order) === 'future');
+  if (nx) out.set(nx.order, 'next');
   return out;
 }
 

@@ -6,7 +6,7 @@ import { ops, raw, user, users, view, sync, sendState, dialog, showToast, nt, st
 import { call, ApiError } from './api.js';
 import { kv, local } from './cache.js';
 import { nextBatch, applyResult, failureKind, retryDelay, clockNow } from '../lib/ops.js';
-import { vk, pname, isVisited, arrivedAt } from '../lib/trip.js';
+import { vk, pname, isVisited, arrivedRaw, arrivedAt, departedAt } from '../lib/trip.js';
 import { tokyoNow } from '../lib/time.js';
 import { YEN } from '../lib/money.js';
 import { stampable } from '../lib/passport.js';
@@ -180,7 +180,7 @@ export function toggleVisit(p) {
 export function recordArrivalNow(p) {
   if (!canRecord() || previewBlocks()) return;
   const v = view.value, key = vk(p), t = clockNow(tokyoNow());
-  const prev = arrivedAt(v, p) || '', had = isVisited(v, p), st = stampable(v, p);
+  const prev = arrivedRaw(v, p) || '', had = isVisited(v, p), st = stampable(v, p);
   const list = [{ kind: 'arrive', user: me(), key, value: t }];
   if (!had) list.unshift({ kind: 'visit', user: me(), key, value: 1 });
   push(list);
@@ -192,6 +192,46 @@ export function recordArrivalNow(p) {
   nt.value = tokyoNow();   // 지연 예측이 바로 다시 계산되게
 }
 
+/** "일정 종료": 지금 시각으로 이 장소 마무리 (도착~종료 저장 → 다음 장소로 바로 전환) */
+export function recordDepartNow(p) {
+  if (!canRecord() || previewBlocks()) return;
+  const v = view.value, key = vk(p), t = clockNow(tokyoNow());
+  const prev = arrivedRaw(v, p) || '';
+  const arr = arrivedAt(v, p) || t;
+  const nextVal = arr + '~' + t;
+  const had = isVisited(v, p);
+  const list = [{ kind: 'arrive', user: me(), key, value: nextVal }];
+  if (!had) list.unshift({ kind: 'visit', user: me(), key, value: 1 });
+  push(list);
+  showToast(pname(v, p) + ' ' + t + ' 일정 종료', {
+    label: '되돌리기',
+    fn: () => push([{ kind: 'arrive', user: me(), key, value: prev }].concat(had ? [] : [{ kind: 'visit', user: me(), key, value: 0 }])),
+  });
+  nt.value = tokyoNow();
+}
+
+/** 도착·종료 되돌리기: 종료 상태면 도착만 남기고, 도착 상태면 도착·도장 모두 취소 */
+export function undoArrival(p) {
+  if (!canRecord() || previewBlocks()) return;
+  const v = view.value, key = vk(p), name = pname(v, p);
+  const prev = arrivedRaw(v, p) || '', arr = arrivedAt(v, p), dep = departedAt(v, p);
+  if (!arr) return;
+  if (dep) {
+    push([{ kind: 'arrive', user: me(), key, value: arr }]);
+    showToast(name + ' 일정 종료 되돌림', { label: '다시 종료', fn: () => push([{ kind: 'arrive', user: me(), key, value: prev }]) });
+  } else {
+    const had = isVisited(v, p);
+    const list = [{ kind: 'arrive', user: me(), key, value: '' }];
+    if (had) list.push({ kind: 'visit', user: me(), key, value: 0 });
+    push(list);
+    showToast(name + ' 도착 기록 되돌림', {
+      label: '다시 기록',
+      fn: () => push([{ kind: 'arrive', user: me(), key, value: prev }].concat(had ? [{ kind: 'visit', user: me(), key, value: 1 }] : [])),
+    });
+  }
+  nt.value = tokyoNow();
+}
+
 /** 한 장소의 도장을 모두 지움 (같은 장소를 여러 번 들렀으면 다) */
 export function clearStamps(points, name) {
   if (!canRecord() || previewBlocks()) return;
@@ -201,13 +241,15 @@ export function clearStamps(points, name) {
   showToast(name + ' 도장 지움', { label: '되돌리기', fn: () => push(keys.map(key => ({ kind: 'visit', user: me(), key, value: 1 }))) });
 }
 
-/** 도착 시각 고치기 ("HH:MM") 또는 지우기 ('') */
-export function saveArrival(p, hhmm) {
+/** 도착·종료 시각 고치기 ("HH:MM" 또는 "HH:MM~HH:MM") 또는 지우기 ('') */
+export function saveArrival(p, arrHm, depHm) {
   if (!canRecord() || previewBlocks()) return;
-  const v = view.value, key = vk(p), prev = arrivedAt(v, p) || '';
-  if (prev === (hhmm || '')) return;
-  push([{ kind: 'arrive', user: me(), key, value: hhmm || '' }]);
-  showToast(pname(v, p) + (hhmm ? ' 도착 시각 ' + hhmm + ' 저장' : ' 도착 기록 지움'), { label: '되돌리기', fn: () => push([{ kind: 'arrive', user: me(), key, value: prev }]) });
+  const v = view.value, key = vk(p), prev = arrivedRaw(v, p) || '';
+  const val = arrHm ? (depHm ? arrHm + '~' + depHm : arrHm) : '';
+  if (prev === val) return;
+  push([{ kind: 'arrive', user: me(), key, value: val }]);
+  showToast(pname(v, p) + (val ? ' 시각 ' + val + ' 저장' : ' 도착 기록 지움'), { label: '되돌리기', fn: () => push([{ kind: 'arrive', user: me(), key, value: prev }]) });
+  nt.value = tokyoNow();
 }
 
 /** 할 일 끝냄/되돌림 (모두가 같이 보는 체크) */

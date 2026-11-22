@@ -678,13 +678,18 @@ async function apiPush(req, res, action) {
 const toMin = s => { const m = String(s || '').match(/^(\d+):(\d{2})/); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
 // 그 날짜 0시(여행 시간대)의 실제 시각(ms)
 const dayStart = (date, tzMin) => Date.parse(date + 'T00:00:00Z') - tzMin * 60000;
-// 화면 dayDelay와 같은 규칙: 그날 마지막 도착 기록 기준 지연(분)
+// 화면 dayDelay와 같은 규칙: 그날 마지막 도착·종료 기록 기준 지연(분). 종료(~HH:MM)가 있으면 계획 출발 대비
 function dayDelay(points, arrived, date) {
   let ref = null;
   points.filter(p => p.date === date).sort((a, b) => a.order - b.order).forEach(p => {
-    const a = arrived[p.date + '#' + p.order], pm = toMin(p.arrive);
-    if (!a || pm == null) return;
-    let d = toMin(a) - pm;
+    const raw = String(arrived[p.date + '#' + p.order] || '');
+    if (!raw) return;
+    const parts = raw.split('~');
+    const useDep = !!(parts[1] && toMin(parts[1]) != null && toMin(p.depart) != null);
+    const pm = useDep ? toMin(p.depart) : toMin(p.arrive);
+    const am = useDep ? toMin(parts[1]) : toMin(parts[0]);
+    if (am == null || pm == null) return;
+    let d = am - pm;
     if (d < -720) d += 1440;
     if (d > 720) d -= 1440;
     ref = { order: p.order, delay: d };
@@ -713,6 +718,7 @@ async function pushTick() {
         const to = data.points.find(p => p.date === date && p.order === seg.toOrder);
         if (!from || !to) continue;
         if (arrived[date + '#' + to.order]) continue;   // 이미 다음 장소 도착
+        if (String(arrived[date + '#' + from.order] || '').includes('~')) continue;   // 이미 이 장소 일정 종료(출발)
         const dep = toMin(from.depart) != null ? toMin(from.depart) : toMin(seg.dep);
         if (dep == null) continue;
         const delay = ref && from.order >= ref.order ? ref.delay : 0;

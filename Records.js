@@ -112,7 +112,7 @@ function getVisitedBy_() {
   return out;
 }
 
-// 웹앱에서 호출: 실제 도착 시각 기록 ("HH:MM", 빈 값이면 삭제). 사용자마다 따로
+// 웹앱에서 호출: 실제 도착·종료 시각 기록 ("HH:MM" 또는 "HH:MM~HH:MM", 빈 값이면 삭제). 사용자마다 따로
 function setArrived(key, hhmm, user, pin) {
   const u = authUser_(user, pin, 'stamp');
   const lock = LockService.getScriptLock();
@@ -121,7 +121,7 @@ function setArrived(key, hhmm, user, pin) {
     const props = PropertiesService.getScriptProperties();
     const name = 'arrived:' + u.id;
     const map = JSON.parse(props.getProperty(name) || '{}');
-    if (hhmm && /^\d{1,2}:\d{2}$/.test(hhmm)) map[key] = hhmm;
+    if (hhmm && /^\d{1,2}:\d{2}(?:~\d{1,2}:\d{2})?$/.test(hhmm)) map[key] = hhmm;
     else delete map[key];
     props.setProperty(name, JSON.stringify(map));
     return map;

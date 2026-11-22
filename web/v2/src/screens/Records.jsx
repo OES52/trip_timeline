@@ -6,7 +6,7 @@ import { local } from '../data/cache.js';
 import { toggleVisit, clearStamps, canRecord } from '../data/records.js';
 import { passport, receipt, moneySummary } from '../lib/passport.js';
 import { dayLabel, md, fmtHM } from '../lib/time.js';
-import { dayCity, vk } from '../lib/trip.js';
+import { dayCity, vk, arrivedAt, departedAt } from '../lib/trip.js';
 import { YEN } from '../lib/money.js';
 import { TopBar, SyncLine } from '../ui/Shell.jsx';
 import { Sheet } from '../ui/Sheet.jsx';
@@ -74,7 +74,10 @@ function StampSheet({ v, s, onClose }) {
         <div class="ssheet-st"><Stamp name={s.name} type={s.type} sub={when(s.visits[0])} seed={s.key} rare={s.rare} /></div>
         {s.rare && <p class="ssheet-rare">금박 도장 · {s.rare}</p>}
         <ul class="ssheet-v">
-          {s.visits.map(p => <li key={vk(p)}><b>{dayLabel(p.date)}</b> <span class="num">{v.arrived[vk(p)] || fmtHM(p.arrive)}</span>{v.arrived[vk(p)] ? ' 도착' : ' (계획)'}</li>)}
+          {s.visits.map(p => {
+            const a = arrivedAt(v, p), d = departedAt(v, p);
+            return <li key={vk(p)}><b>{dayLabel(p.date)}</b> <span class="num">{a ? (d ? a + '~' + d : a) : fmtHM(p.arrive)}</span>{a ? (d ? ' 방문' : ' 도착') : ' (계획)'}</li>;
+          })}
         </ul>
         <div class="stop-btns">
           {s.place && <button type="button" class="btn btn-plate btn-sm" onClick={() => { onClose(); placeOpen.value = s.place.key; go('places'); }}><Icon name="pin" />장소 보기</button>}
