@@ -115,7 +115,10 @@ function updateSheetStructure() {
     ensureColumns_(sh, PLAN_HEADERS_V4.length);
     sh.getRange(1, 1, 1, PLAN_HEADERS_V4.length).setValues([PLAN_HEADERS_V4]);
   }
-  const added = addMissingPlanHeaders_(sh);                          // 새 열 (종착 지도 링크·종착 좌표 등)
+  // 잠깐 쓰던 한 칸짜리 "경유 좌표" 열은 "경유1 좌표"로 이름만 바꿈 (값은 그대로. 한 칸에 여러 줄을 넣었던 곳은 좌표로 못 읽으니 나눠 넣기)
+  const viaOld = names().indexOf(hn_('경유 좌표'));
+  if (viaOld !== -1 && names().indexOf(hn_('경유1 좌표')) === -1) sh.getRange(1, viaOld + 1).setValue('경유1 좌표');
+  const added = addMissingPlanHeaders_(sh);                          // 새 열 (종착 지도 링크·종착 좌표·경유 등)
   if (!planHeaderIsCurrent_(sh)) reorderPlanColumns_(sh);            // 열 재배치
   const route = ss.getSheetByName(CONFIG.ROUTE_SHEET);
   if (route) ensureRouteHeader_(route);
