@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildView } from './trip.js';
-import { myTodos, ddayText, bookingPoint, bookingsFor, myBookings, phoneOf, lodgings, canShow } from './extras.js';
+import { myTodos, ddayText, bookingDates, bookingDateText, bookingPoint, bookingsFor, dayBookings, myBookings, phoneOf, lodgings, canShow } from './extras.js';
 
 const raw = () => ({
   dates: ['2026-12-25', '2026-12-26'],
@@ -62,4 +62,40 @@ test('비상 연락처 줄에서 전화번호, 숙소 목록, 보여주기 가�
   assert.equal(canShow(v.placeByKey.get('K')), false);
   // 출발지(한국) 역·공항은 일본어 칸이 채워져 있어도 카드 없음
   assert.equal(canShow({ key: 'U', name: '운서역', ja: 'Unseo station', addr: '大韓民国 仁川広域市' }), false);
+});
+
+test('여러 날 패스·종일 티켓: 기간 내 매일 상단 고정, 마지막 날까지 목록 유지', () => {
+  const data = raw();
+  data.dates = ['2026-12-25', '2026-12-26', '2026-12-27', '2026-12-28'];
+  data.bookings.push(
+    { key: 'R6', date: '2026-12-26', dates: ['2026-12-26', '2026-12-27'], order: null, place: '', title: '오사카 주유패스 2일권', no: '', link: 'https://pass.example', images: [], memo: '', who: [] },
+    { key: 'R7', date: '2026-12-26', dates: ['2026-12-26', '2026-12-28'], order: null, place: '', title: '떨어진 날 티켓', no: '', link: 'https://t.example', images: [], memo: '', who: ['OES'] },
+  );
+  const v = buildView(data, { id: 'OES', from: '2026-12-25', to: '2027-01-01' });
+  const r = id => v.bookings.find(b => b.key === id);
+
+  assert.deepEqual(bookingDates(r('R2')), ['2026-12-25']);
+  assert.deepEqual(bookingDates(r('R6')), ['2026-12-26', '2026-12-27']);
+  assert.equal(bookingDateText(r('R2')), '12/25 (금)');
+  assert.equal(bookingDateText(r('R6')), '12/26 (토) ~ 12/27 (일)');
+  assert.equal(bookingDateText(r('R7')), '12/26 (토), 12/28 (월)');
+  assert.equal(bookingDateText(r('R4')), '');
+
+  // 12/25: R2·R3는 특정 일정에 붙으므로 상단 고정 없음
+  assert.deepEqual(dayBookings(v, '2026-12-25', 'OES').map(b => b.key), []);
+  // 12/26: R6·R7 모두 상단 고정 (KanoC는 R6만)
+  assert.deepEqual(dayBookings(v, '2026-12-26', 'OES').map(b => b.key), ['R6', 'R7']);
+  assert.deepEqual(dayBookings(v, '2026-12-26', 'KanoC').map(b => b.key), ['R6']);
+  // 12/27: R6만 계속 상단 고정
+  assert.deepEqual(dayBookings(v, '2026-12-27', 'OES').map(b => b.key), ['R6']);
+  assert.deepEqual(dayBookings(v, '2026-12-28', 'OES').map(b => b.key), ['R7']);
+
+  // 목록: 12/27에도 R6(26~27)은 아직 살아 있고, 12/28에는 사라짐
+  assert.deepEqual(myBookings(v, 'OES', '2026-12-27').map(x => x.b.key), ['R6', 'R7', 'R4']);
+  assert.deepEqual(myBookings(v, 'OES', '2026-12-28').map(x => x.b.key), ['R7', 'R4']);
+  assert.deepEqual(myBookings(v, 'OES', '2026-12-29').map(x => x.b.key), ['R4']);
+
+  // 사용자 범위 밖 날짜에는 상단 고정 안 뜸 (Keiz: 12/28~)
+  const vk = buildView(data, { id: 'Keiz', from: '2026-12-28', to: '2027-01-03' });
+  assert.deepEqual(dayBookings(vk, '2026-12-26', 'Keiz'), []);
 });

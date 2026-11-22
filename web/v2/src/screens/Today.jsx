@@ -15,7 +15,7 @@ import { Timeline } from '../ui/Timeline.jsx';
 import { Icon } from '../ui/Icon.jsx';
 import { MODE_ICON } from '../ui/icons.js';
 import { Hm } from '../ui/Hm.jsx';
-import { TodoBlock, BookingBlock, BookingButtons, ShowButton } from '../ui/Extras.jsx';
+import { TodoBlock, BookingBlock, BookingButtons, ShowButton, DayPassBar } from '../ui/Extras.jsx';
 import { bookingsFor, canShow } from '../lib/extras.js';
 
 const dayDiff = (a, b) => Math.round((Date.parse(b + 'T00:00:00Z') - Date.parse(a + 'T00:00:00Z')) / 864e5);
@@ -190,6 +190,7 @@ export function Today() {
     <main class="screen today">
       <TopBar><Title v={v} ph={ph} now={now} /></TopBar>
       <SyncLine />
+      <DayPassBar v={v} date={now.date} />
       <div class="scroll">
         <Board />
         <div class="today-in">

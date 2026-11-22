@@ -3,7 +3,7 @@
 import { useState } from 'preact/hooks';
 import { view, user, go, pick, showToast, bookingOpen, showPlace } from '../data/store.js';
 import { toggleTodo, canRecord } from '../data/records.js';
-import { myTodos, ddayText, myBookings, bookingPoint, phoneOf, lodgings, canShow } from '../lib/extras.js';
+import { myTodos, ddayText, myBookings, bookingPoint, bookingDateText, dayBookings, phoneOf, lodgings, canShow } from '../lib/extras.js';
 import { pname, vk } from '../lib/trip.js';
 import { dayLabel, fmtHM } from '../lib/time.js';
 import { navUrl, photoUrl } from '../lib/geo.js';
@@ -70,6 +70,63 @@ export function TodoBlock({ v, today }) {
 
 /* ── 예약·티켓 ── */
 
+/** 그날 내내 위에 고정되는 패스·종일 티켓 줄 (오늘·일정 화면 머리줄 바로 아래) */
+export function DayPassBar({ v, date }) {
+  const u = user.value;
+  const list = dayBookings(v, date, u ? u.id : '');
+  if (!list.length) return null;
+  const open = b => { bookingOpen.value = b.key; };
+  const label = b => b.title || b.no || '티켓·패스';
+  const hasMore = b => !!(b.no || (b.images && b.images.length) || b.memo);
+  if (list.length === 1) {
+    const b = list[0];
+    const linkOnly = !!(b.link && !hasMore(b));
+    return (
+      <div class="daypass" role="region" aria-label="오늘 쓰는 패스·티켓">
+        {linkOnly ? (
+          <a class="daypass-main" href={b.link} target="_blank" rel="noopener">
+            <Icon name="ticket" />
+            <span class="daypass-t"><b>{label(b)}</b></span>
+            <span class="daypass-go">열기<Icon name="out" /></span>
+          </a>
+        ) : (
+          <>
+            <button type="button" class="daypass-main" onClick={() => open(b)}>
+              <Icon name="ticket" />
+              <span class="daypass-t">
+                <b>{label(b)}</b>
+                {b.no && <span class="num">{b.no}</span>}
+              </span>
+              {!b.link && <Icon name="right" class="daypass-end" />}
+            </button>
+            {b.link && (
+              <a class="daypass-btn" href={b.link} target="_blank" rel="noopener" aria-label={label(b) + ' 링크 열기'}>
+                <Icon name="out" />열기
+              </a>
+            )}
+          </>
+        )}
+      </div>
+    );
+  }
+  return (
+    <div class="daypass is-many" role="region" aria-label="오늘 쓰는 패스·티켓">
+      {list.map(b => {
+        const linkOnly = !!(b.link && !hasMore(b));
+        return linkOnly ? (
+          <a key={b.key} class="daypass-chip" href={b.link} target="_blank" rel="noopener">
+            <Icon name="ticket" /><span>{label(b)}</span><Icon name="out" class="daypass-out" />
+          </a>
+        ) : (
+          <button key={b.key} type="button" class="daypass-chip" onClick={() => open(b)}>
+            <Icon name="ticket" /><span>{label(b)}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 /** 오늘 화면: 앞으로 쓸 예약·티켓 목록 */
 export function BookingBlock({ v, today }) {
   const u = user.value;
@@ -85,7 +142,7 @@ export function BookingBlock({ v, today }) {
               <Icon name="ticket" />
               <span class="book-t">
                 <b>{b.title || b.no || '예약'}</b>
-                <span>{b.date ? dayLabel(b.date) : '날짜 없음'}{p ? ' · ' + pname(v, p) : b.place ? ' · ' + b.place : ''}</span>
+                <span>{bookingDateText(b) || '날짜 없음'}{p ? ' · ' + pname(v, p) : b.place ? ' · ' + b.place : ''}</span>
               </span>
               <Icon name="right" />
             </button>
@@ -112,6 +169,7 @@ export function BookingSheet() {
   const b = key && v ? v.bookings.find(x => x.key === key) : null;
   if (!b) return null;
   const p = bookingPoint(v, b);
+  const dt = bookingDateText(b);
   const close = () => { bookingOpen.value = null; };
   const copy = async () => {
     try { await navigator.clipboard.writeText(b.no); showToast('예약번호 복사함'); }
@@ -120,10 +178,10 @@ export function BookingSheet() {
   return (
     <Sheet title={b.title || '예약'} onClose={close}>
       <div class="bsheet">
-        {(b.date || p || b.place) && (
+        {(dt || p || b.place) && (
           <p class="bsheet-m">
-            {b.date ? dayLabel(b.date) : ''}
-            {p ? ' · ' + (p.arrive ? fmtHM(p.arrive) + ' ' : '') + pname(v, p) : b.place ? ' · ' + b.place : ''}
+            {dt}
+            {p ? (dt ? ' · ' : '') + (p.arrive ? fmtHM(p.arrive) + ' ' : '') + pname(v, p) : b.place ? (dt ? ' · ' : '') + b.place : ''}
           </p>
         )}
         {b.no && (
@@ -134,7 +192,7 @@ export function BookingSheet() {
           </div>
         )}
         {/* 티켓 그림은 줄이지 않은 원본으로 (QR이 뭉개지지 않게). 한 번 열면 폰에 저장됨 */}
-        {b.images.map((u, i) => <img key={i} class="bsheet-img" src={photoUrl(u)} alt={'티켓 그림 ' + (i + 1)} onError={e => { e.currentTarget.hidden = true; }} />)}
+        {(b.images || []).map((u, i) => <img key={i} class="bsheet-img" src={photoUrl(u)} alt={'티켓 그림 ' + (i + 1)} onError={e => { e.currentTarget.hidden = true; }} />)}
         {b.memo && <p class="stop-memo"><Linkify text={b.memo} /></p>}
         <div class="stop-btns">
           {b.link && <a class="btn btn-plate btn-sm" href={b.link} target="_blank" rel="noopener"><Icon name="out" />예약 열기</a>}

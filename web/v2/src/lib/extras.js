@@ -1,5 +1,6 @@
 // 할 일·예약·보여주기 카드·비상 연락처 (순수 로직)
 import { pname, dayPoints } from './trip.js';
+import { dayLabel } from './time.js';
 
 const dayNum = d => Date.parse(d + 'T00:00:00Z') / 864e5;
 const forUser = (who, userId) => !who || !who.length || who.indexOf(userId) !== -1;
@@ -16,16 +17,50 @@ export function ddayText(date, today) {
   return n > 0 ? 'D-' + n : n === 0 ? '오늘' : -n + '일 지남';
 }
 
+/** 예약의 날짜 목록 ['2026-12-26', ...]. 예전 서버 데이터(date만 있음)도 지원 */
+export function bookingDates(b) {
+  if (!b) return [];
+  if (Array.isArray(b.dates) && b.dates.length) return b.dates;
+  return b.date ? [b.date] : [];
+}
+
+/** 예약 날짜 표시: 하루면 "12/26 (토)", 이어진 기간이면 "12/26 (토) ~ 12/27 (일)", 떨어져 있으면 쉼표 */
+export function bookingDateText(b) {
+  const ds = bookingDates(b);
+  if (!ds.length) return '';
+  if (ds.length === 1) return dayLabel(ds[0]);
+  const cont = ds.every((d, i) => i === 0 || Math.round(dayNum(d) - dayNum(ds[i - 1])) === 1);
+  return cont ? dayLabel(ds[0]) + ' ~ ' + dayLabel(ds[ds.length - 1]) : ds.map(dayLabel).join(', ');
+}
+
 /** 예약이 붙는 일정 점: 날짜 + 순서, 순서가 없으면 그날 일정에서 장소 이름이 들어 있는 첫 곳 */
-export function bookingPoint(v, b) {
-  if (!b.date) return null;
-  return dayPoints(v, b.date).find(p => (b.order != null ? p.order === b.order
-    : !!b.place && (p.place.indexOf(b.place) !== -1 || pname(v, p).indexOf(b.place) !== -1))) || null;
+export function bookingPoint(v, b, date) {
+  const ds = bookingDates(b);
+  if (!ds.length || (b.order == null && !b.place)) return null;
+  const list = date ? (ds.indexOf(date) !== -1 ? [date] : []) : ds;
+  for (const d of list) {
+    const p = dayPoints(v, d).find(pt => (b.order != null ? pt.order === b.order
+      : !!b.place && (pt.place.indexOf(b.place) !== -1 || pname(v, pt).indexOf(b.place) !== -1)));
+    if (p) return p;
+  }
+  return null;
 }
 
 /** 이 일정 점에 붙는 예약 */
 export function bookingsFor(v, p, userId) {
-  return (v.bookings || []).filter(b => b.date === p.date && forUser(b.who, userId) && bookingPoint(v, b) === p);
+  return (v.bookings || []).filter(b =>
+    forUser(b.who, userId) && bookingDates(b).indexOf(p.date) !== -1 && bookingPoint(v, b, p.date) === p
+  );
+}
+
+/** 그날 내내 위에 고정해 둘 패스·종일 티켓 (날짜가 그날을 포함하고, 특정 일정 점에 붙지 않는 것) */
+export function dayBookings(v, date, userId) {
+  if (!date) return [];
+  const u = v.user;
+  if (u && (date < u.from || date > u.to)) return [];
+  return (v.bookings || []).filter(b =>
+    forUser(b.who, userId) && bookingDates(b).indexOf(date) !== -1 && !bookingPoint(v, b, date)
+  );
 }
 
 /**
@@ -35,12 +70,19 @@ export function bookingsFor(v, p, userId) {
 export function myBookings(v, userId, from) {
   const u = v.user;
   return (v.bookings || [])
-    .filter(b => forUser(b.who, userId) && (!b.date || !u || (b.date >= u.from && b.date <= u.to)) && (!from || !b.date || b.date >= from))
+    .filter(b => {
+      if (!forUser(b.who, userId)) return false;
+      const ds = bookingDates(b);
+      if (!ds.length) return true;
+      if (u && !ds.some(d => d >= u.from && d <= u.to)) return false;
+      if (from && !ds.some(d => d >= from)) return false;
+      return true;
+    })
     .map(b => ({ b, p: bookingPoint(v, b) }))
     .sort((x, y) => {
-      const a = x.b.date || '9999', c = y.b.date || '9999';
+      const a = bookingDates(x.b)[0] || '9999', c = bookingDates(y.b)[0] || '9999';
       if (a !== c) return a < c ? -1 : 1;
-      return (x.p ? x.p.order : 999) - (y.p ? y.p.order : 999);
+      return (x.p ? x.p.order : 0) - (y.p ? y.p.order : 0);
     });
 }
 

@@ -10,6 +10,7 @@ import { TopBar, SyncLine } from '../ui/Shell.jsx';
 import { Timeline } from '../ui/Timeline.jsx';
 import { MapView } from '../ui/MapView.jsx';
 import { Icon } from '../ui/Icon.jsx';
+import { DayPassBar } from '../ui/Extras.jsx';
 import { weatherInfo } from '../ui/icons.js';
 
 /** 머리줄 날짜 띠 */
@@ -141,6 +142,7 @@ export function Plan() {
     <main class={'screen plan is-' + mode}>
       <TopBar><DayStrip v={v} cur={d} today={now.date} /></TopBar>
       <SyncLine />
+      <DayPassBar v={v} date={d} />
       <div class="plan-split">
         <div class="scroll plan-list" key={d} onScroll={onListScroll}>
           <div class="plan-in">

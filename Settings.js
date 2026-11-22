@@ -48,43 +48,63 @@ function ensureSettingsExtra_(ss) {
   }
 }
 
-// 주유패스 날짜 칸 → ['2026-12-26', '2026-12-27']
+// 날짜·기간 칸 → ['2026-12-26', '2026-12-27'] (주유패스 날짜·예약 시트 공통)
 // 쓸 수 있는 형식 (쉼표·줄바꿈으로 여러 개):
 //   2026-12-26               하루
 //   2026-12-26 2일           시작일부터 연속 2일 (2일권)
-//   2026-12-26~12-27         기간 (끝 날짜는 월-일만 써도 됨, 해 넘김도 됨)
+//   2026-12-26~12-27         기간 (끝은 월-일 또는 일만 써도 됨: 2026-12-26~27, 해 넘김도 됨)
+//   2026-12-26, 12-27        나열 (앞 날짜의 연·월 이어받음: 2026-12-26, 27)
 function expandPassDays_(text) {
   const out = [];
   const ymd = s => {
-    const m = String(s || '').match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/);
-    return m ? new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))) : null;
+    const m = String(s || '').match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})(?:\s*일)?/);
+    if (!m) return null;
+    return { d: new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))), rest: String(s || '').slice(m.index + m[0].length) };
+  };
+  // 앞 날짜(base)가 있을 때 "12-27", "27", "27일"을 날짜로
+  const rel = (s, base) => {
+    if (!base) return null;
+    const t = String(s || '').trim();
+    const md = t.match(/^(\d{1,2})\D+(\d{1,2})(?:\s*일)?/);
+    if (md) {
+      const d = new Date(Date.UTC(base.getUTCFullYear(), Number(md[1]) - 1, Number(md[2])));
+      if (d < base) d.setUTCFullYear(d.getUTCFullYear() + 1);   // 12-31~1-1
+      return { d: d, rest: t.slice(md[0].length) };
+    }
+    const dOnly = t.match(/^(\d{1,2})(?:\s*일)?(?=\s|$)/);
+    if (dOnly) {
+      const d = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), Number(dOnly[1])));
+      if (d < base) d.setUTCMonth(d.getUTCMonth() + 1);         // 12-31~1
+      return { d: d, rest: t.slice(dOnly[0].length) };
+    }
+    return null;
   };
   const iso = t => t.getUTCFullYear() + '-' + pad2_(t.getUTCMonth() + 1) + '-' + pad2_(t.getUTCDate());
+  let last = null;
   String(text || '').split(/[,，\n]+/).forEach(tok => {
     tok = tok.trim();
-    const start = ymd(tok);
-    if (!start) return;
-    let n = 1;
+    if (!tok) return;
     const parts = tok.split(/\s*[~〜–]\s*/);
+    const parsed = ymd(parts[0]) || rel(parts[0], last);
+    if (!parsed) return;
+    const start = parsed.d;
+    let n = 1;
     if (parts.length === 2) {
-      let end = ymd(parts[1]);
-      if (!end) {
-        const md = parts[1].match(/(\d{1,2})\D+(\d{1,2})/);
-        if (md) end = new Date(Date.UTC(start.getUTCFullYear(), Number(md[1]) - 1, Number(md[2])));
-      }
-      if (end && end < start) end.setUTCFullYear(end.getUTCFullYear() + 1);   // 12-31~1-1
-      if (end) n = Math.round((end - start) / 86400000) + 1;
+      const endP = ymd(parts[1]) || rel(parts[1], start);
+      if (endP) n = Math.round((endP.d - start) / 86400000) + 1;
     } else {
-      const days = tok.match(/(\d+)\s*일권?\s*$/);
+      const days = parsed.rest.match(/(\d+)\s*일권?\s*$/);
       if (days) n = Number(days[1]);
     }
-    n = Math.min(Math.max(n, 1), 14);
+    n = Math.min(Math.max(n, 1), 31);
     for (let i = 0; i < n; i++) {
-      const day = iso(new Date(start.getTime() + i * 86400000));
+      const t = new Date(start.getTime() + i * 86400000);
+      last = t;
+      const day = iso(t);
       if (out.indexOf(day) === -1) out.push(day);
     }
   });
-  return out;
+  return out.sort();
 }
 
 let SETTINGS_MEMO_ = null;

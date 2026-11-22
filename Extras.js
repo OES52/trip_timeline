@@ -17,7 +17,9 @@ const K = { DATE: 1, ORDER: 2, PLACE: 3, TITLE: 4, NO: 5, LINK: 6, IMAGE: 7, MEM
 function ensureExtraSheets_(ss) {
   const made = [];
   if (!ss.getSheetByName(CONFIG.TODO_SHEET)) { buildTodoSheet_(ss.insertSheet(CONFIG.TODO_SHEET)); made.push(CONFIG.TODO_SHEET); }
-  if (!ss.getSheetByName(CONFIG.BOOK_SHEET)) { buildBookSheet_(ss.insertSheet(CONFIG.BOOK_SHEET)); made.push(CONFIG.BOOK_SHEET); }
+  const book = ss.getSheetByName(CONFIG.BOOK_SHEET);
+  if (!book) { buildBookSheet_(ss.insertSheet(CONFIG.BOOK_SHEET)); made.push(CONFIG.BOOK_SHEET); }
+  else applyBookNotes_(book);
   return made;
 }
 
@@ -48,20 +50,24 @@ function buildTodoSheet_(sh) {
   ]);
 }
 
+function applyBookNotes_(sh) {
+  sh.getRange(1, K.DATE).setNote('이날 일정에 붙음 (yyyy-mm-dd)\n여러 날 쓰는 패스·티켓은 기간·나열 가능:\n2026-12-26~12-27 / 2026-12-26~27 / 2026-12-26 2일 / 2026-12-26, 12-27');
+  sh.getRange(1, K.ORDER).setNote('일정 시트의 순서 번호. 비우면 "장소" 이름으로 그날 일정에서 찾음\n날짜만 넣고 순서·장소를 비우면 그날(또는 기간 동안) 화면 위에 쭉 고정됨 (주유패스 등)\n날짜·순서·장소가 다 비면 웹앱 "예약·티켓" 목록에만 나옴 (보험 등)');
+  sh.getRange(1, K.PLACE).setNote('순서를 모를 때 일정의 장소 이름 (일부만 써도 됨)');
+  sh.getRange(1, K.TITLE).setNote('예: 라피트 β 12:05 · 2호차 5·6석 / 오사카 주유패스 2일권');
+  sh.getRange(1, K.NO).setNote('예약번호. 웹앱에서 크게 보여주고 복사 버튼');
+  sh.getRange(1, K.LINK).setNote('예약 확인 페이지·전자패스 주소');
+  sh.getRange(1, K.IMAGE).setNote('QR·티켓 그림 주소 (여러 개는 쉼표). 구글 드라이브는 "링크가 있는 모든 사용자 보기"로 공유한 링크\n웹앱에서 한 번 열거나 "지도·사진 미리 받기"를 하면 폰에 저장돼 인터넷 없이도 보임');
+  sh.getRange(1, K.WHO).setNote('비우면 모두. 특정 사람만이면 사용자 이름을 쉼표로');
+}
+
 function buildBookSheet_(sh) {
   headerRow_(sh, BOOK_HEADERS);
   const rows = sh.getMaxRows() - 1;
   sh.getRange(2, K.DATE, rows, 1).setNumberFormat('@');
   sh.getRange(2, K.NO, rows, 1).setNumberFormat('@');
   [100, 50, 160, 220, 140, 200, 220, 220, 100].forEach((w, i) => sh.setColumnWidth(i + 1, w));
-  sh.getRange(1, K.DATE).setNote('이날 일정에 붙음 (yyyy-mm-dd)');
-  sh.getRange(1, K.ORDER).setNote('일정 시트의 순서 번호. 비우면 "장소" 이름으로 그날 일정에서 찾음\n날짜·순서·장소가 다 비면 웹앱 "예약·티켓" 목록에만 나옴 (보험 등)');
-  sh.getRange(1, K.PLACE).setNote('순서를 모를 때 일정의 장소 이름 (일부만 써도 됨)');
-  sh.getRange(1, K.TITLE).setNote('예: 라피트 β 12:05 · 2호차 5·6석');
-  sh.getRange(1, K.NO).setNote('예약번호. 웹앱에서 크게 보여주고 복사 버튼');
-  sh.getRange(1, K.LINK).setNote('예약 확인 페이지 주소');
-  sh.getRange(1, K.IMAGE).setNote('QR·티켓 그림 주소 (여러 개는 쉼표). 구글 드라이브는 "링크가 있는 모든 사용자 보기"로 공유한 링크\n웹앱에서 한 번 열거나 "지도·사진 미리 받기"를 하면 폰에 저장돼 인터넷 없이도 보임');
-  sh.getRange(1, K.WHO).setNote('비우면 모두. 특정 사람만이면 사용자 이름을 쉼표로');
+  applyBookNotes_(sh);
 }
 
 const whoList_ = s => String(s || '').split(/[,，\s]+/).map(x => x.trim()).filter(Boolean);
@@ -112,7 +118,16 @@ function setTodo(key, done, user, pin) {
   return readTodos_().map(noRow_);
 }
 
-// 예약 목록. 순서가 비면 웹앱이 "장소" 이름으로 그날 일정에서 찾음
+// 예약 시트 날짜 칸 → ['2026-12-26', '2026-12-27'] (비어 있으면 [])
+//  하루(Date 객체 포함)뿐 아니라 2026-12-26~12-27, 2026-12-26~27, 2026-12-26 2일, 쉼표 나열도 됨
+function parseBookingDates_(value, display, tz) {
+  const days = expandPassDays_(display);
+  if (days.length) return days;
+  const one = parseDateStr_(value, display, tz);
+  return one ? [one] : [];
+}
+
+// 예약 목록. 순서·장소가 비고 날짜만 있으면 그날(또는 기간 동안) 화면 위에 쭉 고정됨
 function readBookings_() {
   const ss = SpreadsheetApp.getActive();
   const sh = ss.getSheetByName(CONFIG.BOOK_SHEET);
@@ -123,15 +138,18 @@ function readBookings_() {
   const out = [];
   vals.forEach((v, i) => {
     const title = String(v[K.TITLE - 1]).trim(), no = String(disp[i][K.NO - 1]).trim();
+    const link = String(v[K.LINK - 1]).trim();
     const images = parsePhotos_(v[K.IMAGE - 1]);
-    if (!title && !no && !images.length) return;
+    if (!title && !no && !link && !images.length) return;
     const order = Number(v[K.ORDER - 1]);
+    const dates = parseBookingDates_(v[K.DATE - 1], disp[i][K.DATE - 1], tz);
     out.push({
       key: 'R' + (i + 2),
-      date: parseDateStr_(v[K.DATE - 1], disp[i][K.DATE - 1], tz) || '',
+      date: dates[0] || '',
+      dates: dates,
       order: order > 0 ? order : null,
       place: String(v[K.PLACE - 1]).trim(),
-      title: title, no: no, link: String(v[K.LINK - 1]).trim(), images: images,
+      title: title, no: no, link: link, images: images,
       memo: String(v[K.MEMO - 1]).trim(), who: whoList_(v[K.WHO - 1]),
     });
   });

@@ -19,6 +19,61 @@
 .todo-more { margin: var(--s1) var(--s2) 0; }
 .todo-none { padding: 0 var(--s4) var(--s2); font-size: var(--fs-sub); color: var(--ink-2); }
 
+/* ── 그날 내내 위에 고정되는 패스·종일 티켓 줄 ── */
+.daypass {
+  flex: none; display: flex; align-items: center; gap: var(--s2);
+  min-height: var(--tap); padding: 0 var(--s2) 0 var(--s4);
+  background: var(--ok-bg); border-bottom: 1px solid var(--hair);
+}
+.daypass-main {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--s2);
+  min-height: var(--tap); padding: var(--s1) var(--s1) var(--s1) 0;
+  color: var(--ink); font-size: var(--fs-sub);
+}
+.daypass-main:hover { opacity: .82; }
+.daypass-main > .ic:first-child { width: 20px; height: 20px; color: var(--ok); }
+.daypass-t { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: var(--s2); overflow: hidden; }
+.daypass-t b { overflow: hidden; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.daypass-t span { flex: none; font-size: var(--fs-meta); color: var(--ink-2); }
+.daypass-go {
+  flex: none; display: inline-flex; align-items: center; gap: 4px;
+  padding: 0 var(--s2); font-size: var(--fs-sub); font-weight: 700; color: var(--ok);
+}
+.daypass-go .ic { width: 16px; height: 16px; }
+.daypass-end { width: 16px; height: 16px; margin-right: var(--s1); color: var(--ink-2); }
+.daypass-btn {
+  flex: none; display: inline-flex; align-items: center; gap: 4px;
+  min-height: 36px; padding: 0 var(--s3);
+  font-size: var(--fs-sub); font-weight: 700; white-space: nowrap;
+  color: var(--ink); background: var(--plate); border-radius: var(--r-plate);
+  box-shadow: inset 0 0 0 1.5px var(--hair-2);
+}
+.daypass-btn:hover { background: var(--plate-2); }
+.daypass-btn .ic { width: 15px; height: 15px; color: var(--ok); }
+.daypass.is-many {
+  padding: 6px var(--s4); overflow-x: auto; scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 20px), transparent);
+          mask-image: linear-gradient(90deg, #000 calc(100% - 20px), transparent);
+}
+.daypass.is-many::-webkit-scrollbar { display: none; }
+.daypass-chip {
+  flex: none; display: inline-flex; align-items: center; gap: 6px;
+  min-height: 36px; padding: 0 var(--s3);
+  font-size: var(--fs-sub); font-weight: 700; white-space: nowrap;
+  color: var(--ink); background: var(--plate); border-radius: var(--r-round);
+  box-shadow: inset 0 0 0 1.5px var(--hair-2);
+}
+.daypass-chip:hover { background: var(--plate-2); }
+.daypass-chip > .ic:first-child { width: 16px; height: 16px; color: var(--ok); }
+.daypass-chip .daypass-out { width: 14px; height: 14px; color: var(--ink-2); }
+@media (pointer: coarse), (max-width: 639px) {
+  .daypass-btn, .daypass-chip { min-height: 40px; }
+}
+@media (min-width: 1024px) {
+  .daypass { padding-inline: var(--s5) var(--s3); }
+  .daypass.is-many { padding-inline: var(--s5); }
+}
+
 /* ── 예약·티켓 목록 ── */
 .books { background: var(--plate); border-block: 1px solid var(--hair); }
 .books li + li { border-top: 1px solid var(--hair); }
