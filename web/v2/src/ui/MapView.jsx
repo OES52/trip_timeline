@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { view, tn, picked, pick, setPlanView, go } from '../data/store.js';
 import { local } from '../data/cache.js';
 import { dayLines, pinGroups, pinState, boundsOf, fitCoords, assignLanes, innerLines, MODE_HEX } from '../lib/route.js';
-import { stopStates, dayPoints, pname, placeOf, vk, dayCity, passThrough, passText } from '../lib/trip.js';
+import { stopStates, dayPoints, pname, placeOf, vk, dayCity, exitsElsewhere, passText } from '../lib/trip.js';
 import { navUrl } from '../lib/geo.js';
 import { fmtHM } from '../lib/time.js';
 import { Icon } from './Icon.jsx';
@@ -292,7 +292,7 @@ export function MapView({ date, active }) {
     if (map.getSource('trip-inner')) map.getSource('trip-inner').setData({ type: 'FeatureCollection', features: inner });
     // 관통하는 장소의 나오는 곳: 같은 번호의 작은 네모 (여기서 다음 장소로 떠남). 누르면 그 장소를 고름
     S.ends.forEach(x => x.marker.remove());
-    S.ends = all ? [] : dayPoints(v, date).filter(passThrough).map(p => {
+    S.ends = all ? [] : dayPoints(v, date).filter(exitsElsewhere).map(p => {
       const el = document.createElement('button');
       el.type = 'button';
       el.className = 'pinbox is-end' + (states.get(p.order) === 'past' ? ' is-past' : '');

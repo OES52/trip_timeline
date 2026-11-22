@@ -54,15 +54,43 @@ function parseCoord_(s) {
   return { lat: lat, lng: lng };
 }
 
+// 경유 좌표 칸: 줄바꿈이나 ;로 나눈 지점들 (적힌 순서대로). 좌표는 { c }, 구글 지도 링크는 { link } (경로 계산이 좌표로 바꿔 씀), 그 밖은 { bad }
+function parseVia_(s) {
+  const out = [];
+  String(s || '').split(/\s*(?:\r?\n|;)\s*/).forEach(t => {
+    t = t.trim();
+    if (!t) return;
+    const c = parseCoord_(t);
+    if (c) out.push({ c: c });
+    else if (/^https?:\/\//i.test(t)) out.push({ link: t });
+    else out.push({ bad: t });
+  });
+  return out;
+}
+
 // 다음 장소로 떠나는 지점: 종착점이 있으면 종착점, 없으면 시작점 (원래 행은 안 바꿈)
 function departFrom_(r) {
   if (r.endLat == null || r.endLng == null) return r;
   return Object.assign({}, r, { lat: r.endLat, lng: r.endLng });
 }
 
+// 일정 시트 1행 열 이름이 코드(PLAN_HEADERS)와 같아야 열 번호로 읽고 쓸 수 있음
+//  새 열(경유 좌표 등)이 생긴 코드를 올린 뒤 "시트 구조 업데이트"를 아직 안 돌렸으면 예산 번호 등이 한 칸씩 어긋나므로 멈춤
+let PLAN_LAYOUT_OK_ = null;
+function requirePlanLayout_(plan) {
+  if (PLAN_LAYOUT_OK_ === plan.getSheetId()) return;
+  if (!planHeaderIsCurrent_(plan)) {
+    throw new Error('일정 시트 열 구성이 코드와 다름 (새 열: ' +
+      PLAN_HEADERS.filter((name, i) => hn_(plan.getRange(1, i + 1).getDisplayValue()) !== hn_(name)).slice(0, 3).join(', ') +
+      ' …). 시트 메뉴 "시트 구조 업데이트 (기존 시트용)"를 먼저 실행');
+  }
+  PLAN_LAYOUT_OK_ = plan.getSheetId();
+}
+
 /* ───────────────────────── 읽기 공통 ───────────────────────── */
 
 function readPlanRows_(plan, ssTz) {
+  requirePlanLayout_(plan);
   const lastRow = lastDataRow_(plan);
   if (lastRow < 2) return [];
   const range = plan.getRange(2, 1, lastRow - 1, PLAN_HEADERS.length);
@@ -76,6 +104,7 @@ function readPlanRows_(plan, ssTz) {
     if (!date || !place) return;
     const coord = parseCoord_(disp[i][P.COORD - 1]);
     const endCoord = parseCoord_(disp[i][P.END_COORD - 1]);
+    const viaTokens = parseVia_(disp[i][P.VIA - 1]);
     const amount = v[P.AMOUNT - 1];
     rows.push({
       sheetRow: i + 2,
@@ -89,6 +118,8 @@ function readPlanRows_(plan, ssTz) {
       endLink: String(v[P.END_LINK - 1]).trim(),
       endLat: endCoord ? endCoord.lat : null,
       endLng: endCoord ? endCoord.lng : null,
+      viaTokens: viaTokens,                                   // 경유 칸 원래 내용 (링크 포함)
+      via: viaTokens.filter(t => t.c).map(t => t.c),          // 좌표로 된 경유점만 [{ lat, lng }]
       stay: Number(v[P.STAY - 1]) || 0,
       fixed: parseHHmm_(disp[i][P.FIXED - 1]),
       mode: String(v[P.MODE - 1]).trim(),
