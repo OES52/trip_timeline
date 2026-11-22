@@ -17,6 +17,10 @@
 .nextup-head { font-weight: 400; color: var(--ink-2); }
 .nextup.has-rec { flex-direction: column; align-items: stretch; padding-right: var(--s4); }
 .nextup.has-rec .nextup-act .btn { flex: 1; }
+@media (max-width: 639px) {
+  .nextup { flex-direction: column; align-items: stretch; padding-right: var(--s4); }
+  .nextup-act .btn { flex: 1; }
+}
 
 .block { margin-top: var(--s5); }
 .block-h { padding: 0 var(--s4) var(--s2); font-size: var(--fs-sub); font-weight: 700; color: var(--ink-2); }
@@ -44,7 +48,11 @@
 
 /* ── 일정 ── */
 /* 머리줄 날짜 띠 */
-.strip { display: flex; gap: 2px; margin-left: calc(var(--s2) * -1); overflow-x: auto; scrollbar-width: none; }
+.strip {
+  display: flex; gap: 2px; margin-left: calc(var(--s2) * -1); padding-right: var(--s4); overflow-x: auto; scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 20px), transparent);
+          mask-image: linear-gradient(90deg, #000 calc(100% - 20px), transparent);
+}
 .strip::-webkit-scrollbar { display: none; }
 .strip-d {
   position: relative; flex: 1 0 44px; max-width: 72px; height: 48px;
@@ -71,7 +79,7 @@
 .sign-band { display: flex; height: 10px; }
 .sign-band i { flex: 1; }
 .sign-nav { display: flex; justify-content: space-between; }
-.sign-nav button { display: inline-flex; align-items: center; gap: 4px; min-height: 44px; padding: 0 var(--s3); font-size: var(--fs-sub); color: var(--ink-2); }
+.sign-nav button { display: inline-flex; align-items: center; gap: 4px; min-height: var(--tap); padding: 0 var(--s3); font-size: var(--fs-sub); color: var(--ink-2); }
 .sign-nav button:hover { color: var(--ink); }
 .sign-nav .ic { width: 14px; height: 14px; }
 

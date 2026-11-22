@@ -37,8 +37,11 @@
 .brow .kind.after { color: var(--led-b); }
 .dest { position: relative; overflow: hidden; white-space: nowrap; }
 .dest .mq { display: inline-block; }
-.dest .mq.scroll { padding-left: 100%; animation: mq var(--dur, 8s) linear infinite; }
-@keyframes mq { to { transform: translateX(-100%); } }
+.dest .mq.scroll { animation: mq var(--dur, 6s) linear infinite alternate; }
+@keyframes mq {
+  0%, 15% { transform: translateX(0); }
+  85%, 100% { transform: translateX(calc(-1 * var(--over, 0px))); }
+}
 .brow .rem { font-size: 14px; color: var(--led-g); text-align: right; white-space: nowrap; text-shadow: none; }
 /* 익일: 시각 칸 아래 작은 글자 (칸 너비는 그대로) */
 .board .nd { display: block; margin: 2px 0 0; padding: 0; font-family: var(--font-led); font-size: 11px; font-weight: 400; line-height: 1; color: var(--led-b); box-shadow: none; text-shadow: none; }

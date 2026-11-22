@@ -23,20 +23,36 @@ export function Flap({ text, stagger }) {
   );
 }
 
-/** 칸보다 긴 이름은 전광판처럼 흘러감 */
+/** 칸보다 긴 이름은 전광판처럼 흘러감 (창 크기·웹폰트 로드 뒤에도 다시 잼) */
 function Dest({ text, stagger }) {
   const box = useRef(null);
-  const [run, setRun] = useState(0);
+  const [mq, setMq] = useState(null);
   useEffect(() => {
     const el = box.current;
     if (!el) return;
-    const inner = el.firstElementChild;
-    const over = inner.scrollWidth > el.clientWidth + 2;
-    setRun(over ? Math.max(6, inner.scrollWidth / 40) : 0);
+    const measure = () => {
+      const inner = el.firstElementChild;
+      const flap = inner && inner.firstElementChild;
+      if (!flap) return;
+      const diff = Math.ceil(flap.scrollWidth - el.clientWidth);
+      if (diff > 2) setMq({ over: diff, dur: Math.max(5, (diff + 60) / 36) });
+      else setMq(null);
+    };
+    measure();
+    let ro = null;
+    if (typeof ResizeObserver === 'function') {
+      ro = new ResizeObserver(measure);
+      ro.observe(el);
+    }
+    let alive = true;
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(() => { if (alive) measure(); });
+    }
+    return () => { alive = false; if (ro) ro.disconnect(); };
   }, [text]);
   return (
     <span class="dest" ref={box}>
-      <span class={'mq' + (run ? ' scroll' : '')} style={run ? { '--dur': run + 's' } : undefined}><Flap text={text} stagger={stagger} /></span>
+      <span class={'mq' + (mq ? ' scroll' : '')} style={mq ? { '--dur': mq.dur + 's', '--over': mq.over + 'px' } : undefined}><Flap text={text} stagger={stagger} /></span>
     </span>
   );
 }

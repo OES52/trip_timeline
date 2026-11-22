@@ -61,6 +61,7 @@
   --pass-line: rgba(42, 38, 32, .24);
   --pass-cover: #1F3556;        /* 여권 표지 남색 */
   --pass-gold: #E3B54A;
+  --gold-ink: #8A6212;          /* 밝은 판 위 금박 안내 글자 (5.3:1) */
 
   /* ── 글자 ── */
   --font-ui: "LINE Seed KR", "Pretendard JP Variable", system-ui, -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
@@ -127,6 +128,7 @@
     --paper-ink: #EFE6D2;
     --paper-ink-2: #B5AA95;
     --paper-line: rgba(239, 230, 210, .24);
+    --gold-ink: #E3B54A;
     color-scheme: dark;
   }
 }

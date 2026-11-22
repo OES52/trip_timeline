@@ -51,7 +51,7 @@
 
 /* ── 보여주기 카드: 화면 가득, 큰 글자 (택시 기사·역무원에게 그대로) ── */
 .sheet-wrap.is-full { align-items: stretch; }
-.sheet-wrap.is-full .sheet { max-width: none; max-height: none; height: 100dvh; border-radius: 0; }
+.sheet-wrap.is-full .sheet { max-width: none; max-height: none; height: 100dvh; padding-top: var(--safe-t); border-radius: 0; }
 .show { display: grid; align-content: center; gap: var(--s4); min-height: calc(100dvh - 120px); padding: var(--s4) 0 var(--s6); text-align: center; }
 .show-lead { font-size: var(--fs-name); color: var(--ink-2); }
 .show-ja { font-size: clamp(32px, 9vw, 56px); font-weight: 700; line-height: 1.25; word-break: break-all; }

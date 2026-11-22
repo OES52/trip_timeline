@@ -158,8 +158,8 @@ function ReceiptSheet({ v, date, onClose }) {
     <Sheet title={dayLabel(date) + ' 영수증'} onClose={onClose}>
       {canRecord() && <p class="sheet-lead">줄을 누르면 그 장소 지출을 적거나 고침</p>}
       <Receipt r={r} />
-      <div class="stop-btns">
-        <button type="button" class="btn btn-exit btn-sm" disabled={busy} onClick={save}><Icon name="down" />{busy ? '만드는 중' : '그림으로 저장'}</button>
+      <div class="rc-foot">
+        <button type="button" class="btn btn-exit btn-block" disabled={busy} onClick={save}><Icon name="down" />{busy ? '만드는 중' : '그림으로 저장'}</button>
       </div>
     </Sheet>
   );
@@ -169,7 +169,7 @@ function Money({ v }) {
   const m = moneySummary(v);
   const [open, setOpen] = useState(null);
   const total = m.spent + m.fare;
-  const max = Math.max(1, ...m.days.map(d => Math.max(d.spent + d.fare, d.plan)));
+  const max = Math.max(1, ...m.days.map(d => Math.max(d.spent + d.fare, d.plan))) * 1.08;
   const today = tn.value.date;
   return (
     <div class="rec-in">

@@ -99,19 +99,19 @@ function Stop({ v, p, state, first, last, cIn, cOut, open, onToggle, compact, on
         </span>
         <Icon name="down" class="stop-caret" />
       </button>
-      {state === 'next' && canNav && !compact && (
+      {!open && state === 'next' && canNav && !compact && (
         <div class="stop-act">
           <a class="btn btn-exit btn-sm" href={navUrl(p.lat, p.lng)} target="_blank" rel="noopener"><Icon name="nav" />길찾기</a>
         </div>
       )}
-      {state === 'now' && canRec && !arr && (
+      {!open && state === 'now' && canRec && !arr && (
         <div class="stop-act">
           <button type="button" class="btn btn-plate btn-sm" onClick={() => recordArrivalNow(p)}>도착 기록</button>
         </div>
       )}
       {open && (
         <div class="stop-more" id={'more-' + key}>
-          {/* 자주 누르는 것부터: 기록(도착·도장·지출), 그다음 길찾기 */}
+          {/* 자주 누르는 것부터: 기록(도착·도장·지출), 길찾기 → 정보(사진·영업·메모) → 일정 조정 */}
           {canRec && (
             <div class="rec" role="group" aria-label="기록">
               {arr
@@ -125,17 +125,8 @@ function Stop({ v, p, state, first, last, cIn, cOut, open, onToggle, compact, on
               </button>
             </div>
           )}
-          {canEdit() && state !== 'past' && (
-            <div class="adj" role="group" aria-label="일정 조정">
-              <span class="adj-h">일정 조정</span>
-              <button type="button" class="btn btn-plate btn-sm" disabled={!!busy || !p.stay} onClick={() => changeStay(p, name, -15)} aria-label="체류 15분 줄이기">체류 −15분</button>
-              <button type="button" class="btn btn-plate btn-sm" disabled={!!busy} onClick={() => changeStay(p, name, 15)} aria-label="체류 15분 늘리기">체류 +15분</button>
-              <button type="button" class="btn btn-quiet btn-sm btn-danger" disabled={!!busy} onClick={() => skipStop(p, name)}>건너뛰기</button>
-              {busy && busy.key === key && <p class="adj-busy" role="status"><Icon name="hourglass" />경로 다시 계산 중. 10~30초 걸림</p>}
-            </div>
-          )}
           <div class="stop-btns">
-            {canNav && <a class={'btn btn-sm ' + (state === 'next' && !compact ? 'btn-plate' : 'btn-exit')} href={navUrl(p.lat, p.lng)} target="_blank" rel="noopener"><Icon name="nav" />길찾기</a>}
+            {canNav && <a class="btn btn-sm btn-exit" href={navUrl(p.lat, p.lng)} target="_blank" rel="noopener"><Icon name="nav" />길찾기</a>}
             {pl && pl.link && <a class="btn btn-plate btn-sm" href={pl.link} target="_blank" rel="noopener"><Icon name="map" />지도에서 보기</a>}
             <ShowButton pl={pl} />
             <BookingButtons list={bookingsFor(v, p, user.value ? user.value.id : '')} />
@@ -150,6 +141,15 @@ function Stop({ v, p, state, first, last, cIn, cOut, open, onToggle, compact, on
           {pl && pl.menu && pl.menu.length > 0 && <ul class="menu">{pl.menu.slice(0, 5).map((m, i) => <li key={i}>{m}</li>)}</ul>}
           {pl && pl.intro && <p class="stop-intro">{pl.intro}</p>}
           {p.memo && <p class="stop-memo">{p.memo}</p>}
+          {canEdit() && state !== 'past' && (
+            <div class="adj" role="group" aria-label="일정 조정">
+              <span class="adj-h">일정 조정</span>
+              <button type="button" class="btn btn-plate btn-sm" disabled={!!busy || !p.stay} onClick={() => changeStay(p, name, -15)} aria-label="체류 15분 줄이기">체류 −15분</button>
+              <button type="button" class="btn btn-plate btn-sm" disabled={!!busy} onClick={() => changeStay(p, name, 15)} aria-label="체류 15분 늘리기">체류 +15분</button>
+              <button type="button" class="btn btn-quiet btn-sm btn-danger" disabled={!!busy} onClick={() => skipStop(p, name)}>건너뛰기</button>
+              {busy && busy.key === key && <p class="adj-busy" role="status"><Icon name="hourglass" />경로 다시 계산 중. 10~30초 걸림</p>}
+            </div>
+          )}
         </div>
       )}
     </li>
@@ -325,7 +325,10 @@ export function Timeline({ date, fromOrder, focus, compact }) {
   pts.forEach((p, i) => {
     const key = vk(p);
     if (p.lat != null) lastLL = [p.lat, p.lng];
-    const sun = !sunDone && lastLL ? sunsetMin(date, lastLL[0], lastLL[1], v.tzOffsetMin) : null;
+    const sunRaw = !sunDone && lastLL ? sunsetMin(date, lastLL[0], lastLL[1], v.tzOffsetMin) : null;
+    // 오늘 남은 일정(fromOrder 있음)에서는 이미 지난 일몰선은 숨김 (야간버스 등 자정 넘긴 시각 포함)
+    if (sunRaw != null && fromOrder != null && isToday && sunRaw <= now.min) sunDone = true;
+    const sun = !sunDone ? sunRaw : null;
     const pa = toMin(p.arrive), pd = toMin(p.depart);
     // 일몰 선: 처음으로 해가 지는 구간 한 곳에만
     if (sun != null && pa != null && pa >= sun) {

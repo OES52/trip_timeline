@@ -149,10 +149,17 @@ export function Places() {
       <div class="scroll">
         <div class="places-in">
           <div class="pfind">
-            <label class="pfind-q">
-              <span class="sr">장소 찾기</span>
-              <input type="search" placeholder="이름·메뉴·구역으로 찾기" value={f.q} onInput={e => setPlaceFilter({ q: e.currentTarget.value })} />
-            </label>
+            <div class="pfind-q">
+              <label>
+                <span class="sr">장소 찾기</span>
+                <input type="search" placeholder="이름·메뉴·구역으로 찾기" value={f.q} onInput={e => setPlaceFilter({ q: e.currentTarget.value })} />
+              </label>
+              {f.q && (
+                <button type="button" class="pfind-x" onClick={() => setPlaceFilter({ q: '' })} aria-label="검색어 지우기">
+                  <Icon name="close" />
+                </button>
+              )}
+            </div>
             <div class="chips" role="group" aria-label="일정에 있는지">
               {[['all', '전체'], ['plan', '일정에 있는 곳 ' + inPlan], ['extra', '추천만 ' + (v.allPlaces.length - inPlan)]].map(([k, t]) => (
                 <button type="button" key={k} class="chip" aria-pressed={f.scope === k} onClick={() => setPlaceFilter({ scope: k })}>{t}</button>

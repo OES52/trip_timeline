@@ -120,14 +120,16 @@ export function Plan() {
   // 지도는 처음 볼 때 만들고, 그 뒤로는 타임라인으로 바꿔도 숨겨만 둠 (다시 열 때 바로 뜨게)
   const [mapEver, setMapEver] = useState(showMap);
   useEffect(() => { if (showMap) setMapEver(true); }, [showMap]);
-  // 타임라인을 아래로 내리는 동안은 "지도 보기" 버튼을 치움 (펼친 구간의 버튼을 가리지 않게). 위로 올리면 다시
+  // 타임라인을 아래로 내리는 동안만 치워 둠 (날짜·보기 바꾸면 바로 다시 보이게)
   const [fabHide, setFabHide] = useState(false);
   const lastY = useRef(0);
+  useEffect(() => { setFabHide(false); lastY.current = 0; }, [d, mode]);
   const onListScroll = e => {
     const y = e.currentTarget.scrollTop, dy = y - lastY.current;
-    if (Math.abs(dy) < 8) return;
+    if (y <= 100) { lastY.current = y; setFabHide(false); return; }
+    if (Math.abs(dy) < 12) return;
     lastY.current = y;
-    setFabHide(dy > 0 && y > 80);
+    setFabHide(dy > 16);
   };
   if (!d) return (
     <main class="screen plan">

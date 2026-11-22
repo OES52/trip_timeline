@@ -49,8 +49,9 @@
 .map .maplibregl-ctrl-top-right .maplibregl-ctrl { margin: var(--s3) var(--s3) 0 0; }
 .mapctl { display: grid; place-items: center; color: #333; }
 .mapctl svg { width: 22px; height: 22px; }
-.map .maplibregl-ctrl-group button.mapctl[aria-pressed="true"] { color: #fff; background: var(--ink); }
+.map .maplibregl-ctrl-group button.mapctl[aria-pressed="true"] { color: var(--panel-ink); background: var(--panel); }
 @media (pointer: coarse) {
+  .map .maplibregl-ctrl-group button { width: var(--tap); height: var(--tap); }
   .map .maplibregl-ctrl-zoom-in, .map .maplibregl-ctrl-zoom-out { display: none; }
 }
 

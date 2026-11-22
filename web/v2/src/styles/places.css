@@ -14,11 +14,19 @@
 
 /* 찾기·거르기 */
 .pfind { display: grid; gap: var(--s2); padding: var(--s4) var(--s4) var(--s2); }
+.pfind-q { position: relative; }
 .pfind-q input {
-  width: 100%; min-height: var(--tap); padding: 0 var(--s3); font-size: var(--fs-body);
+  width: 100%; min-height: var(--tap); padding: 0 var(--s7) 0 var(--s3); font-size: var(--fs-body);
   background: var(--plate); border: 1.5px solid var(--hair-2); border-radius: var(--r-plate);
 }
-.chips { display: flex; gap: var(--s2); overflow-x: auto; scrollbar-width: none; margin: 0 calc(var(--s4) * -1); padding: 0 var(--s4); }
+.pfind-q input::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; }
+.pfind-x { position: absolute; right: 0; top: 0; display: grid; place-items: center; width: var(--tap); height: var(--tap); color: var(--ink-2); border-radius: var(--r-round); }
+.pfind-x:hover { color: var(--ink); }
+.chips {
+  display: flex; gap: var(--s2); overflow-x: auto; scrollbar-width: none; margin: 0 calc(var(--s4) * -1); padding: 0 var(--s6) 0 var(--s4);
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent);
+          mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent);
+}
 .chips::-webkit-scrollbar { display: none; }
 .chip {
   flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 var(--s3);
@@ -27,7 +35,7 @@
 }
 .chip .ic { width: 16px; height: 16px; }
 .chip[aria-pressed="true"] { color: var(--plate); background: var(--ink); box-shadow: none; }
-@media (pointer: coarse) { .chip { min-height: 44px; } }
+@media (pointer: coarse), (max-width: 639px) { .chip { min-height: var(--tap); } }
 .pfind-n { font-size: var(--fs-sub); color: var(--ink-2); }
 
 /* 도시 → 구역 */
@@ -63,9 +71,12 @@
 }
 @media (min-width: 1024px) {
   .plist { display: grid; grid-template-columns: 1fr 1fr; }
+  .plist:has(> li:only-child) { grid-template-columns: 1fr; }
   .plist li + li { border-top: 0; }
   .plist li { border-bottom: 1px solid var(--hair); }
   .plist li:nth-child(odd) { border-right: 1px solid var(--hair); }
+  .plist:has(> li:only-child) li { border-right: 0; border-bottom: 0; }
+  .plist li:last-child, .plist li:nth-last-child(2):nth-child(odd) { border-bottom: 0; }
 }
 
 /* 장소 시트 */
