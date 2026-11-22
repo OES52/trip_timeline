@@ -1,5 +1,5 @@
 // 기록 화면 로직 (순수): 여권 도장, 금박, 하루 영수증, 여행 전체 돈 요약
-import { vk, isVisited, arrivedAt, pname, placeOf, dayPoints, dayRoute, dayFare, dayWalk } from './trip.js';
+import { vk, isVisited, arrivedAt, pname, placeOf, dayPoints, dayRoute, dayFare, dayWalk, planPerYen } from './trip.js';
 
 /** 장소 종류별 도장 잉크 (여권 종이 위에서 4.5:1 이상) */
 export const INK = { '숙소': '#5B3FA8', '식당': '#B23A0E', '카페': '#6E4E3C', '관광지': '#1D4ED8', '쇼핑': '#B0185A', '교통': '#3F4B5E', '기타': '#5A606B' };
@@ -92,7 +92,7 @@ export function receipt(v, date, nt, userId) {
 }
 
 /**
- * 여행 전체 돈: 쓴 돈(기록), 교통비, 예산(엔), 날짜별 합
+ * 여행 전체 돈: 쓴 돈(기록), 교통비, 1인 예산(엔), 날짜별 합
  * @returns {{ spent, fare, plan, days: { date, spent, fare, plan, n }[], n }}
  */
 export function moneySummary(v) {
@@ -102,7 +102,8 @@ export function moneySummary(v) {
     dayPoints(v, d).forEach(p => {
       const sp = v.spend[vk(p)];
       if (sp) { spent += Number(sp.amount) || 0; n++; }
-      if (p.yen != null && !isNaN(p.yen)) { const k = p.budgetId || vk(p); if (!seen[k]) { seen[k] = 1; plan += p.yen; } }
+      const y = planPerYen(p, v.rate);
+      if (y != null) { const k = p.budgetId || vk(p); if (!seen[k]) { seen[k] = 1; plan += y; } }
     });
     return { date: d, spent, fare: dayFare(v, d).sum, plan, n };
   });

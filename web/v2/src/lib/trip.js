@@ -340,17 +340,26 @@ export function stopStates(v, date, nt = tokyoNow()) {
 
 /* ── 하루 요약 (돈·걷기) ── */
 
+/** 한 장소의 1인당 계획 금액(엔). 예산 시트 1인당(perOrig/per) 우선, 예산 연결 없으면 일정 금액(yen) */
+export function planPerYen(p, rate) {
+  if (p.perCur === '¥' && p.perOrig != null && !isNaN(p.perOrig)) return Number(p.perOrig);
+  if (p.per != null && !isNaN(p.per) && rate) return p.per / rate;
+  if (p.yen != null && !isNaN(p.yen)) return Number(p.yen);
+  return null;
+}
+
 /** 그날 1인당 예산 합계와 결제 여부 (같은 예산 번호는 한 번만). 원화 기준 */
 export function daySpend(v, date) {
   const seen = {};
   let total = 0, paid = 0;
   dayPoints(v, date).forEach(p => {
-    if (!p.per) return;
+    const per = p.per != null && !isNaN(p.per) ? p.per : (p.yen != null && !isNaN(p.yen) && v.rate ? p.yen * v.rate : 0);
+    if (!per) return;
     const key = p.budgetId || vk(p);
     if (seen[key]) return;
     seen[key] = true;
-    total += p.per;
-    if (p.paid) paid += p.per;
+    total += per;
+    if (p.paid) paid += per;
   });
   return { total, paid, left: total - paid };
 }
@@ -367,16 +376,17 @@ export function dayFare(v, date) {
   return { sum, missing };
 }
 
-/** 그날 실제 지출 합계(엔) vs 계획(엔). 기록이 없으면 has=false */
+/** 그날 실제 지출 합계(엔) vs 1인 계획(엔). 기록이 없으면 has=false */
 export function dayActual(v, date) {
   let actual = 0, has = false, plan = 0;
   const seen = {};
   dayPoints(v, date).forEach(p => {
     const sp = v.spend[vk(p)];
     if (sp) { actual += sp.amount; has = true; }
-    if (p.yen != null && !isNaN(p.yen)) {
+    const y = planPerYen(p, v.rate);
+    if (y != null) {
       const k = p.budgetId || vk(p);
-      if (!seen[k]) { seen[k] = true; plan += p.yen; }
+      if (!seen[k]) { seen[k] = true; plan += y; }
     }
   });
   return { actual, plan, has };

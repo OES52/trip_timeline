@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildView, pname, tripRange, phase, dayCity, dayRoute, dayRouteMain, mainOrders, dayDelay, predictedMin, nowNext, remainMin, stopStates, daySpend, dayFare, lastTrain, tripClock, dayEndMin, nightRide, passThrough, passText, innerPath, exitsElsewhere, exitPoint } from './trip.js';
+import { buildView, pname, tripRange, phase, dayCity, dayRoute, dayRouteMain, mainOrders, dayDelay, predictedMin, nowNext, remainMin, stopStates, daySpend, dayFare, dayActual, planPerYen, lastTrain, tripClock, dayEndMin, nightRide, passThrough, passText, innerPath, exitsElsewhere, exitPoint } from './trip.js';
 
 // 이틀짜리 작은 여행
 const raw = () => ({
@@ -169,10 +169,18 @@ test('stopStates: 지금·다음·지남', () => {
   assert.equal(stopStates(v, '2026-12-26', { date: '2026-12-25', min: 0 }).get(1), 'future');
 });
 
-test('daySpend·dayFare', () => {
+test('daySpend·dayFare·dayActual·planPerYen', () => {
   const v = buildView(raw(), null);
   assert.deepEqual(daySpend(v, '2026-12-25'), { total: 16000, paid: 6000, left: 10000 });
   assert.deepEqual(dayFare(v, '2026-12-25'), { sum: 740, missing: 0 });
+  assert.equal(planPerYen({ yen: 1000, per: 4255, perCur: '¥', perOrig: 500 }, 8.51), 500);
+  assert.equal(planPerYen({ yen: 1000, per: 8510, perCur: '₩', perOrig: 8510 }, 8.51), 1000);
+  assert.equal(planPerYen({ yen: 1200 }, 8.51), 1200);
+  const r = raw();
+  r.rate = 8.51;
+  r.points = [{ placeKey: 'P1', date: '2026-12-25', order: 1, place: '호빵맨 박물관', yen: 1000, per: 4255, perCur: '¥', perOrig: 500, budgetId: 'B40' }];
+  r.spend = { '2026-12-25#1': { amount: 400 } };
+  assert.deepEqual(dayActual(buildView(r, null), '2026-12-25'), { actual: 400, plan: 500, has: true });
 });
 
 test('lastTrain: 여유 30분 미만이면 빠듯, 오늘이면 남은 시간', () => {

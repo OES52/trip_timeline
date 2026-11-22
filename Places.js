@@ -178,7 +178,25 @@ function refreshPlaceGuide() {
   alert_(msg.join('\n'));
 }
 
-// 좌표 → "오사카", "교토", "도쿄", "인천" 같은 도시 이름 (시·도·부·현·광역시 떼고)
+// 역지오코딩이 한국어 설정에서도 영문·한자 도시명을 돌려줄 때 한글로 통일
+const CITY_KO_ = {
+  osaka: '오사카', '大阪': '오사카',
+  kyoto: '교토', '京都': '교토',
+  tokyo: '도쿄', '東京': '도쿄',
+  yokohama: '요코하마', '横浜': '요코하마',
+  nara: '나라', '奈良': '나라',
+  kobe: '고베', '神戸': '고베',
+  uji: '우지', '宇治': '우지',
+  kamakura: '가마쿠라', '鎌倉': '가마쿠라',
+  chiba: '치바', '千葉': '치바',
+  saitama: '사이타마', '埼玉': '사이타마',
+  kawasaki: '가와사키', '川崎': '가와사키',
+  izumisano: '오사카', '泉佐野': '오사카',
+  incheon: '인천', '仁川': '인천',
+  seoul: '서울', 'ソウル': '서울',
+};
+
+// 좌표 → "오사카", "교토", "도쿄", "인천" 같은 도시 이름 (시·도·부·현·광역시 떼고 한글로)
 function cityFor_(lat, lng) {
   try {
     const res = Maps.newGeocoder().setLanguage('ko').reverseGeocode(lat, lng);
@@ -191,8 +209,12 @@ function cityFor_(lat, lng) {
     const admin = pick('administrative_area_level_1');
     const local = pick('locality');
     // 도쿄 23구·한국 광역시는 locality가 구 이름이라 상위 행정구역을 씀
-    const raw = /도쿄|東京|광역시|특별시/.test(admin) ? admin : (local || admin);
-    return String(raw).replace(/(특별자치시|광역시|특별시|도|부|현|시)$/, '').trim();
+    const raw = /도쿄|東京|tokyo|광역시|특별시/i.test(admin) ? admin : (local || admin);
+    const cleaned = String(raw)
+      .replace(/(특별자치시|광역시|특별시|도|부|현|시|府|県|都|市)$/, '')
+      .replace(/\s+(Prefecture|Metropolis|City|Ward)$/i, '')
+      .trim();
+    return CITY_KO_[cleaned.toLowerCase()] || CITY_KO_[cleaned] || cleaned;
   } catch (e) {
     return '';
   }

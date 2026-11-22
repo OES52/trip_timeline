@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { view, dialog, closeDialog } from '../data/store.js';
 import { verifyPin, flush, saveSpend, saveArrival } from '../data/records.js';
-import { vk, pname, arrivedAt } from '../lib/trip.js';
+import { vk, pname, arrivedAt, planPerYen } from '../lib/trip.js';
 import { parseAmount } from '../lib/ops.js';
 import { YEN } from '../lib/money.js';
 import { fmtHM } from '../lib/time.js';
@@ -70,7 +70,12 @@ function SpendSheet({ v, p }) {
             onBlur={() => { if (amt.trim()) setErr(parseAmount(amt).error || ''); }} />
         </label>
         <p class="field-err" id="amt-err" role="alert">{err}</p>
-        {p.yen != null && !isNaN(p.yen) && <p class="field-hint">계획한 금액 <span class="num">{YEN(p.yen)}</span></p>}
+        {(() => {
+          const py = planPerYen(p, v.rate);
+          if (py == null) return null;
+          const diff = p.yen != null && !isNaN(p.yen) && Math.round(py) !== Math.round(p.yen);
+          return <p class="field-hint">계획한 금액{diff ? ' (1인)' : ''} <span class="num">{YEN(py)}</span>{diff ? <> · 전체 <span class="num">{YEN(p.yen)}</span></> : null}</p>;
+        })()}
         <label class="field">
           <span>메모 (선택)</span>
           <input type="text" maxlength="60" autocomplete="off" value={memo} onInput={e => setMemo(e.currentTarget.value)} />

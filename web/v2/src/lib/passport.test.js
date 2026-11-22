@@ -67,11 +67,15 @@ test('receipt: 도착 기록 시각, 지출, 교통비, 합계, 예정 여부', 
   assert.equal(receipt(v, '2026-12-26', { date: '2026-12-25', min: 800 }, 'A').planned, true);
 });
 
-test('moneySummary: 같은 예산 번호는 하루에 한 번', () => {
-  const m = moneySummary(buildView(raw(), raw().users[0]));
+test('moneySummary: 같은 예산 번호는 하루에 한 번, 인원 분할 항목은 1인당 금액 기준', () => {
+  const r = raw();
+  r.rate = 8.51;
+  r.points.push({ placeKey: 'R', date: '2026-12-26', order: 3, place: '라멘집', arrive: '21:30', depart: '22:00', yen: 1000, per: 4255, perCur: '¥', perOrig: 500, budgetId: 'B2' });
+  const m = moneySummary(buildView(r, r.users[0]));
   assert.equal(m.spent, 1580);
   assert.equal(m.fare, 240);
-  assert.equal(m.plan, 600 + 1200 + 600);
+  assert.equal(m.plan, 600 + 1200 + 600 + 500);
+  assert.equal(m.days[1].plan, 600 + 500);
   assert.equal(m.n, 2);
   assert.ok(hashNum('C') >= 0);
 });
