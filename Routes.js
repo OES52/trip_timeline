@@ -96,25 +96,23 @@ function runCalc_(force, opts) {
     }
   });
 
-  // 1-2b. 경유 좌표: 지도 링크로 적힌 경유점을 좌표로 바꿔 씀 (적힌 순서 유지). 좌표도 링크도 아닌 줄은 알림
+  // 1-2b. 경유1·경유2 좌표 채우기 (종착점과 같음: 경유 지도 링크가 있을 때만, 장소명 검색은 안 함)
   rows.forEach(r => {
-    const toks = r.viaTokens || [];
-    toks.filter(t => t.bad).forEach(t => {
-      errors.push(r.sheetRow + '행 "' + r.place + '": 경유 좌표 "' + t.bad + '"를 못 읽음 (줄마다 위도,경도 또는 구글 지도 링크). 이 줄은 빼고 계산');
+    let changed = false;
+    (r.viaSlots || []).forEach(s => {
+      if (s.coord || !s.link) return;
+      const found = coordFromLink_(s.link);
+      if (found) {
+        s.coord = found;
+        changed = true;
+        plan.getRange(r.sheetRow, s.col).setValue(found.lat.toFixed(6) + ',' + found.lng.toFixed(6))
+          .setBackground(CONFIG.COLOR_AUTO_COORD)
+          .setNote('자동 (경유' + s.n + ' 지도 링크)\n위치 확인 후 맞으면 배경색 지워도 됨');
+      } else {
+        errors.push(r.sheetRow + '행 "' + r.place + '": 경유' + s.n + ' 지도 링크에서 좌표를 못 뽑음. 경유' + s.n + ' 좌표 직접 입력 필요 (지금은 이 경유점 빼고 계산)');
+      }
     });
-    if (!toks.some(t => t.link)) return;
-    let failed = 0;
-    toks.forEach(t => {
-      if (!t.link) return;
-      const found = coordFromLink_(t.link);
-      if (found) { t.c = found; delete t.link; } else failed++;
-    });
-    if (failed) errors.push(r.sheetRow + '행 "' + r.place + '": 경유 지도 링크 ' + failed + '개에서 좌표를 못 뽑음. 좌표로 직접 입력 필요 (그 경유점은 빼고 계산)');
-    r.via = toks.filter(t => t.c).map(t => t.c);
-    plan.getRange(r.sheetRow, P.VIA)
-      .setValue(toks.map(t => t.c ? t.c.lat.toFixed(6) + ',' + t.c.lng.toFixed(6) : (t.link || t.bad)).join('\n'))
-      .setBackground(CONFIG.COLOR_AUTO_COORD)
-      .setNote('자동 (경유 지도 링크 → 좌표)\n위치 확인 후 맞으면 배경색 지워도 됨');
+    if (changed) r.via = r.viaSlots.filter(s => s.coord).map(s => s.coord);
   });
 
   // 1-3. 종착점·경유점이 있는 장소: 시작점→(경유)→종착점 도보 경로 조회해서 저장 (한 번 받으면 재사용, 웹앱 조정 중엔 생략)
@@ -270,7 +268,7 @@ function sortPlanRows_(plan, lastRow, ssTz) {
     const c = P[k];
     plan.getRange(2, c, n, 1).setValues(sorted.map(x => [vals[x.i][c - 1]]));
   });
-  [P.COORD, P.END_COORD, P.VIA].forEach(c => {
+  [P.COORD, P.END_COORD, P.VIA1_COORD, P.VIA2_COORD].forEach(c => {
     const cell = plan.getRange(2, c, n, 1);
     const bgs = cell.getBackgrounds();
     const notes = cell.getNotes();
@@ -485,15 +483,15 @@ function innerWalkStore_() {
   return INNER_WALK_MEMO_;
 }
 
-// 장소 안에서 걷는 지점들 [시작, 경유…, 끝]. 끝 = 종착점, 없으면 시작점 (경유만 있으면 찍고 돌아오기)
+// 장소 안에서 걷는 지점들: 시작 → 경유1 → 경유2 → 종착 (빈 곳은 건너뜀). 마지막 지점에서 다음 장소로 출발
 //  종착점도 경유도 없거나, 경유 없이 종착점이 시작점과 같으면 null (장소 안 걷기 없음)
+//  찍고 돌아오기는 종착점을 시작점과 같게 넣으면 됨 (시작 → 경유 → 시작)
 function innerPath_(r) {
   if (!r || r.lat == null || r.lng == null) return null;
   const via = (r.via || []).filter(p => p && p.lat != null && p.lng != null);
   const hasEnd = r.endLat != null && r.endLng != null;
   if (!via.length && (!hasEnd || (r.lat === r.endLat && r.lng === r.endLng))) return null;
-  const end = hasEnd ? { lat: r.endLat, lng: r.endLng } : { lat: r.lat, lng: r.lng };
-  return [{ lat: r.lat, lng: r.lng }].concat(via, [end]);
+  return [{ lat: r.lat, lng: r.lng }].concat(via, hasEnd ? [{ lat: r.endLat, lng: r.endLng }] : []);
 }
 
 // 시작점→(경유)→종착점 걷는 시간·거리·모양 { min, m, est, poly } (장소 안 걷기 없으면 null)

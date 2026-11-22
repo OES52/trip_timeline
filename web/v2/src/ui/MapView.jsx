@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { view, tn, picked, pick, setPlanView, go } from '../data/store.js';
 import { local } from '../data/cache.js';
 import { dayLines, pinGroups, pinState, boundsOf, fitCoords, assignLanes, innerLines, MODE_HEX } from '../lib/route.js';
-import { stopStates, dayPoints, pname, placeOf, vk, dayCity, exitsElsewhere, passText } from '../lib/trip.js';
+import { stopStates, dayPoints, pname, placeOf, vk, dayCity, exitsElsewhere, exitPoint, passText } from '../lib/trip.js';
 import { navUrl } from '../lib/geo.js';
 import { fmtHM } from '../lib/time.js';
 import { Icon } from './Icon.jsx';
@@ -302,7 +302,7 @@ export function MapView({ date, active }) {
       dot.textContent = String(p.order);
       el.appendChild(dot);
       el.addEventListener('click', e => { e.stopPropagation(); pick(vk(p), 'map'); });
-      return { key: vk(p), el, marker: new S.ml.Marker({ element: el }).setLngLat([p.endLng, p.endLat]).addTo(map) };
+      return { key: vk(p), el, marker: new S.ml.Marker({ element: el }).setLngLat([exitPoint(p)[1], exitPoint(p)[0]]).addTo(map) };
     });
     new Set(Array.from(S.markers.values()).map(x => x.marker)).forEach(m => m.remove());
     S.markers.clear();

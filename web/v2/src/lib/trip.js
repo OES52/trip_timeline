@@ -166,25 +166,33 @@ export function dayRouteMain(v, date) {
   return cityRun(dayPoints(v, date).filter(p => main.has(p.order)).map(p => cityOf(v, p)));
 }
 
-/* ── 장소 안 걷기 (시장·상점가 관통, 경유점 찍고 돌아오기) ── */
+/* ── 장소 안 걷기 (시장·상점가 관통, 경유점 들르기) ── */
 
 const viaOf = p => (p && Array.isArray(p.via) ? p.via.filter(x => Array.isArray(x) && x[0] != null && x[1] != null) : []);
-
-/** 시작점과 다른 종착점이 있는지. 다음 장소로는 종착점에서 떠남 (지도의 "나오는 곳" 네모) */
-export function exitsElsewhere(p) {
-  return !!p && p.lat != null && p.lng != null && p.endLat != null && p.endLng != null && (p.endLat !== p.lat || p.endLng !== p.lng);
-}
+const hasEndPt = p => p.endLat != null && p.endLng != null;
 
 /**
- * 장소 안에서 걷는 지점들 [[lat, lng], ...] = 시작점 → 경유점… → 종착점(없으면 시작점으로 돌아옴)
- *  장소 안 걷기가 없으면(종착점·경유 둘 다 없음) null
+ * 장소 안에서 걷는 지점들 [[lat, lng], ...] = 시작 → 경유1 → 경유2 → 종착 (빈 곳은 건너뜀)
+ *  장소 안 걷기가 없으면(경유 없고 종착점도 없거나 시작점과 같음) null
  */
 export function innerPath(p) {
   if (!p || p.lat == null || p.lng == null) return null;
-  const via = viaOf(p);
-  if (!via.length && !exitsElsewhere(p)) return null;
-  const end = exitsElsewhere(p) ? [p.endLat, p.endLng] : [p.lat, p.lng];
-  return [[p.lat, p.lng]].concat(via.map(x => [x[0], x[1]]), [end]);
+  const via = viaOf(p), end = hasEndPt(p);
+  if (!via.length && (!end || (p.endLat === p.lat && p.endLng === p.lng))) return null;
+  return [[p.lat, p.lng]].concat(via.map(x => [x[0], x[1]]), end ? [[p.endLat, p.endLng]] : []);
+}
+
+/** 다음 장소로 떠나는 곳 [lat, lng] = 걷는 순서의 마지막 지점 (종착 → 마지막 경유 → 시작) */
+export function exitPoint(p) {
+  const path = innerPath(p);
+  return path ? path[path.length - 1] : [p.lat, p.lng];
+}
+
+/** 들어간 곳과 다른 곳에서 나오는지 (지도의 "나오는 곳" 네모) */
+export function exitsElsewhere(p) {
+  if (!innerPath(p)) return false;
+  const e = exitPoint(p);
+  return e[0] !== p.lat || e[1] !== p.lng;
 }
 
 /** 장소 안을 걷는 곳인지 (관통하거나 경유점을 들름) */
@@ -194,14 +202,15 @@ export function passThrough(p) {
 
 /**
  * 장소 안 걷기 안내 한 줄. 걷는 시간·거리는 서버의 도보 경로(없으면 지점 사이 직선 × 1.3 어림)
- *  관통: "남쪽으로 지나서 나옴 · 6분 · 450m" / 경유 들르고 관통: "… 지나서 나옴 (2곳 들름) · …" / 찍고 돌아오기: "1곳 들렀다 돌아옴 · …"
+ *  관통: "남쪽으로 지나서 나옴 · 6분 · 450m" / 경유 들르고 관통: "… 지나서 나옴 (2곳 들름) · …"
+ *  종착점을 시작점과 같게 넣어 돌아오면: "1곳 들렀다 돌아옴 · …"
  */
 export function passText(p) {
   const path = innerPath(p);
   if (!path) return '';
   let d = 0;
   for (let i = 1; i < path.length; i++) d += haversine(path[i - 1], path[i]);
-  const iw = p.inner, nVia = path.length - 2;
+  const iw = p.inner, nVia = viaOf(p).length;
   const min = iw && iw.min ? iw.min : walkMin(d);
   const m = iw && iw.m ? iw.m : Math.round(d * 1.3);
   const head = exitsElsewhere(p)

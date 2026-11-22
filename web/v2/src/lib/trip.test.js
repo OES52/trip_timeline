@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildView, pname, tripRange, phase, dayCity, dayRoute, dayRouteMain, mainOrders, dayDelay, predictedMin, nowNext, remainMin, stopStates, daySpend, dayFare, lastTrain, tripClock, dayEndMin, nightRide, passThrough, passText, innerPath, exitsElsewhere } from './trip.js';
+import { buildView, pname, tripRange, phase, dayCity, dayRoute, dayRouteMain, mainOrders, dayDelay, predictedMin, nowNext, remainMin, stopStates, daySpend, dayFare, lastTrain, tripClock, dayEndMin, nightRide, passThrough, passText, innerPath, exitsElsewhere, exitPoint } from './trip.js';
 
 // 이틀짜리 작은 여행
 const raw = () => ({
@@ -242,21 +242,29 @@ test('lastTrain: 자정 넘어 전날 일정이 이어지는 중이면 막차 �
   assert.match(lastTrain(seg, { date: '2026-12-30', min: 0 }).text, /막차 타려면 익일 0:15까지 출발, 여유 45분/);
 });
 
-test('innerPath·passText: 경유점 — 관통하며 들르기, 찍고 돌아오기', () => {
+test('innerPath·exitPoint·passText: 시작 → 경유1 → 경유2 → 종착 (빈 곳은 건너뜀)', () => {
   const s = { lat: 34.6837, lng: 135.8318 };
-  // 종착점 없이 경유만 → 시작점으로 돌아옴. 나오는 곳 네모는 없음
-  const loop = Object.assign({ via: [[34.685047, 135.843012]] }, s);
-  assert.deepEqual(innerPath(loop), [[34.6837, 135.8318], [34.685047, 135.843012], [34.6837, 135.8318]]);
-  assert.equal(passThrough(loop), true);
-  assert.equal(exitsElsewhere(loop), false);
-  assert.match(passText(loop), /^1곳 들렀다 돌아옴 · 약 \d+분 · /);
-  assert.equal(passText(Object.assign({ inner: { min: 25, m: 1900, est: false } }, loop)), '1곳 들렀다 돌아옴 · 25분 · 1.9km');
-  // 경유 + 종착점 → 들르면서 지나감
+  // 종착점 없이 경유만 → 마지막 경유점에서 나옴
+  const v1 = Object.assign({ via: [[34.685047, 135.843012]] }, s);
+  assert.deepEqual(innerPath(v1), [[34.6837, 135.8318], [34.685047, 135.843012]]);
+  assert.deepEqual(exitPoint(v1), [34.685047, 135.843012]);
+  assert.equal(passThrough(v1), true);
+  assert.equal(exitsElsewhere(v1), true);
+  assert.match(passText(v1), /^동쪽으로 지나서 나옴 \(1곳 들름\) · 약 \d+분 · /);
+  // 종착점을 시작점과 같게 → 들렀다 돌아옴, 나오는 곳 네모 없음
+  const back = Object.assign({ endLat: s.lat, endLng: s.lng }, v1);
+  assert.deepEqual(innerPath(back), [[34.6837, 135.8318], [34.685047, 135.843012], [34.6837, 135.8318]]);
+  assert.equal(exitsElsewhere(back), false);
+  assert.deepEqual(exitPoint(back), [34.6837, 135.8318]);
+  assert.equal(passText(Object.assign({ inner: { min: 25, m: 1900, est: false } }, back)), '1곳 들렀다 돌아옴 · 25분 · 1.9km');
+  // 경유 둘 + 종착점
   const thru = { lat: 34.6665, lng: 135.5065, endLat: 34.6625, endLng: 135.5065, via: [[34.6645, 135.5070], [34.6635, 135.5060]] };
   assert.equal(innerPath(thru).length, 4);
-  assert.equal(exitsElsewhere(thru), true);
+  assert.deepEqual(exitPoint(thru), [34.6625, 135.5065]);
   assert.equal(passText(Object.assign({ inner: { min: 8, m: 600, est: false } }, thru)), '남쪽으로 지나서 나옴 (2곳 들름) · 8분 · 600m');
-  // 이상한 경유 값은 무시, 아무것도 없으면 장소 안 걷기 없음
+  // 경유·종착 없음 / 이상한 경유 값 → 장소 안 걷기 없음, 시작점에서 나옴
   assert.equal(innerPath(Object.assign({ via: [[null, 1], 'x'] }, s)), null);
   assert.equal(innerPath(Object.assign({ via: [] }, s)), null);
+  assert.deepEqual(exitPoint(s), [34.6837, 135.8318]);
+  assert.equal(passThrough(s), false);
 });

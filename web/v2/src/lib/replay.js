@@ -3,13 +3,12 @@
 //  시계는 실제 일정 시각 그대로
 import { toMin } from './time.js';
 import { haversine } from './geo.js';
-import { dayPoints, pname, segModeName, innerPath } from './trip.js';
+import { dayPoints, pname, segModeName, innerPath, exitPoint } from './trip.js';
 import { decodePolyline, arcPoints } from './route.js';
 
-const hasEnd = p => p.endLat != null && p.endLng != null;
-const outLL = p => (hasEnd(p) ? [p.endLat, p.endLng] : [p.lat, p.lng]);
+const outLL = p => exitPoint(p);   // 다음 장소로 떠나는 곳 (종착 → 마지막 경유 → 시작)
 
-/** 머무는 동안 위치: 장소 안 길(시작→경유→종착, 도보 모양 있으면 그 길)을 f(0~1)만큼 걸어간 곳. 장소 안 걷기가 없으면 시작점 */
+/** 머무는 동안 위치: 장소 안 길(시작→경유1→경유2→종착, 도보 모양 있으면 그 길)을 f(0~1)만큼 걸어간 곳. 장소 안 걷기가 없으면 시작점 */
 function stayPos(p, f) {
   let ll = p.inner && p.inner.poly ? decodePolyline(p.inner.poly) : [];
   if (ll.length < 2) ll = innerPath(p) || [];

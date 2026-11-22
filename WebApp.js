@@ -144,8 +144,9 @@ function segTaxi_(v, from, travelers) {
   const tag = from ? String(from.memo || '').match(TAXI_TAG_RE) : null;
   if (mode !== '대중교통' && !(mode === '차' && tag)) return null;
   const dep = (hmToMin_(v[R.DEP - 1]) || 0) + (/\(\+1\)/.test(v[R.DEP - 1]) ? 1440 : 0);
-  const lat = from ? (from.endLat != null ? from.endLat : from.lat) : null;
-  const lng = from ? (from.endLat != null ? from.endLng : from.lng) : null;
+  const out = from ? departFrom_(from) : null;   // 장소 안 걷는 순서의 마지막 지점 (종착 → 마지막 경유 → 시작)
+  const lat = out ? out.lat : null;
+  const lng = out ? out.lng : null;
   const t = taxiInfo_(v[R.TAXI - 1], travelers, dep, lat, lng);
   if (!t) return null;
   t.on = mode === '차';
@@ -186,7 +187,7 @@ function buildMapBase_() {
       lng: r.lng,
       endLat: r.endLat,   // 종착점 (없으면 null = 시작점에서 출발)
       endLng: r.endLng,
-      via: (r.via || []).map(p => [p.lat, p.lng]),   // 장소 안 경유점 [[lat, lng], ...] (시작점→경유→종착점, 종착점 없으면 시작점으로 돌아옴)
+      via: (r.via || []).map(p => [p.lat, p.lng]),   // 장소 안 경유점 [[lat, lng], ...] 경유1·경유2 순 (걷는 순서: 시작→경유→종착, 종착 없으면 마지막 경유에서 출발)
       inner: innerWalk_(r, false),   // 시작점→(경유)→종착점 걷는 시간·거리·도보 선 모양 { min, m, est, poly } (장소 안 걷기 없으면 null)
       stay: r.stay,
       fixed: r.fixed != null ? fmtMin_(r.fixed) : '',

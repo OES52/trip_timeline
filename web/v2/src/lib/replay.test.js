@@ -46,9 +46,9 @@ test('trailUntil: 지나온 점만', () => {
   assert.ok(trailUntil(v, R, 30).length > 3);
 });
 
-test('frameAt: 경유점 있는 곳에서 머무는 동안 경유점까지 갔다가 돌아옴', () => {
+test('frameAt: 경유점 있는 곳에서 머무는 동안 경유점까지 갔다가 (종착점 = 시작점이면) 돌아옴', () => {
   const r = raw();
-  r.points[1].via = [[34.72, 135.50]];   // B에서 북쪽 경유점을 찍고 돌아옴
+  Object.assign(r.points[1], { via: [[34.72, 135.50]], endLat: 34.70, endLng: 135.50 });   // B에서 북쪽 경유점을 찍고 돌아옴
   const v = buildView(r, null);
   const R = buildReplay(v, '2026-12-25');
   const st = R.ev[2];
@@ -58,4 +58,15 @@ test('frameAt: 경유점 있는 곳에서 머무는 동안 경유점까지 갔�
   assert.ok(Math.abs(at(0.5)[0] - 34.72) < 1e-9);   // 한가운데 = 경유점
   assert.ok(at(0.25)[0] > 34.70 && at(0.25)[0] < 34.72);
   assert.ok(trailUntil(v, R, st.u0 + st.len * 0.5).some(p => Math.abs(p[0] - 34.72) < 1e-9));
+});
+
+test('frameAt: 종착점 없이 경유만 있으면 머무는 끝에 마지막 경유점, 다음 이동도 거기서 출발', () => {
+  const r = raw();
+  r.points[0].via = [[34.61, 135.50], [34.62, 135.50]];   // A 안에서 북쪽으로 경유1 → 경유2
+  const v = buildView(r, null);
+  const R = buildReplay(v, '2026-12-25');
+  const st = R.ev[0];
+  const end = frameAt(v, R, st.u0 + st.len - 1e-9).pos;
+  assert.ok(Math.abs(end[0] - 34.62) < 1e-6);
+  assert.ok(Math.abs(R.ev[1].coords[0][0] - 34.62) < 1e-6);   // 이동 선은 경유2에서 시작 (구간 선이 없을 때)
 });

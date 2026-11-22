@@ -62,31 +62,29 @@ function onPlanEdit_(plan, range) {
 }
 
 // 장소 이름을 바꾸면 예전 장소 좌표가 그대로 남아 경로·도감이 예전 곳을 가리킴
-//  - 자동으로 채운 좌표(노란 칸)는 시작점·종착점 둘 다 지움 → 다음 경로 계산 때 새 이름·링크로 다시 찾음
-//  - 지도 링크(시작·종착)가 남아 있으면 예전 장소 링크일 수 있어서 알림만
+//  - 자동으로 채운 좌표(노란 칸)는 시작·종착·경유1·경유2 모두 지움 → 다음 경로 계산 때 새 이름·링크로 다시 찾음
+//  - 지도 링크(시작·종착·경유)가 남아 있으면 예전 장소 링크일 수 있어서 알림만
 function onPlaceRenamed_(plan, range) {
   const r1 = Math.max(range.getRow(), 2);
   const n = Math.min(range.getLastRow(), r1 + 49) - r1 + 1;
   if (n < 1) return;
-  const bgs = plan.getRange(r1, P.COORD, n, 1).getBackgrounds();
-  const endBgs = plan.getRange(r1, P.END_COORD, n, 1).getBackgrounds();
-  const links = plan.getRange(r1, P.LINK, n, 1).getDisplayValues();
-  const endLinks = plan.getRange(r1, P.END_LINK, n, 1).getDisplayValues();
+  requirePlanLayout_(plan);
+  // 시작·종착·경유1·경유2: [좌표 열, 링크 열]
+  const pairs = [[P.COORD, P.LINK], [P.END_COORD, P.END_LINK], [P.VIA1_COORD, P.VIA1_LINK], [P.VIA2_COORD, P.VIA2_LINK]];
+  const bgs = pairs.map(p => plan.getRange(r1, p[0], n, 1).getBackgrounds());
+  const links = pairs.map(p => plan.getRange(r1, p[1], n, 1).getDisplayValues());
   const isAuto = b => String(b).toLowerCase() === CONFIG.COLOR_AUTO_COORD;
   const cleared = [], linked = [];
-  bgs.forEach((b, i) => {
+  for (let i = 0; i < n; i++) {
     let did = false;
-    if (isAuto(b)) {
-      plan.getRange(r1 + i, P.COORD).clearContent().setBackground(null).clearNote();
+    pairs.forEach((p, k) => {
+      if (!isAuto(bgs[k][i][0])) return;
+      plan.getRange(r1 + i, p[0]).clearContent().setBackground(null).clearNote();
       did = true;
-    }
-    if (isAuto(endBgs[i][0])) {
-      plan.getRange(r1 + i, P.END_COORD).clearContent().setBackground(null).clearNote();
-      did = true;
-    }
+    });
     if (did) cleared.push(r1 + i);
-    if (links[i][0] || endLinks[i][0]) linked.push(r1 + i);
-  });
+    if (links.some(l => l[i][0])) linked.push(r1 + i);
+  }
   const msg = [];
   if (cleared.length) msg.push(cleared.join(', ') + '행 자동 좌표 지움 (경로 계산 때 다시 찾음)');
   if (linked.length) msg.push(linked.join(', ') + '행 지도 링크가 예전 장소 것이면 새 링크로 바꾸거나 지우기');

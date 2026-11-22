@@ -153,7 +153,7 @@ test('innerLines: 관통하는 장소는 들어간 곳→나오는 곳 선 (모�
   assert.equal(f.properties.color, '#f76b15');   // 오사카 도시색
   v.points[0].inner = { min: 6, m: 450, est: false, poly: '_p~iF~ps|U_ulLnnqC' };
   assert.deepEqual(innerLines(v, '2026-12-26')[0].geometry.coordinates, [[-120.2, 38.5], [-120.95, 40.7]]);
-  // 경유점: 도보 모양이 없으면 시작 → 경유 → 시작(종착점 없음) 직선
+  // 경유점: 도보 모양이 없으면 시작 → 경유 → 종착 직선 (이 줄은 종착점 = 시작점이라 돌아옴)
   v.points[0].inner = null;
   v.points[1].via = [[34.68, 135.51]];
   const lines = innerLines(v, '2026-12-26');

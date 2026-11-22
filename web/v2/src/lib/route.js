@@ -154,7 +154,7 @@ export function assignLanes(features) {
 }
 
 /**
- * 장소 안 길 (들어간 곳 → 경유점… → 나오는 곳, 나오는 곳이 없으면 들어간 곳으로 돌아옴). 서버가 준 도보 모양(inner.poly)이 있으면 그 길, 없으면 지점을 잇는 직선
+ * 장소 안 길 (시작 → 경유1 → 경유2 → 종착, 빈 곳은 건너뜀). 서버가 준 도보 모양(inner.poly)이 있으면 그 길, 없으면 지점을 잇는 직선
  * @returns object[] properties: a·b = 그 장소 순서, fit = 1, past, color = 도시색
  */
 export function innerLines(v, date, states) {

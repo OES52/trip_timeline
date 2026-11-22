@@ -190,7 +190,8 @@ function applyPlanFormat_(sh, fresh) {
   sh.getRange(2, P.FIXED, rows, 1).setNumberFormat('hh:mm');
   sh.getRange(2, P.COORD, rows, 1).setNumberFormat('@');
   sh.getRange(2, P.END_COORD, rows, 1).setNumberFormat('@');
-  sh.getRange(2, P.VIA, rows, 1).setNumberFormat('@').setWrap(true);
+  sh.getRange(2, P.VIA1_COORD, rows, 1).setNumberFormat('@');
+  sh.getRange(2, P.VIA2_COORD, rows, 1).setNumberFormat('@');
   sh.getRange(2, P.BUDGET_ID, rows, 1).setNumberFormat('@');
   ['AMOUNT', 'MANUAL_FARE', 'FARE_API', 'FARE', 'PER'].forEach(k =>
     sh.getRange(2, P[k], rows, 1).setNumberFormat(CONFIG.YEN_FORMAT));
@@ -232,7 +233,7 @@ function applyPlanFormat_(sh, fresh) {
   const widths = {
     DATE: 95, ORDER: 45, ACTIVITY: 170, PLACE: 190, STAY: 65, FIXED: 70, MODE: 95, MANUAL: 90,
     MANUAL_FARE: 100, AMOUNT: 90, MEMO: 200, ARRIVE: 70, DEPART: 70, SLACK: 65, MOVE: 60, BUFFER: 60,
-    FARE: 80, PER: 85, LINK: 120, COORD: 150, END_LINK: 120, END_COORD: 150, VIA: 150, BUDGET_ID: 75, PAID: 60, FARE_API: 90,
+    FARE: 80, PER: 85, LINK: 120, COORD: 150, END_LINK: 120, END_COORD: 150, VIA1_LINK: 120, VIA1_COORD: 150, VIA2_LINK: 120, VIA2_COORD: 150, BUDGET_ID: 75, PAID: 60, FARE_API: 90,
   };
   if (fresh) Object.keys(widths).forEach(k => sh.setColumnWidth(P[k], widths[k]));
 
@@ -241,7 +242,10 @@ function applyPlanFormat_(sh, fresh) {
   sh.getRange(1, P.COORD).setNote('시작점. 형식: 위도,경도\n비어 있으면 스크립트가 지도 링크 → 장소명 순서로 찾아서 채움\n노란색 = 자동으로 채운 값. 위치가 맞는지 한 번 확인할 것');
   sh.getRange(1, P.END_LINK).setNote('선택. 이 장소를 떠나는 지점(종착점)의 구글 지도 링크\n시장·상점가를 관통해서 들어간 곳과 나오는 곳이 다를 때만 입력\n비우면 시작점에서 다음 장소로 출발');
   sh.getRange(1, P.END_COORD).setNote('종착점. 형식: 위도,경도\n비어 있고 종착 지도 링크가 있으면 링크에서 뽑아서 채움 (장소명 검색은 안 함)\n체류(분)에 시작점→종착점 걷는 시간까지 포함해서 넣기');
-  sh.getRange(1, P.VIA).setNote('선택. 장소 안에서 시작점→종착점 사이에 들르는 지점 (들르는 순서대로 줄마다 하나)\n한 줄 = 위도,경도 또는 구글 지도 링크 (링크는 "경로 계산" 때 좌표로 바뀜)\n종착점을 비우고 경유만 넣으면 시작점 → 경유 → 시작점으로 찍고 돌아옴\n체류(분)에 이 걷는 시간까지 포함해서 넣기');
+  [1, 2].forEach(n => {
+    sh.getRange(1, P['VIA' + n + '_LINK']).setNote('선택. 장소 안에서 들르는 경유' + n + '의 구글 지도 링크\n걷는 순서: 시작 → 경유1 → 경유2 → 종착 (빈 곳은 건너뜀)\n경유' + n + ' 좌표가 비어 있으면 "경로 계산" 때 링크에서 뽑아서 채움');
+    sh.getRange(1, P['VIA' + n + '_COORD']).setNote('경유' + n + '. 형식: 위도,경도\n비어 있고 경유' + n + ' 지도 링크가 있으면 링크에서 뽑아서 채움 (노란 칸)\n종착점이 비어 있으면 마지막 경유점에서 다음 장소로 출발\n체류(분)에 시작→경유→종착 걷는 시간까지 포함해서 넣기 (넘으면 점검에서 경고)');
+  });
   sh.getRange(1, P.FIXED).setNote('비행기·버스·예약처럼 시각이 정해진 행만 입력\n그날 첫 행에 넣으면 그 시각부터 하루 계산 시작 (비우면 ' + CONFIG.DEFAULT_START + ')');
   sh.getRange(1, P.MODE).setNote('이 장소에서 다음 장소로 갈 때의 수단\n그날 마지막 행은 비워둠');
   sh.getRange(1, P.MEMO).setNote('[고정] → 경로 계산 때 순서 제안에서 이 행 위치를 안 바꿈 (짐 맡기기·찾기, 체크아웃 등)\n[노선:난카이] → 수동 구간 지도 선을 그 노선 지나는 모양으로');

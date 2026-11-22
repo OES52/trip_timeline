@@ -54,24 +54,20 @@ function parseCoord_(s) {
   return { lat: lat, lng: lng };
 }
 
-// 경유 좌표 칸: 줄바꿈이나 ;로 나눈 지점들 (적힌 순서대로). 좌표는 { c }, 구글 지도 링크는 { link } (경로 계산이 좌표로 바꿔 씀), 그 밖은 { bad }
-function parseVia_(s) {
-  const out = [];
-  String(s || '').split(/\s*(?:\r?\n|;)\s*/).forEach(t => {
-    t = t.trim();
-    if (!t) return;
-    const c = parseCoord_(t);
-    if (c) out.push({ c: c });
-    else if (/^https?:\/\//i.test(t)) out.push({ link: t });
-    else out.push({ bad: t });
-  });
-  return out;
-}
+// 경유 칸 (경유1·경유2): 일정 시트 열 이름(P의 키)
+const VIA_SLOTS_ = [
+  { n: 1, link: 'VIA1_LINK', coord: 'VIA1_COORD' },
+  { n: 2, link: 'VIA2_LINK', coord: 'VIA2_COORD' },
+];
 
-// 다음 장소로 떠나는 지점: 종착점이 있으면 종착점, 없으면 시작점 (원래 행은 안 바꿈)
+// 다음 장소로 떠나는 지점 = 장소 안 걷는 순서(시작 → 경유1 → 경유2 → 종착)의 마지막 지점 (원래 행은 안 바꿈)
+//  종착점 있으면 종착점, 없으면 마지막 경유점, 둘 다 없으면 시작점
 function departFrom_(r) {
-  if (r.endLat == null || r.endLng == null) return r;
-  return Object.assign({}, r, { lat: r.endLat, lng: r.endLng });
+  const via = r.via || [];
+  const out = r.endLat != null && r.endLng != null ? { lat: r.endLat, lng: r.endLng }
+    : via.length ? via[via.length - 1] : null;
+  if (!out) return r;
+  return Object.assign({}, r, { lat: out.lat, lng: out.lng });
 }
 
 // 일정 시트 1행 열 이름이 코드(PLAN_HEADERS)와 같아야 열 번호로 읽고 쓸 수 있음
@@ -104,7 +100,12 @@ function readPlanRows_(plan, ssTz) {
     if (!date || !place) return;
     const coord = parseCoord_(disp[i][P.COORD - 1]);
     const endCoord = parseCoord_(disp[i][P.END_COORD - 1]);
-    const viaTokens = parseVia_(disp[i][P.VIA - 1]);
+    const viaSlots = VIA_SLOTS_.map(s => ({
+      n: s.n,
+      col: P[s.coord],
+      link: String(v[P[s.link] - 1]).trim(),
+      coord: parseCoord_(disp[i][P[s.coord] - 1]),
+    }));
     const amount = v[P.AMOUNT - 1];
     rows.push({
       sheetRow: i + 2,
@@ -118,8 +119,8 @@ function readPlanRows_(plan, ssTz) {
       endLink: String(v[P.END_LINK - 1]).trim(),
       endLat: endCoord ? endCoord.lat : null,
       endLng: endCoord ? endCoord.lng : null,
-      viaTokens: viaTokens,                                   // 경유 칸 원래 내용 (링크 포함)
-      via: viaTokens.filter(t => t.c).map(t => t.c),          // 좌표로 된 경유점만 [{ lat, lng }]
+      viaSlots: viaSlots,                                     // 경유1·경유2 칸 { n, col, link, coord } (좌표 없이 링크만 있으면 경로 계산이 채움)
+      via: viaSlots.filter(s => s.coord).map(s => s.coord),   // 걷는 순서대로, 좌표 있는 경유점만 [{ lat, lng }]
       stay: Number(v[P.STAY - 1]) || 0,
       fixed: parseHHmm_(disp[i][P.FIXED - 1]),
       mode: String(v[P.MODE - 1]).trim(),

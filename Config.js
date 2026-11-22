@@ -98,19 +98,21 @@ const CONFIG = {
 const P = {
   DATE: 1, ORDER: 2, ACTIVITY: 3, PLACE: 4, STAY: 5, FIXED: 6, MODE: 7, MANUAL: 8, MANUAL_FARE: 9, AMOUNT: 10, MEMO: 11,
   ARRIVE: 12, DEPART: 13, SLACK: 14, MOVE: 15, BUFFER: 16, FARE: 17, PER: 18,
-  LINK: 19, COORD: 20, END_LINK: 21, END_COORD: 22, VIA: 23, BUDGET_ID: 24, PAID: 25, FARE_API: 26,
+  LINK: 19, COORD: 20, END_LINK: 21, END_COORD: 22, VIA1_LINK: 23, VIA1_COORD: 24, VIA2_LINK: 25, VIA2_COORD: 26,
+  BUDGET_ID: 27, PAID: 28, FARE_API: 29,
 };
 // 지도 링크·좌표 = 이 장소에 도착하는 지점 (시작점)
 // 종착 링크·좌표 = 이 장소를 떠나는 지점 (시장 관통처럼 들어간 곳과 나오는 곳이 다를 때만). 비우면 시작점에서 출발
-// 경유 좌표 = 장소 안에서 시작점→종착점 사이에 들르는 지점 (줄마다 하나, 좌표나 구글 지도 링크)
-//  종착점 없이 경유만 있으면 시작점 → 경유 → 시작점 (찍고 돌아오기)
+// 경유1·경유2 링크·좌표 = 장소 안에서 들르는 지점. 걷는 순서: 시작 → 경유1 → 경유2 → 종착 (빈 곳은 건너뜀)
+//  다음 장소로는 이 순서의 마지막 지점에서 출발 (종착 없으면 마지막 경유, 그것도 없으면 시작점)
 const PLAN_HEADERS = [
   '일자', '순서', '활동', '장소', '체류(분)', '고정 시각', '다음 이동수단', '수동 소요(분)', '수동 교통비(¥)', '금액(¥)', '메모',
   '도착 시각', '출발 시각', '여유(분)', '이동(분)', '버퍼(분)', '교통비(¥)', '1인당(¥)',
-  '지도 링크', '좌표', '종착 지도 링크', '종착 좌표', '경유 좌표', '예산 번호', '결제', 'API 요금(¥)',
+  '지도 링크', '좌표', '종착 지도 링크', '종착 좌표', '경유1 지도 링크', '경유1 좌표', '경유2 지도 링크', '경유2 좌표',
+  '예산 번호', '결제', 'API 요금(¥)',
 ];
 // 사람이 입력하는 열 / 스크립트·함수가 채우는 열
-const PLAN_INPUT_KEYS = ['DATE', 'ORDER', 'ACTIVITY', 'PLACE', 'STAY', 'FIXED', 'MODE', 'MANUAL', 'MANUAL_FARE', 'AMOUNT', 'MEMO', 'LINK', 'COORD', 'END_LINK', 'END_COORD', 'VIA', 'BUDGET_ID'];
+const PLAN_INPUT_KEYS = ['DATE', 'ORDER', 'ACTIVITY', 'PLACE', 'STAY', 'FIXED', 'MODE', 'MANUAL', 'MANUAL_FARE', 'AMOUNT', 'MEMO', 'LINK', 'COORD', 'END_LINK', 'END_COORD', 'VIA1_LINK', 'VIA1_COORD', 'VIA2_LINK', 'VIA2_COORD', 'BUDGET_ID'];
 const PLAN_AUTO_KEYS = ['ARRIVE', 'DEPART', 'SLACK', 'MOVE', 'BUFFER', 'FARE', 'PER', 'PAID', 'FARE_API'];
 // 정렬할 때 같이 옮길 값 열 (함수 열 제외)
 const PLAN_VALUE_KEYS = PLAN_INPUT_KEYS.concat(['MOVE', 'FARE_API']);
