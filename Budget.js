@@ -21,6 +21,7 @@ function onPlanEdit_(plan, range) {
   const editedId = c1 <= P.BUDGET_ID && P.BUDGET_ID <= c2;
   const editedAmt = c1 <= P.AMOUNT && P.AMOUNT <= c2;
   if (!editedId && !editedAmt) return;
+  requirePlanLayout_(plan);
 
   const ss = plan.getParent();
   const budget = ss.getSheetByName(CONFIG.BUDGET_SHEET);
@@ -160,6 +161,7 @@ function syncBudget() {
   const plan = ss.getSheetByName(CONFIG.PLAN_SHEET);
   const budget = ss.getSheetByName(CONFIG.BUDGET_SHEET);
   if (!plan || !budget) { alert_('먼저 "시트 생성" 실행'); return; }
+  requirePlanLayout_(plan);
 
   const rate = getRate_(ss);
   const assigned = assignMissingBudgetIds_(budget);
@@ -220,6 +222,7 @@ function cleanupBudget() {
   const plan = ss.getSheetByName(CONFIG.PLAN_SHEET);
   const budget = ss.getSheetByName(CONFIG.BUDGET_SHEET);
   if (!plan || !budget) { alert_('먼저 "시트 생성" 실행'); return; }
+  requirePlanLayout_(plan);
   const ssTz = ss.getSpreadsheetTimeZone();
   const fmt = d => d instanceof Date ? Utilities.formatDate(d, ssTz, 'yyyy-MM-dd') : '';
 
@@ -475,6 +478,7 @@ function createBudgetRow_(budget, data) {
 // 같은 번호가 연결된 일정 행 금액을 모두 맞춤 (skipRow는 방금 사람이 고친 행)
 // 예산 번호·금액 열이 떨어져 있어서 따로 읽음
 function syncPlanAmounts_(plan, id, total, skipRow) {
+  requirePlanLayout_(plan);
   const last = lastDataRow_(plan);
   if (last < 2) return;
   const ids = plan.getRange(2, P.BUDGET_ID, last - 1, 1).getValues();

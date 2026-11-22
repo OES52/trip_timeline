@@ -1,5 +1,5 @@
 // 지도에 그릴 것 계산: 구간 선(GeoJSON), 핀 묶음, 범위. 지도 라이브러리와 무관한 순수 로직
-import { dayPoints, isVisited, vk, segRides, MODE_KEY, FAR_M, mainOrders, placeOf, passThrough } from './trip.js';
+import { dayPoints, isVisited, vk, segRides, MODE_KEY, FAR_M, mainOrders, placeOf, passThrough, innerPath } from './trip.js';
 import { lineColor, cityColor } from './colors.js';
 import { haversine, bearing } from './geo.js';
 
@@ -154,13 +154,13 @@ export function assignLanes(features) {
 }
 
 /**
- * 관통하는 장소 안 길 (들어간 곳 → 나오는 곳). 서버가 준 도보 모양(inner.poly)이 있으면 그 길, 없으면 직선
+ * 장소 안 길 (들어간 곳 → 경유점… → 나오는 곳, 나오는 곳이 없으면 들어간 곳으로 돌아옴). 서버가 준 도보 모양(inner.poly)이 있으면 그 길, 없으면 지점을 잇는 직선
  * @returns object[] properties: a·b = 그 장소 순서, fit = 1, past, color = 도시색
  */
 export function innerLines(v, date, states) {
   return dayPoints(v, date).filter(passThrough).map(p => {
     const shape = p.inner && p.inner.poly ? decodePolyline(p.inner.poly) : [];
-    const ll = shape.length >= 2 ? shape : [[p.lat, p.lng], [p.endLat, p.endLng]];
+    const ll = shape.length >= 2 ? shape : innerPath(p);
     const pl = placeOf(v, p);
     const past = states && states.get(p.order) === 'past' ? 1 : 0;
     return toLine(ll, { a: p.order, b: p.order, fit: 1, past, color: cityColor(pl && pl.city) || MODE_HEX.walk });

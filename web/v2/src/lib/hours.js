@@ -114,9 +114,9 @@ export function warnings(p, pl, closeSoonMin = 30) {
   const d = toMin(p.depart);
   const dl = memoDeadline(p.memo);
   if (dl != null && a != null && a > dl) out.push('메모 마감 ' + hhmm(dl) + ' 넘김 (' + p.arrive + ' 도착)');
-  // 시작점→종착점 걷기만으로 체류 시간 초과 (시장·상점가 관통)
+  // 장소 안 걷기(시작점→경유→종착점)만으로 체류 시간 초과 (시장·상점가 관통, 찍고 돌아오기)
   if (p.inner && p.inner.min > (p.stay || 0)) {
-    out.push('시작점→종착점 걷기만 ' + p.inner.min + '분' + (p.inner.est ? ' (어림)' : '') + ', 체류 ' + (p.stay || 0) + '분보다 김');
+    out.push('장소 안 걷기만 (시작→경유→종착) ' + p.inner.min + '분' + (p.inner.est ? ' (어림)' : '') + ', 체류 ' + (p.stay || 0) + '분보다 김');
   }
   if (!pl) return out;
   // 고정 시각이 도착보다 늦으면 그때부터 머묾 (오픈런 줄 서기·예약 시각) → 영업시간은 고정 시각 기준으로 봄

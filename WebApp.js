@@ -186,7 +186,8 @@ function buildMapBase_() {
       lng: r.lng,
       endLat: r.endLat,   // 종착점 (없으면 null = 시작점에서 출발)
       endLng: r.endLng,
-      inner: innerWalk_(r, false),   // 시작점→종착점 걷는 시간·거리·도보 선 모양 { min, m, est, poly } (종착점 없으면 null)
+      via: (r.via || []).map(p => [p.lat, p.lng]),   // 장소 안 경유점 [[lat, lng], ...] (시작점→경유→종착점, 종착점 없으면 시작점으로 돌아옴)
+      inner: innerWalk_(r, false),   // 시작점→(경유)→종착점 걷는 시간·거리·도보 선 모양 { min, m, est, poly } (장소 안 걷기 없으면 null)
       stay: r.stay,
       fixed: r.fixed != null ? fmtMin_(r.fixed) : '',
       arrive: r.arrive,

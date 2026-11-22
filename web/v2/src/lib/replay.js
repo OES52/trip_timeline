@@ -3,11 +3,27 @@
 //  시계는 실제 일정 시각 그대로
 import { toMin } from './time.js';
 import { haversine } from './geo.js';
-import { dayPoints, pname, segModeName } from './trip.js';
+import { dayPoints, pname, segModeName, innerPath } from './trip.js';
 import { decodePolyline, arcPoints } from './route.js';
 
 const hasEnd = p => p.endLat != null && p.endLng != null;
 const outLL = p => (hasEnd(p) ? [p.endLat, p.endLng] : [p.lat, p.lng]);
+
+/** 머무는 동안 위치: 장소 안 길(시작→경유→종착, 도보 모양 있으면 그 길)을 f(0~1)만큼 걸어간 곳. 장소 안 걷기가 없으면 시작점 */
+function stayPos(p, f) {
+  let ll = p.inner && p.inner.poly ? decodePolyline(p.inner.poly) : [];
+  if (ll.length < 2) ll = innerPath(p) || [];
+  if (ll.length < 2) return [p.lat, p.lng];
+  const cum = [0];
+  for (let k = 1; k < ll.length; k++) cum.push(cum[k - 1] + haversine(ll[k - 1], ll[k]));
+  const total = cum[cum.length - 1];
+  if (!(total > 0)) return ll[0];
+  const want = f * total;
+  let k = 1;
+  while (k < ll.length - 1 && cum[k] < want) k++;
+  const seg = cum[k] - cum[k - 1], t = seg > 0 ? (want - cum[k - 1]) / seg : 0;
+  return [ll[k - 1][0] + (ll[k][0] - ll[k - 1][0]) * t, ll[k - 1][1] + (ll[k][1] - ll[k - 1][1]) * t];
+}
 
 /** 이동 구간 좌표: 단계 모양들 → 구간 선 → 휜 선 */
 function segCoords(s, from, to) {
@@ -67,7 +83,7 @@ export function frameAt(v, R, u) {
   const clock = e.a + f * (e.d - e.a);
   if (e.type === 'stay') {
     const p = e.p;
-    const pos = hasEnd(p) ? [p.lat + (p.endLat - p.lat) * f, p.lng + (p.endLng - p.lng) * f] : [p.lat, p.lng];
+    const pos = stayPos(p, f);
     return { pos, clock, label: pname(v, p) + (p.activity ? ' · ' + p.activity : ''), ev: e, i };
   }
   return { pos: along(e, f), clock, label: (e.s ? segModeName(e.s) : '이동') + ' → ' + pname(v, e.to), ev: e, i };
@@ -80,6 +96,7 @@ export function trailUntil(v, R, u) {
     if (x.u0 > u) return;
     const f = Math.min(1, (u - x.u0) / x.len);
     if (x.type === 'move') x.coords.forEach((c, k) => { if (x.cum[k] <= f * x.total) out.push(c); });
+    else if (innerPath(x.p)) { for (let k = 0; k <= 12; k++) out.push(stayPos(x.p, f * k / 12)); }   // 장소 안 길을 걸은 만큼
     else out.push([x.p.lat, x.p.lng]);
   });
   out.push(frameAt(v, R, Math.min(u, R.total - 1e-6)).pos);

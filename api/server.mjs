@@ -571,6 +571,7 @@ function routeTiles(data) {
   pts.forEach(p => {
     addAround(set, p.lat, p.lng, 1200, 12, 14);
     if (p.endLat != null) addAround(set, p.endLat, p.endLng, 800, 12, 14);
+    (Array.isArray(p.via) ? p.via : []).forEach(v => { if (Array.isArray(v) && v[0] != null) addAround(set, v[0], v[1], 800, 12, 14); });   // 장소 안 경유점
   });
   (data.segments || []).forEach(s => {
     let line = [];

@@ -96,7 +96,28 @@ function runCalc_(force, opts) {
     }
   });
 
-  // 1-3. 종착점이 있는 장소: 시작점→종착점 도보 경로 조회해서 저장 (한 번 받으면 재사용, 웹앱 조정 중엔 생략)
+  // 1-2b. 경유 좌표: 지도 링크로 적힌 경유점을 좌표로 바꿔 씀 (적힌 순서 유지). 좌표도 링크도 아닌 줄은 알림
+  rows.forEach(r => {
+    const toks = r.viaTokens || [];
+    toks.filter(t => t.bad).forEach(t => {
+      errors.push(r.sheetRow + '행 "' + r.place + '": 경유 좌표 "' + t.bad + '"를 못 읽음 (줄마다 위도,경도 또는 구글 지도 링크). 이 줄은 빼고 계산');
+    });
+    if (!toks.some(t => t.link)) return;
+    let failed = 0;
+    toks.forEach(t => {
+      if (!t.link) return;
+      const found = coordFromLink_(t.link);
+      if (found) { t.c = found; delete t.link; } else failed++;
+    });
+    if (failed) errors.push(r.sheetRow + '행 "' + r.place + '": 경유 지도 링크 ' + failed + '개에서 좌표를 못 뽑음. 좌표로 직접 입력 필요 (그 경유점은 빼고 계산)');
+    r.via = toks.filter(t => t.c).map(t => t.c);
+    plan.getRange(r.sheetRow, P.VIA)
+      .setValue(toks.map(t => t.c ? t.c.lat.toFixed(6) + ',' + t.c.lng.toFixed(6) : (t.link || t.bad)).join('\n'))
+      .setBackground(CONFIG.COLOR_AUTO_COORD)
+      .setNote('자동 (경유 지도 링크 → 좌표)\n위치 확인 후 맞으면 배경색 지워도 됨');
+  });
+
+  // 1-3. 종착점·경유점이 있는 장소: 시작점→(경유)→종착점 도보 경로 조회해서 저장 (한 번 받으면 재사용, 웹앱 조정 중엔 생략)
   if (!quick) rows.forEach(r => innerWalk_(r, true));
 
   // 2. 일자별로 구간 계산 (대중교통은 출발 시각에 따라 결과가 달라서 시각도 내부에서 같이 계산)
@@ -230,6 +251,7 @@ function runCalc_(force, opts) {
 
 // 일자·순서대로 값 열만 다시 씀. 좌표 칸(시작·종착)의 자동 표시(배경색·노트)도 같이 옮김
 function sortPlanRows_(plan, lastRow, ssTz) {
+  requirePlanLayout_(plan);
   const n = lastRow - 1;
   if (n < 2) return;
   const range = plan.getRange(2, 1, n, PLAN_HEADERS.length);
@@ -248,7 +270,7 @@ function sortPlanRows_(plan, lastRow, ssTz) {
     const c = P[k];
     plan.getRange(2, c, n, 1).setValues(sorted.map(x => [vals[x.i][c - 1]]));
   });
-  [P.COORD, P.END_COORD].forEach(c => {
+  [P.COORD, P.END_COORD, P.VIA].forEach(c => {
     const cell = plan.getRange(2, c, n, 1);
     const bgs = cell.getBackgrounds();
     const notes = cell.getNotes();
@@ -463,15 +485,30 @@ function innerWalkStore_() {
   return INNER_WALK_MEMO_;
 }
 
-// 시작점→종착점 걷는 시간·거리·모양 { min, m, est, poly } (종착점 없거나 시작점과 같으면 null)
+// 장소 안에서 걷는 지점들 [시작, 경유…, 끝]. 끝 = 종착점, 없으면 시작점 (경유만 있으면 찍고 돌아오기)
+//  종착점도 경유도 없거나, 경유 없이 종착점이 시작점과 같으면 null (장소 안 걷기 없음)
+function innerPath_(r) {
+  if (!r || r.lat == null || r.lng == null) return null;
+  const via = (r.via || []).filter(p => p && p.lat != null && p.lng != null);
+  const hasEnd = r.endLat != null && r.endLng != null;
+  if (!via.length && (!hasEnd || (r.lat === r.endLat && r.lng === r.endLng))) return null;
+  const end = hasEnd ? { lat: r.endLat, lng: r.endLng } : { lat: r.lat, lng: r.lng };
+  return [{ lat: r.lat, lng: r.lng }].concat(via, [end]);
+}
+
+// 시작점→(경유)→종착점 걷는 시간·거리·모양 { min, m, est, poly } (장소 안 걷기 없으면 null)
 //  저장된 도보 경로가 있으면 그 값 (est: false). poly = 구글 도보 경로 선 (웹앱 지도가 관통 길로 그림, 없으면 '')
 //  fetch = true면 없을 때(모양 없는 예전 값일 때도) 구글 도보 경로를 받아 저장 (경로 계산 때만)
-//  그래도 없으면 직선거리 × INNER_WALK_DETOUR, INNER_WALK_M_PER_MIN 속도로 어림 (est: true)
+//  그래도 없으면 지점 사이 직선거리 합 × INNER_WALK_DETOUR, INNER_WALK_M_PER_MIN 속도로 어림 (est: true)
 function innerWalk_(r, fetch) {
-  if (!r || r.lat == null || r.lng == null || r.endLat == null || r.endLng == null) return null;
-  if (r.lat === r.endLat && r.lng === r.endLng) return null;
+  const path = innerPath_(r);
+  if (!path) return null;
+  const via = path.slice(1, -1);
+  const end = path[path.length - 1];
   const f = v => Number(v).toFixed(5);
-  const key = 'iw|' + f(r.lat) + ',' + f(r.lng) + '|' + f(r.endLat) + ',' + f(r.endLng);
+  // 경유 없는 줄은 예전 키 그대로 (저장해 둔 도보 경로 재사용)
+  const key = 'iw|' + f(r.lat) + ',' + f(r.lng) + '|' + f(end.lat) + ',' + f(end.lng) +
+    (via.length ? '|v' + via.map(p => f(p.lat) + ',' + f(p.lng)).join(';') : '');
   const store = innerWalkStore_();
   // polyline 글자에도 '|'가 나올 수 있어서 세 번째 칸은 끝까지 통째로
   const parse = s => {
@@ -483,15 +520,19 @@ function innerWalk_(r, fetch) {
   if (hit && (hit.shaped || !fetch)) return pub(hit);
   if (fetch) {
     try {
-      const out = Maps.newDirectionFinder()
-        .setOrigin(r.lat, r.lng).setDestination(r.endLat, r.endLng)
-        .setMode(Maps.DirectionFinder.Mode.WALKING).setLanguage('ko').getDirections();
+      const finder = Maps.newDirectionFinder()
+        .setOrigin(r.lat, r.lng).setDestination(end.lat, end.lng)
+        .setMode(Maps.DirectionFinder.Mode.WALKING).setLanguage('ko');
+      via.forEach(p => finder.addWaypoint(p.lat, p.lng));   // 경유점마다 구간(leg)이 하나씩 생김
+      const out = finder.getDirections();
       Utilities.sleep(CONFIG.SLEEP_MS);
       const route = out && out.status === 'OK' && out.routes && out.routes[0] ? out.routes[0] : null;
-      const leg = route && route.legs ? route.legs[0] : null;
-      if (leg && leg.duration && leg.distance) {
+      const legs = route && route.legs ? route.legs : [];
+      if (legs.length && legs.every(l => l.duration && l.distance)) {
+        const sec = legs.reduce((s, l) => s + l.duration.value, 0);
+        const dist = legs.reduce((s, l) => s + l.distance.value, 0);
         const poly = route.overview_polyline && route.overview_polyline.points ? route.overview_polyline.points : '';
-        const val = Math.ceil(leg.duration.value / 60) + '|' + Math.round(leg.distance.value) + '|' + poly;
+        const val = Math.ceil(sec / 60) + '|' + Math.round(dist) + '|' + poly;
         PropertiesService.getScriptProperties().setProperty(key, val);
         store[key] = val;
         return pub(parse(val));
@@ -502,11 +543,13 @@ function innerWalk_(r, fetch) {
     }
   }
   if (hit) return pub(hit);
-  const m = distanceM_(r.lat, r.lng, r.endLat, r.endLng) * CONFIG.INNER_WALK_DETOUR;
+  let straight = 0;
+  for (let i = 1; i < path.length; i++) straight += distanceM_(path[i - 1].lat, path[i - 1].lng, path[i].lat, path[i].lng);
+  const m = straight * CONFIG.INNER_WALK_DETOUR;
   return { min: Math.max(1, Math.ceil(m / CONFIG.INNER_WALK_M_PER_MIN)), m: Math.round(m), est: true, poly: '' };
 }
 
-// 메뉴 "관통 도보 길만 받기": 종착점 있는 줄의 시작점→종착점 도보 길(모양)만 받아 둠
+// 메뉴 "관통 도보 길만 받기": 종착점·경유점 있는 줄의 시작점→(경유)→종착점 도보 길(모양)만 받아 둠
 //  경로·시각·시트는 안 건드림. 이미 모양이 있는 곳은 다시 안 받음 (구글 호출은 모양 없는 곳만, 보통 몇 번)
 //  끝나면 웹앱 캐시를 비워서 지도 관통 띠가 바로 실제 길로 보이게
 function fetchInnerWalks() {
@@ -528,7 +571,7 @@ function fetchInnerWalks() {
     if (iw.poly) shaped++;
   }
   invalidateCache_();
-  alert_('관통하는 장소 ' + all + '곳 중 ' + shaped + '곳 도보 길 모양 있음.\n웹앱을 새로고침하면 지도 띠가 실제 길로 보임' +
+  alert_('장소 안 걷기(관통·경유) ' + all + '곳 중 ' + shaped + '곳 도보 길 모양 있음.\n웹앱을 새로고침하면 지도 띠가 실제 길로 보임' +
     (shaped < all && !stopped ? '\n(모양을 못 받은 곳은 직선 띠)' : '') + stopped);
 }
 

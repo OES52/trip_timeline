@@ -45,3 +45,17 @@ test('trailUntil: 지나온 점만', () => {
   assert.equal(trailUntil(v, R, 1).length, 2);
   assert.ok(trailUntil(v, R, 30).length > 3);
 });
+
+test('frameAt: 경유점 있는 곳에서 머무는 동안 경유점까지 갔다가 돌아옴', () => {
+  const r = raw();
+  r.points[1].via = [[34.72, 135.50]];   // B에서 북쪽 경유점을 찍고 돌아옴
+  const v = buildView(r, null);
+  const R = buildReplay(v, '2026-12-25');
+  const st = R.ev[2];
+  assert.equal(st.type, 'stay');
+  const at = f => frameAt(v, R, st.u0 + st.len * f).pos;
+  assert.deepEqual(at(0), [34.70, 135.50]);
+  assert.ok(Math.abs(at(0.5)[0] - 34.72) < 1e-9);   // 한가운데 = 경유점
+  assert.ok(at(0.25)[0] > 34.70 && at(0.25)[0] < 34.72);
+  assert.ok(trailUntil(v, R, st.u0 + st.len * 0.5).some(p => Math.abs(p[0] - 34.72) < 1e-9));
+});

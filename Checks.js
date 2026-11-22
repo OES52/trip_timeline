@@ -169,10 +169,10 @@ function runChecks_(rows, routeRows, places) {
         issues.push(tag + (slack < 0 ? '고정 ' + fmtMin_(r.fixed) + '보다 ' + (-slack) + '분 늦음' : '고정 ' + fmtMin_(r.fixed) + '까지 여유 ' + slack + '분 (빠듯)'));
       }
 
-      // 5. 관통 도보 > 체류
+      // 5. 장소 안 도보(관통·경유) > 체류
       const iw = innerWalk_(r, false);
       if (iw && iw.min > r.stay) {
-        issues.push(tag + '시작점→종착점 걷기만 ' + iw.min + '분' + (iw.est ? ' (어림)' : '') + ', 체류 ' + r.stay + '분보다 김');
+        issues.push(tag + '장소 안 걷기만 (시작→경유→종착) ' + iw.min + '분' + (iw.est ? ' (어림)' : '') + ', 체류 ' + r.stay + '분보다 김');
       }
 
       // 1. 영업시간·휴무
