@@ -65,8 +65,8 @@
 .facts dt { color: var(--ink-2); }
 .menu { display: grid; gap: 2px; font-size: var(--fs-sub); color: var(--ink-2); }
 .menu li::before { content: "– "; color: var(--ink-3); }
-.stop-memo { padding: var(--s2) var(--s3); font-size: var(--fs-sub); background: var(--plate-2); border-radius: var(--r-plate); }
-.stop-memo::before { content: "메모  "; font-weight: 700; color: var(--ink-2); }
+.stop-memo { padding: var(--s2) var(--s3); font-size: var(--fs-sub); background: var(--plate-2); border-radius: var(--r-plate); white-space: pre-line; }
+.stop-memo::before { content: "메모"; margin-right: var(--s2); font-weight: 700; color: var(--ink-2); }
 .stop-btns { display: flex; flex-wrap: wrap; gap: var(--s2); }
 
 /* ── 이동 줄 ── */
