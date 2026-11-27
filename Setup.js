@@ -251,7 +251,7 @@ function applyPlanFormat_(sh, fresh) {
   });
   sh.getRange(1, P.FIXED).setNote('비행기·버스·예약처럼 시각이 정해진 행만 입력\n그날 첫 행에 넣으면 그 시각부터 하루 계산 시작 (비우면 ' + CONFIG.DEFAULT_START + ')');
   sh.getRange(1, P.MODE).setNote('이 장소에서 다음 장소로 갈 때의 수단\n그날 마지막 행은 비워둠');
-  sh.getRange(1, P.MEMO).setNote('[고정] → 경로 계산 때 순서 제안에서 이 행 위치를 안 바꿈 (짐 맡기기·찾기, 체크아웃 등)\n[노선:난카이] → 수동 구간 지도 선을 그 노선 지나는 모양으로');
+  sh.getRange(1, P.MEMO).setNote('[고정] → 경로 계산 때 순서 제안에서 이 행 위치를 안 바꿈 (짐 맡기기·찾기, 체크아웃 등)\n[노선:난카이] → 수동 구간 지도 선을 그 노선 지나는 모양으로 (300km 넘는 신칸센 구간도)');
   sh.getRange(1, P.MANUAL).setNote('다음 이동수단이 "수동"일 때만 입력 (비행기 등 경로 계산이 안 되는 구간)\n입력 즉시 아래 행 시각에 반영됨');
   sh.getRange(1, P.MANUAL_FARE).setNote('이 장소 → 다음 장소 구간의 1인 교통비. 넣으면 API 요금 대신 이 값을 씀\n수동 구간(공항철도, 택시 등)이나 API 요금이 비었을 때 입력');
   sh.getRange(1, P.AMOUNT).setNote('엔화 총액. 예산 시트에는 설정 시트 환율로 바꾼 원화로 들어감\n번호가 연결돼 있으면 여기서 고친 금액이 예산 시트에도 반영됨\n번호 없이 입력하면 예산 시트에 새 항목이 생기고 예산 번호가 채워짐');

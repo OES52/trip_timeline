@@ -291,9 +291,10 @@ function computeSegment_(date, departMin, from, to, cache, errors, quick, pref) 
     // 메모에 [노선:난카이] 처럼 적으면 그 노선을 지나는 경로 모양을 우선 고름
     const res = Object.assign(base, { minutes: from.manual, summary: '수동 입력 ' + from.manual + '분' });
     // 메모에 [도로]: 밤버스처럼 먼 구간도 도로 경로 모양으로 (300km 넘어도)
+    // 메모에 [노선:…]: 신칸센처럼 먼 구간도 그 노선 경로 모양으로 (300km 넘어도)
     const road = /\[도로\]/.test(String(from.memo || ''));
-    if (from.lat != null && to.lat != null && (road || distanceM_(from.lat, from.lng, to.lat, to.lng) < 300000)) {
-      const pm = String(from.memo || '').match(/\[노선\s*:\s*([^\]]+)\]/);
+    const pm = String(from.memo || '').match(/\[노선\s*:\s*([^\]]+)\]/);
+    if (from.lat != null && to.lat != null && (road || pm || distanceM_(from.lat, from.lng, to.lat, to.lng) < 300000)) {
       const prefer = road ? '' : (pm ? pm[1].trim() : '');
       const key = ['shape', from.lat, from.lng, to.lat, to.lng, prefer].join('|') + (road ? '|road' : '');
       const hit = cache[key];
